@@ -71,7 +71,6 @@ export function FolderTree({
         try {
           const newPath = await invoke<string>("create_file", { dir, name });
           onNewFileCreated?.(newPath);
-          refresh();
           onFileSelect(newPath);
           return;
         } catch {

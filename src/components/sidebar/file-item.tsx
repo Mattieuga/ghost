@@ -29,6 +29,7 @@ interface FileItemProps {
   onRenamed?: (newPath: string) => void;
   autoRename?: boolean;
   onAutoRenameDone?: () => void;
+  rootGuideX?: number | null;
 }
 
 export function FileItem({
@@ -40,6 +41,7 @@ export function FileItem({
   onRenamed,
   autoRename,
   onAutoRenameDone,
+  rootGuideX,
 }: FileItemProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [displayName, setDisplayName] = useState(entry.name);
@@ -151,8 +153,14 @@ export function FileItem({
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
-            className={`mx-1.5 rounded-[5px] ${isActive ? "bg-[#18181b]" : ""}`}
+            className={`mx-1.5 rounded-[5px] relative ${isActive ? "bg-[#18181b]" : ""}`}
           >
+          {isActive && rootGuideX != null && (
+            <div
+              className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
+              style={{ left: `${rootGuideX - 6}px`, backgroundColor: "#f57c00" }}
+            />
+          )}
           <button
             onClick={onSelect}
             className={`w-full text-left py-1 pr-2 text-[13px] truncate transition-colors cursor-pointer

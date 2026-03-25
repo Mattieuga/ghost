@@ -103,6 +103,7 @@ export function FolderTree({
   }
 
   const hasActiveFile = activeFile ? activeFile.startsWith(path + "/") : false;
+  const rootGuideX = INDENT_BASE + 3; // center of root dot
 
   return (
     <DroppableFolder
@@ -132,6 +133,7 @@ export function FolderTree({
         newlyCreatedFile={newlyCreatedFile}
         onNewFileRenamed={onNewFileRenamed}
         depth={0}
+        rootGuideX={hasActiveFile ? rootGuideX : null}
       />
     </DroppableFolder>
   );
@@ -234,6 +236,7 @@ function DroppableFolder({
             style={{
               left: `${togglePadding + (isRoot ? 3 : 7)}px`,
               backgroundColor: isRoot && hasActiveFile ? "#f57c00" : "#1c1c20",
+              opacity: isRoot && hasActiveFile ? 0.45 : 1,
             }}
           />
           {children}
@@ -257,6 +260,7 @@ function FileTree({
   newlyCreatedFile,
   onNewFileRenamed,
   depth,
+  rootGuideX,
 }: {
   entries: FileEntry[];
   activeFile: string | null;
@@ -271,6 +275,7 @@ function FileTree({
   newlyCreatedFile: string | null;
   onNewFileRenamed: () => void;
   depth: number;
+  rootGuideX: number | null;
 }) {
   return (
     <>
@@ -300,6 +305,7 @@ function FileTree({
               newlyCreatedFile={newlyCreatedFile}
               onNewFileRenamed={onNewFileRenamed}
               depth={depth + 1}
+              rootGuideX={rootGuideX}
             />
           </DroppableFolder>
         ) : (
@@ -311,6 +317,7 @@ function FileTree({
             onRenamed={(newPath) => onFileRenamed(entry.path, newPath)}
             onDeleted={() => onFileDeleted(entry.path)}
             indent={INDENT_BASE + (depth + 1) * INDENT_STEP + FILE_EXTRA}
+            rootGuideX={rootGuideX}
             autoRename={entry.path === newlyCreatedFile}
             onAutoRenameDone={onNewFileRenamed}
           />

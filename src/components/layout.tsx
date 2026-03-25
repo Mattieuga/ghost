@@ -291,11 +291,9 @@ export function GhostLayout() {
       <div className="flex w-[240px] shrink-0 flex-col bg-sidebar border-r border-sidebar-border">
         {/* Sidebar title bar — drag region for traffic lights */}
         <div
-          className="flex h-12 shrink-0 items-center justify-center"
+          className="h-12 shrink-0"
           data-tauri-drag-region
-        >
-          <span className="text-[11px] font-medium text-[#52525b] tracking-[2px] uppercase pointer-events-none select-none">ghost</span>
-        </div>
+        />
 
         {/* Search bar (UI only) */}
         <div className="px-3 pt-0 pb-4">
@@ -370,13 +368,21 @@ export function GhostLayout() {
           </DndContext>
         </div>
 
-        {/* Settings at bottom — Figma: #3f3f46, separator above */}
-        <div className="shrink-0 border-t border-sidebar-border px-4 py-3">
+        {/* Footer — Settings + Collapse */}
+        <div className="shrink-0 border-t border-sidebar-border px-4 py-3 flex items-center justify-between">
           <button
             onClick={() => setShowSettings(true)}
-            className="text-[13px] text-[#3f3f46] hover:text-[#71717a] transition-colors"
+            className="text-[13px] text-[#3f3f46] hover:text-[#71717a] transition-colors cursor-pointer"
           >
             Settings
+          </button>
+          <button
+            className="text-[#3f3f46] hover:text-[#71717a] transition-colors cursor-pointer"
+            title="Collapse sidebar"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10 3L5 8L10 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           </button>
         </div>
       </div>

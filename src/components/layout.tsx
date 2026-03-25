@@ -36,6 +36,8 @@ export function GhostLayout() {
   const [wordCount, setWordCount] = useState(0);
   const [newlyCreatedFile, setNewlyCreatedFile] = useState<string | null>(null);
   const headerInputRef = useRef<HTMLInputElement>(null);
+  const activeFileRef = useRef<string | null>(null);
+  activeFileRef.current = activeFile;
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -170,8 +172,9 @@ export function GhostLayout() {
           return;
         }
         // Use active file's parent folder, or first tracked folder as fallback
-        const targetDir = activeFile
-          ? activeFile.substring(0, activeFile.lastIndexOf("/"))
+        const currentFile = activeFileRef.current;
+        const targetDir = currentFile
+          ? currentFile.substring(0, currentFile.lastIndexOf("/"))
           : folders[0];
         let name = "Untitled.md";
         let counter = 1;

@@ -147,3 +147,70 @@ pub async fn delete_file(path: String) -> Result<(), String> {
         fs::remove_file(&path).map_err(|e| format!("Failed to delete file: {}", e))
     }
 }
+
+#[tauri::command]
+pub async fn duplicate_file(path: String) -> Result<String, String> {
+    let source = Path::new(&path);
+    let parent = source.parent().ok_or("Cannot determine parent directory")?;
+
+    if source.is_dir() {
+        let dir_name = source.file_name().ok_or("Cannot determine folder name")?
+            .to_string_lossy().to_string();
+        let mut dest_name = format!("{} copy", dir_name);
+        let mut counter = 1;
+        let mut dest = parent.join(&dest_name);
+        while dest.exists() {
+            counter += 1;
+            dest_name = format!("{} copy {}", dir_name, counter);
+            dest = parent.join(&dest_name);
+        }
+        copy_dir_recursive(source, &dest)?;
+        Ok(dest.to_string_lossy().to_string())
+    } else {
+        let stem = source.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("file");
+        let ext = source.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| format!(".{}", e))
+            .unwrap_or_default();
+        let mut dest_name = format!("{} copy{}", stem, ext);
+        let mut counter = 1;
+        let mut dest = parent.join(&dest_name);
+        while dest.exists() {
+            counter += 1;
+            dest_name = format!("{} copy {}{}", stem, counter, ext);
+            dest = parent.join(&dest_name);
+        }
+        fs::copy(&path, &dest).map_err(|e| format!("Failed to duplicate: {}", e))?;
+        Ok(dest.to_string_lossy().to_string())
+    }
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    fs::create_dir(dst).map_err(|e| format!("Failed to create directory: {}", e))?;
+    for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path).map_err(|e| format!("Failed to copy: {}", e))?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reveal_in_finder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to reveal in Finder: {}", e))?;
+    }
+    Ok(())
+}

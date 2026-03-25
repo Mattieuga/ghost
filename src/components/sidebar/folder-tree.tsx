@@ -8,13 +8,11 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { FolderMinus, FilePlus, FolderPlus } from "lucide-react";
 import { useMemo, useState, useCallback } from "react";
 
-// Indentation: folders get toggle at INDENT_BASE + depth * INDENT_STEP,
-// files get INDENT_BASE + depth * INDENT_STEP + FILE_EXTRA
 const INDENT_BASE = 16;
 const INDENT_STEP = 14;
 const FILE_EXTRA = 12;
@@ -103,7 +101,7 @@ export function FolderTree({
   }
 
   const hasActiveFile = activeFile ? activeFile.startsWith(path + "/") : false;
-  const rootGuideX = INDENT_BASE + 3; // center of root dot
+  const rootGuideX = INDENT_BASE + 3;
 
   return (
     <DroppableFolder
@@ -114,6 +112,7 @@ export function FolderTree({
       onRemoveFolder={onRemoveFolder}
       onCreateFile={handleCreateFile}
       onCreateFolder={handleCreateFolder}
+      onRefresh={refresh}
       defaultOpen={true}
       depth={0}
       isRoot={true}
@@ -130,6 +129,7 @@ export function FolderTree({
         onFileDeleted={onFileDeleted}
         onCreateFile={handleCreateFile}
         onCreateFolder={handleCreateFolder}
+        onRefresh={refresh}
         newlyCreatedFile={newlyCreatedFile}
         onNewFileRenamed={onNewFileRenamed}
         depth={0}
@@ -147,6 +147,7 @@ function DroppableFolder({
   onRemoveFolder,
   onCreateFile,
   onCreateFolder,
+  onRefresh,
   defaultOpen = false,
   depth,
   isRoot = false,
@@ -160,6 +161,7 @@ function DroppableFolder({
   onRemoveFolder?: (path: string) => void;
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
+  onRefresh: () => void;
   defaultOpen?: boolean;
   depth: number;
   isRoot?: boolean;
@@ -174,10 +176,128 @@ function DroppableFolder({
   });
 
   const togglePadding = INDENT_BASE + depth * INDENT_STEP;
-
-  // Root folders: dot indicator (filled = open, outline = collapsed)
-  // Dot color: amber if has active file, muted otherwise
   const dotColor = isRoot && hasActiveFile ? "#f57c00" : "#52525b";
+
+  const handleRevealInFinder = async () => {
+    try {
+      await invoke("reveal_in_finder", { path: id });
+    } catch (err) {
+      console.error("Failed to reveal:", err);
+    }
+  };
+
+  const handleCopyPath = async () => {
+    try {
+      await navigator.clipboard.writeText(id);
+    } catch (err) {
+      console.error("Failed to copy path:", err);
+    }
+  };
+
+  const handleDuplicate = async () => {
+    try {
+      await invoke<string>("duplicate_file", { path: id });
+      onRefresh();
+    } catch (err) {
+      console.error("Failed to duplicate:", err);
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await invoke("delete_file", { path: id });
+      onRefresh();
+    } catch (err) {
+      console.error("Failed to delete:", err);
+    }
+  };
+
+  // Build context menu items based on folder type
+  const renderContextMenu = () => {
+    if (isRoot) {
+      return (
+        <ContextMenuContent className="w-56">
+          <ContextMenuItem onSelect={() => onRemoveFolder?.(id)}>
+            Close Project
+          </ContextMenuItem>
+          <ContextMenuItem disabled>
+            Open in New Window
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => onCreateFile(id)}>
+            New File
+            <ContextMenuShortcut>⌘N</ContextMenuShortcut>
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => onCreateFolder(id)}>
+            New Folder
+            <ContextMenuShortcut>⇧⌘N</ContextMenuShortcut>
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={handleRevealInFinder}>
+            Reveal in Finder
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={handleCopyPath}>
+            Copy File Path
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={handleDuplicate}>
+            Duplicate
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => {/* TODO: rename root folder */}}>
+            Rename...
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={handleDelete} className="text-destructive">
+            Delete Folder
+          </ContextMenuItem>
+        </ContextMenuContent>
+      );
+    }
+
+    // Sub-folder menu
+    return (
+      <ContextMenuContent className="w-56">
+        <ContextMenuItem onSelect={() => setOpen(!open)}>
+          {open ? "Collapse" : "Expand"}
+        </ContextMenuItem>
+        <ContextMenuItem disabled>
+          Open in New Window
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => onCreateFile(id)}>
+          New File
+          <ContextMenuShortcut>⌘N</ContextMenuShortcut>
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => onCreateFolder(id)}>
+          New Folder
+          <ContextMenuShortcut>⇧⌘N</ContextMenuShortcut>
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={handleCopyPath}>
+          Copy Folder
+          <ContextMenuShortcut>⌘C</ContextMenuShortcut>
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={handleRevealInFinder}>
+          Reveal in Finder
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={handleCopyPath}>
+          Copy File Path
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={handleDuplicate}>
+          Duplicate
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => {/* TODO: rename sub-folder */}}>
+          Rename...
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={handleDelete} className="text-destructive">
+          Delete Folder
+        </ContextMenuItem>
+      </ContextMenuContent>
+    );
+  };
 
   return (
     <div
@@ -191,7 +311,7 @@ function DroppableFolder({
               setOpen(!open);
               onFolderSelect(id);
             }}
-            className="w-full text-left flex items-center gap-2 py-1.5 pr-2 hover:text-[#e4e4e7] transition-colors cursor-pointer"
+            className="w-full text-left flex items-center gap-2 py-1.5 pr-2 hover:text-[#e4e4e7] transition-colors cursor-pointer select-none"
             style={{ paddingLeft: `${togglePadding}px` }}
           >
             {isRoot ? (
@@ -208,29 +328,10 @@ function DroppableFolder({
             <span className={`text-[13px] font-medium ${isRoot ? "text-[#e4e4e7]" : "text-[#a1a1aa]"}`}>{folderName}</span>
           </button>
         </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuItem onSelect={() => onCreateFile(id)}>
-            <FilePlus className="size-4" />
-            New File
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={() => onCreateFolder(id)}>
-            <FolderPlus className="size-4" />
-            New Folder
-          </ContextMenuItem>
-          {onRemoveFolder && (
-            <>
-              <ContextMenuSeparator />
-              <ContextMenuItem onSelect={() => onRemoveFolder(id)}>
-                <FolderMinus className="size-4" />
-                Remove Folder
-              </ContextMenuItem>
-            </>
-          )}
-        </ContextMenuContent>
+        {renderContextMenu()}
       </ContextMenu>
       {open && (
         <div className="relative">
-          {/* Vertical guide line */}
           <div
             className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
             style={{
@@ -257,6 +358,7 @@ function FileTree({
   onFileDeleted,
   onCreateFile,
   onCreateFolder,
+  onRefresh,
   newlyCreatedFile,
   onNewFileRenamed,
   depth,
@@ -272,6 +374,7 @@ function FileTree({
   onFileDeleted: (path: string) => void;
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
+  onRefresh: () => void;
   newlyCreatedFile: string | null;
   onNewFileRenamed: () => void;
   depth: number;
@@ -289,6 +392,7 @@ function FileTree({
             onFolderSelect={onFolderSelect}
             onCreateFile={onCreateFile}
             onCreateFolder={onCreateFolder}
+            onRefresh={onRefresh}
             depth={depth + 1}
           >
             <FileTree
@@ -302,6 +406,7 @@ function FileTree({
               onFileDeleted={onFileDeleted}
               onCreateFile={onCreateFile}
               onCreateFolder={onCreateFolder}
+              onRefresh={onRefresh}
               newlyCreatedFile={newlyCreatedFile}
               onNewFileRenamed={onNewFileRenamed}
               depth={depth + 1}
@@ -316,10 +421,12 @@ function FileTree({
             onSelect={() => onFileSelect(entry.path)}
             onRenamed={(newPath) => onFileRenamed(entry.path, newPath)}
             onDeleted={() => onFileDeleted(entry.path)}
+            onNewSibling={() => onCreateFile(entry.path.substring(0, entry.path.lastIndexOf("/")))}
+            onNewFolderSibling={() => onCreateFolder(entry.path.substring(0, entry.path.lastIndexOf("/")))}
             indent={INDENT_BASE + (depth + 1) * INDENT_STEP + FILE_EXTRA}
-            rootGuideX={rootGuideX}
             autoRename={entry.path === newlyCreatedFile}
             onAutoRenameDone={onNewFileRenamed}
+            rootGuideX={rootGuideX}
           />
         )
       )}

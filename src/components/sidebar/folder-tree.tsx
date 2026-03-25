@@ -11,7 +11,7 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 
 const INDENT_BASE = 16;
 const INDENT_STEP = 14;
@@ -169,6 +169,9 @@ function DroppableFolder({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameName, setRenameName] = useState(folderName);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const isHighlighted = activeDropFolder === id;
   const { setNodeRef } = useDroppable({
     id: `folder:${id}`,
@@ -177,6 +180,34 @@ function DroppableFolder({
 
   const togglePadding = INDENT_BASE + depth * INDENT_STEP;
   const dotColor = isRoot && hasActiveFile ? "#f57c00" : "#52525b";
+
+  useEffect(() => {
+    if (isRenaming && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [isRenaming]);
+
+  const handleRename = async () => {
+    if (!renameName || renameName === folderName) {
+      setIsRenaming(false);
+      setRenameName(folderName);
+      return;
+    }
+    try {
+      await invoke<string>("rename_file", { oldPath: id, newName: renameName });
+      onRefresh();
+    } catch (err) {
+      console.error("Failed to rename folder:", err);
+      setRenameName(folderName);
+    }
+    setIsRenaming(false);
+  };
+
+  const startRename = () => {
+    setRenameName(folderName);
+    setIsRenaming(true);
+  };
 
   const handleRevealInFinder = async () => {
     try {
@@ -243,7 +274,7 @@ function DroppableFolder({
           <ContextMenuItem onSelect={handleDuplicate}>
             Duplicate
           </ContextMenuItem>
-          <ContextMenuItem onSelect={() => {/* TODO: rename root folder */}}>
+          <ContextMenuItem onSelect={startRename}>
             Rename...
           </ContextMenuItem>
           <ContextMenuSeparator />
@@ -298,6 +329,59 @@ function DroppableFolder({
       </ContextMenuContent>
     );
   };
+
+  if (isRenaming) {
+    return (
+      <div
+        ref={setNodeRef}
+        className="rounded-md"
+      >
+        <div
+          className="flex items-center gap-2 py-1 pr-2"
+          style={{ paddingLeft: `${togglePadding}px` }}
+        >
+          {isRoot ? (
+            <span
+              className="inline-block size-[7px] shrink-0 rounded-full"
+              style={{
+                backgroundColor: open ? dotColor : "transparent",
+                border: `1.5px solid ${dotColor}`,
+              }}
+            />
+          ) : (
+            <span className="text-[16px] leading-none text-[#52525b]">{open ? "▾" : "▸"}</span>
+          )}
+          <input
+            ref={renameInputRef}
+            value={renameName}
+            onChange={(e) => setRenameName(e.target.value)}
+            onBlur={handleRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleRename();
+              if (e.key === "Escape") {
+                setRenameName(folderName);
+                setIsRenaming(false);
+              }
+            }}
+            className="flex-1 bg-transparent text-[13px] text-[#e4e4e7] font-medium outline-none caret-[#f57c00] border border-[#3f3f46] rounded-[4px] px-2 py-0.5"
+          />
+        </div>
+        {open && (
+          <div className="relative">
+            <div
+              className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
+              style={{
+                left: `${togglePadding + (isRoot ? 3 : 7)}px`,
+                backgroundColor: isRoot && hasActiveFile ? "#f57c00" : "#1c1c20",
+                opacity: isRoot && hasActiveFile ? 0.45 : 1,
+              }}
+            />
+            {children}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div

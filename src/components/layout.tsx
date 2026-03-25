@@ -287,9 +287,7 @@ export function GhostLayout() {
 
   const handleSidebarMouseLeave = useCallback(() => {
     if (!sidebarCollapsed) return;
-    sidebarHoverTimeout.current = setTimeout(() => {
-      setSidebarHovered(false);
-    }, 300);
+    setSidebarHovered(false);
   }, [sidebarCollapsed]);
 
   const toggleSidebar = useCallback(() => {
@@ -321,8 +319,6 @@ export function GhostLayout() {
     setIsRenamingHeader(false);
   }, [activeFile, headerRenameName, activeFileName, handleFsChange]);
 
-  const showSidebar = !sidebarCollapsed || sidebarHovered;
-
   return (
     <div className="flex h-svh w-full overflow-hidden relative">
       {/* Collapsed dots — only visible when sidebar is collapsed and not hovered */}
@@ -352,12 +348,11 @@ export function GhostLayout() {
         </div>
       )}
 
-      {/* Sidebar — expanded or overlay */}
-      {showSidebar && (
+      {/* Sidebar — expanded or overlay (always rendered when collapsed for animation) */}
       <div
-        className={`flex w-[240px] shrink-0 flex-col bg-sidebar border-r border-sidebar-border
-          ${sidebarCollapsed ? "absolute left-0 top-0 bottom-0 z-30 shadow-2xl shadow-black/50" : ""}
-          ${sidebarCollapsed ? "animate-in slide-in-from-left duration-150" : ""}`}
+        className={`flex w-[240px] flex-col bg-sidebar border-r border-sidebar-border transition-transform duration-150 ease-out
+          ${sidebarCollapsed ? "absolute left-0 top-0 bottom-0 z-30 shadow-2xl shadow-black/50" : "shrink-0"}
+          ${sidebarCollapsed && !sidebarHovered ? "-translate-x-full" : "translate-x-0"}`}
         onMouseEnter={handleSidebarMouseEnter}
         onMouseLeave={handleSidebarMouseLeave}
       >
@@ -463,7 +458,6 @@ export function GhostLayout() {
           </button>
         </div>
       </div>
-      )}
 
       {/* Main content — full height, no top bar */}
       <div className="relative flex-1 overflow-hidden bg-background">

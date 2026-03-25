@@ -252,8 +252,8 @@ export function GhostLayout() {
       <div className="flex flex-1 overflow-hidden">
       {/* Sidebar — 240px per Figma */}
       <div className="flex w-[240px] shrink-0 flex-col bg-sidebar border-r border-sidebar-border">
-        {/* Search bar (UI only) — Figma: 216x32, 12px from edges, #18181b bg, rounded-[6px] */}
-        <div className="px-3 pb-4">
+        {/* Search bar (UI only) — Figma: 216x32, 16px below title bar */}
+        <div className="px-3 pt-4 pb-4">
           <div className="flex items-center gap-2 h-8 px-3 rounded-[6px] bg-[#18181b] text-[13px] cursor-pointer">
             <Search className="size-3.5 text-[#3f3f46]" />
             <span className="flex-1 text-[#3f3f46]">Search...</span>

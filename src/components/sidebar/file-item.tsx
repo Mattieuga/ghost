@@ -24,6 +24,7 @@ import type { FileEntry } from "@/types";
 interface FileItemProps {
   entry: FileEntry;
   isActive: boolean;
+  indent: number;
   onSelect: () => void;
   onDeleted?: () => void;
   onRenamed?: (newPath: string) => void;
@@ -32,6 +33,7 @@ interface FileItemProps {
 export function FileItem({
   entry,
   isActive,
+  indent,
   onSelect,
   onDeleted,
   onRenamed,
@@ -138,11 +140,12 @@ export function FileItem({
         <ContextMenuTrigger asChild>
           <button
             onClick={onSelect}
-            className={`w-full text-left py-1 text-[13px] truncate transition-colors
+            className={`w-full text-left py-1 pr-2 text-[13px] truncate transition-colors relative
               ${isActive
-                ? "text-[#e4e4e7] font-medium bg-[#18181b] rounded-[5px] px-3 mx-1.5 border-l-2 border-[#f57c00]"
-                : "text-[#71717a] hover:text-[#a1a1aa] pl-[42px] pr-2"
+                ? "text-[#e4e4e7] font-medium bg-[#18181b] rounded-[5px] mx-1.5 active-file-indicator"
+                : "text-[#71717a] hover:text-[#a1a1aa]"
               }`}
+            style={{ paddingLeft: `${indent}px` }}
           >
             {displayName}
           </button>

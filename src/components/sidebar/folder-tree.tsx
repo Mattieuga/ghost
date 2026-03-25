@@ -13,6 +13,12 @@ import {
 import { FolderMinus, FilePlus, FolderPlus } from "lucide-react";
 import { useMemo, useState, useCallback } from "react";
 
+// Indentation: folders get toggle at INDENT_BASE + depth * INDENT_STEP,
+// files get INDENT_BASE + depth * INDENT_STEP + FILE_EXTRA
+const INDENT_BASE = 16;
+const INDENT_STEP = 14;
+const FILE_EXTRA = 12;
+
 interface FolderTreeProps {
   path: string;
   extensions: string[];
@@ -86,7 +92,7 @@ export function FolderTree({
 
   if (error) {
     return (
-      <div className="px-3 py-1 text-xs text-destructive truncate">
+      <div className="px-4 py-1 text-xs text-destructive truncate">
         {folderName}
       </div>
     );
@@ -102,6 +108,7 @@ export function FolderTree({
       onCreateFile={handleCreateFile}
       onCreateFolder={handleCreateFolder}
       defaultOpen={true}
+      depth={0}
     >
       <FileTree
         entries={entries}
@@ -114,6 +121,7 @@ export function FolderTree({
         onFileDeleted={onFileDeleted}
         onCreateFile={handleCreateFile}
         onCreateFolder={handleCreateFolder}
+        depth={0}
       />
     </DroppableFolder>
   );
@@ -128,6 +136,7 @@ function DroppableFolder({
   onCreateFile,
   onCreateFolder,
   defaultOpen = false,
+  depth,
   children,
 }: {
   id: string;
@@ -138,6 +147,7 @@ function DroppableFolder({
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
   defaultOpen?: boolean;
+  depth: number;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -147,10 +157,12 @@ function DroppableFolder({
     data: { folderPath: id },
   });
 
+  const togglePadding = INDENT_BASE + depth * INDENT_STEP;
+
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-md transition-colors ${isHighlighted ? "bg-sidebar-accent/60 ring-1 ring-sidebar-border" : ""}`}
+      className={`rounded-md transition-colors ${isHighlighted ? "bg-[#18181b]/60 ring-1 ring-[#1c1c20]" : ""}`}
     >
       <ContextMenu>
         <ContextMenuTrigger asChild>
@@ -159,10 +171,11 @@ function DroppableFolder({
               setOpen(!open);
               onFolderSelect(id);
             }}
-            className="w-full text-left flex items-center gap-1.5 px-4 py-1.5 text-[13px] hover:text-[#e4e4e7] transition-colors"
+            className="w-full text-left flex items-center gap-1.5 py-1.5 pr-2 hover:text-[#e4e4e7] transition-colors"
+            style={{ paddingLeft: `${togglePadding}px` }}
           >
             <span className="text-[10px] leading-none text-[#52525b]">{open ? "▾" : "▸"}</span>
-            <span className="text-[#a1a1aa] font-medium">{folderName}</span>
+            <span className="text-[13px] text-[#a1a1aa] font-medium">{folderName}</span>
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent>
@@ -185,7 +198,7 @@ function DroppableFolder({
           )}
         </ContextMenuContent>
       </ContextMenu>
-      {open && <div className="ml-1">{children}</div>}
+      {open && <div>{children}</div>}
     </div>
   );
 }
@@ -201,6 +214,7 @@ function FileTree({
   onFileDeleted,
   onCreateFile,
   onCreateFolder,
+  depth,
 }: {
   entries: FileEntry[];
   activeFile: string | null;
@@ -212,6 +226,7 @@ function FileTree({
   onFileDeleted: (path: string) => void;
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
+  depth: number;
 }) {
   return (
     <>
@@ -225,6 +240,7 @@ function FileTree({
             onFolderSelect={onFolderSelect}
             onCreateFile={onCreateFile}
             onCreateFolder={onCreateFolder}
+            depth={depth + 1}
           >
             <FileTree
               entries={entry.children ?? []}
@@ -237,6 +253,7 @@ function FileTree({
               onFileDeleted={onFileDeleted}
               onCreateFile={onCreateFile}
               onCreateFolder={onCreateFolder}
+              depth={depth + 1}
             />
           </DroppableFolder>
         ) : (
@@ -247,6 +264,7 @@ function FileTree({
             onSelect={() => onFileSelect(entry.path)}
             onRenamed={(newPath) => onFileRenamed(entry.path, newPath)}
             onDeleted={() => onFileDeleted(entry.path)}
+            indent={INDENT_BASE + depth * INDENT_STEP + FILE_EXTRA}
           />
         )
       )}

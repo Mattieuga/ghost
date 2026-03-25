@@ -118,3 +118,15 @@
     overflow: hidden;
   }
 }
+
+.active-file-indicator::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 20px;
+  background: #f57c00;
+  border-radius: 1px;
+}

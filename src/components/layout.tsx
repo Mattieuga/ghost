@@ -149,6 +149,14 @@ export function GhostLayout() {
     [activeFile, handleFsChange]
   );
 
+  // Expose functions for Rust menu events
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__ghostAddFolder = addFolder;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return () => { delete (window as any).__ghostAddFolder; };
+  }, [addFolder]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
@@ -176,6 +184,11 @@ export function GhostLayout() {
             name = `Untitled ${counter}.md`;
           }
         }
+      }
+
+      if (mod && e.key === "o") {
+        e.preventDefault();
+        addFolder();
       }
 
       if (mod && e.key === ",") {
@@ -274,8 +287,17 @@ export function GhostLayout() {
               <EmptyState onAddFolder={addFolder} />
             ) : (
               <div>
-                <div className="px-4 pb-2 pt-1 text-[10px] font-medium uppercase text-[#3f3f46]" style={{ letterSpacing: "1.2px" }}>
-                  Workspace
+                <div className="flex items-center justify-between px-4 pb-2 pt-1">
+                  <span className="text-[10px] font-medium uppercase text-[#3f3f46]" style={{ letterSpacing: "1.2px" }}>
+                    Workspace
+                  </span>
+                  <button
+                    onClick={addFolder}
+                    className="text-[#3f3f46] hover:text-[#71717a] transition-colors cursor-pointer text-[16px] leading-none"
+                    title="Add folder (⌘O)"
+                  >
+                    +
+                  </button>
                 </div>
                 {folders.map((folder) => (
                   <FolderTree

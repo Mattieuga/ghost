@@ -239,11 +239,19 @@ export function GhostLayout() {
   }, [activeFile, headerRenameName, activeFileName, handleFsChange]);
 
   return (
-    <div className="flex h-svh w-full overflow-hidden">
-      {/* Sidebar — 240px per Figma */}
+    <div className="flex flex-col h-svh w-full overflow-hidden">
+      {/* Title bar — full width, sidebar color, with divider below */}
+      <div
+        className="flex h-10 shrink-0 items-center justify-center bg-sidebar border-b border-[#1c1c20]"
+        data-tauri-drag-region
+      >
+        <span className="text-[13px] font-medium text-[#52525b] tracking-[0.3px] pointer-events-none select-none">ghost</span>
+      </div>
+
+      {/* Below title bar: sidebar + content */}
+      <div className="flex flex-1 overflow-hidden">
+      {/* Sidebar — 240px per Figma, no top border since title bar covers it */}
       <div className="flex w-[240px] shrink-0 flex-col bg-sidebar border-r border-sidebar-border">
-        {/* Title bar drag area */}
-        <div className="h-10 shrink-0" data-tauri-drag-region />
 
         {/* Search bar (UI only) */}
         <div className="px-3 pt-2 pb-4">
@@ -316,14 +324,6 @@ export function GhostLayout() {
 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden bg-background">
-        {/* Title bar drag area with "ghost" centered */}
-        <div
-          className="flex h-10 shrink-0 items-center justify-center"
-          data-tauri-drag-region
-        >
-          <span className="text-[13px] font-medium text-[#52525b] tracking-[0.3px] pointer-events-none select-none">ghost</span>
-        </div>
-
         {/* Editor header — breadcrumb + word count */}
         <div className="flex h-11 shrink-0 items-center justify-between px-8 border-b border-border">
           <div className="flex items-center gap-1 text-[13px]">
@@ -375,6 +375,7 @@ export function GhostLayout() {
             </div>
           )}
         </main>
+      </div>
       </div>
 
       <SettingsDialog

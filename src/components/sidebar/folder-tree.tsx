@@ -31,6 +31,8 @@ interface FolderTreeProps {
   onRemoveFolder: (path: string) => void;
   onFileRenamed: (oldPath: string, newPath: string) => void;
   onFileDeleted: (path: string) => void;
+  newlyCreatedFile: string | null;
+  onNewFileRenamed: () => void;
 }
 
 export function FolderTree({
@@ -45,6 +47,8 @@ export function FolderTree({
   onFileRenamed,
   onFileDeleted,
   activeDropFolder,
+  newlyCreatedFile,
+  onNewFileRenamed,
 }: FolderTreeProps) {
   const { entries, error, refresh } = useDirectory(path, extensions, refreshTrigger);
 
@@ -98,6 +102,9 @@ export function FolderTree({
     );
   }
 
+  const hasActiveFile = activeFile ? activeFile.startsWith(path + "/") : false;
+  const rootGuideX = INDENT_BASE + 3; // center of root dot
+
   return (
     <DroppableFolder
       id={path}
@@ -109,6 +116,8 @@ export function FolderTree({
       onCreateFolder={handleCreateFolder}
       defaultOpen={true}
       depth={0}
+      isRoot={true}
+      hasActiveFile={hasActiveFile}
     >
       <FileTree
         entries={entries}
@@ -121,7 +130,10 @@ export function FolderTree({
         onFileDeleted={onFileDeleted}
         onCreateFile={handleCreateFile}
         onCreateFolder={handleCreateFolder}
+        newlyCreatedFile={newlyCreatedFile}
+        onNewFileRenamed={onNewFileRenamed}
         depth={0}
+        rootGuideX={hasActiveFile ? rootGuideX : null}
       />
     </DroppableFolder>
   );
@@ -137,6 +149,8 @@ function DroppableFolder({
   onCreateFolder,
   defaultOpen = false,
   depth,
+  isRoot = false,
+  hasActiveFile = false,
   children,
 }: {
   id: string;
@@ -148,6 +162,8 @@ function DroppableFolder({
   onCreateFolder: (dir: string) => void;
   defaultOpen?: boolean;
   depth: number;
+  isRoot?: boolean;
+  hasActiveFile?: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -158,6 +174,10 @@ function DroppableFolder({
   });
 
   const togglePadding = INDENT_BASE + depth * INDENT_STEP;
+
+  // Root folders: dot indicator (filled = open, outline = collapsed)
+  // Dot color: amber if has active file, muted otherwise
+  const dotColor = isRoot && hasActiveFile ? "#f57c00" : "#52525b";
 
   return (
     <div
@@ -171,11 +191,21 @@ function DroppableFolder({
               setOpen(!open);
               onFolderSelect(id);
             }}
-            className="w-full text-left flex items-center gap-1.5 py-1.5 pr-2 hover:text-[#e4e4e7] transition-colors cursor-pointer"
+            className="w-full text-left flex items-center gap-2 py-1.5 pr-2 hover:text-[#e4e4e7] transition-colors cursor-pointer"
             style={{ paddingLeft: `${togglePadding}px` }}
           >
-            <span className="text-[16px] leading-none text-[#52525b]">{open ? "▾" : "▸"}</span>
-            <span className="text-[13px] text-[#a1a1aa] font-medium">{folderName}</span>
+            {isRoot ? (
+              <span
+                className="inline-block size-[7px] shrink-0 rounded-full transition-colors"
+                style={{
+                  backgroundColor: open ? dotColor : "transparent",
+                  border: `1.5px solid ${dotColor}`,
+                }}
+              />
+            ) : (
+              <span className="text-[16px] leading-none text-[#52525b]">{open ? "▾" : "▸"}</span>
+            )}
+            <span className={`text-[13px] font-medium ${isRoot ? "text-[#e4e4e7]" : "text-[#a1a1aa]"}`}>{folderName}</span>
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent>
@@ -198,7 +228,20 @@ function DroppableFolder({
           )}
         </ContextMenuContent>
       </ContextMenu>
-      {open && <div>{children}</div>}
+      {open && (
+        <div className="relative">
+          {/* Vertical guide line */}
+          <div
+            className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
+            style={{
+              left: `${togglePadding + (isRoot ? 3 : 7)}px`,
+              backgroundColor: isRoot && hasActiveFile ? "#f57c00" : "#1c1c20",
+              opacity: isRoot && hasActiveFile ? 0.45 : 1,
+            }}
+          />
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -214,7 +257,10 @@ function FileTree({
   onFileDeleted,
   onCreateFile,
   onCreateFolder,
+  newlyCreatedFile,
+  onNewFileRenamed,
   depth,
+  rootGuideX,
 }: {
   entries: FileEntry[];
   activeFile: string | null;
@@ -226,7 +272,10 @@ function FileTree({
   onFileDeleted: (path: string) => void;
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
+  newlyCreatedFile: string | null;
+  onNewFileRenamed: () => void;
   depth: number;
+  rootGuideX: number | null;
 }) {
   return (
     <>
@@ -253,7 +302,10 @@ function FileTree({
               onFileDeleted={onFileDeleted}
               onCreateFile={onCreateFile}
               onCreateFolder={onCreateFolder}
+              newlyCreatedFile={newlyCreatedFile}
+              onNewFileRenamed={onNewFileRenamed}
               depth={depth + 1}
+              rootGuideX={rootGuideX}
             />
           </DroppableFolder>
         ) : (
@@ -265,6 +317,9 @@ function FileTree({
             onRenamed={(newPath) => onFileRenamed(entry.path, newPath)}
             onDeleted={() => onFileDeleted(entry.path)}
             indent={INDENT_BASE + (depth + 1) * INDENT_STEP + FILE_EXTRA}
+            rootGuideX={rootGuideX}
+            autoRename={entry.path === newlyCreatedFile}
+            onAutoRenameDone={onNewFileRenamed}
           />
         )
       )}

@@ -34,7 +34,10 @@ export function GhostLayout() {
   const [headerRenameName, setHeaderRenameName] = useState("");
   const [activeDragName, setActiveDragName] = useState<string | null>(null);
   const [wordCount, setWordCount] = useState(0);
+  const [newlyCreatedFile, setNewlyCreatedFile] = useState<string | null>(null);
   const headerInputRef = useRef<HTMLInputElement>(null);
+  const activeFileRef = useRef<string | null>(null);
+  activeFileRef.current = activeFile;
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -149,6 +152,14 @@ export function GhostLayout() {
     [activeFile, handleFsChange]
   );
 
+  // Expose functions for Rust menu events
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__ghostAddFolder = addFolder;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return () => { delete (window as any).__ghostAddFolder; };
+  }, [addFolder]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
@@ -160,7 +171,11 @@ export function GhostLayout() {
           addFolder();
           return;
         }
-        const targetDir = folders[0];
+        // Use active file's parent folder, or first tracked folder as fallback
+        const currentFile = activeFileRef.current;
+        const targetDir = currentFile
+          ? currentFile.substring(0, currentFile.lastIndexOf("/"))
+          : folders[0];
         let name = "Untitled.md";
         let counter = 1;
         while (true) {
@@ -170,12 +185,19 @@ export function GhostLayout() {
               name,
             });
             await handleFileSelect(path);
+            setNewlyCreatedFile(path);
+            handleFsChange();
             break;
           } catch {
             counter++;
             name = `Untitled ${counter}.md`;
           }
         }
+      }
+
+      if (mod && e.key === "o") {
+        e.preventDefault();
+        addFolder();
       }
 
       if (mod && e.key === ",") {
@@ -245,7 +267,7 @@ export function GhostLayout() {
         className="flex h-12 shrink-0 items-center justify-center bg-sidebar border-b border-[#1c1c20]"
         data-tauri-drag-region
       >
-        <span className="text-[13px] font-medium text-[#52525b] tracking-[0.3px] pointer-events-none select-none">ghost</span>
+        <span className="text-[11px] font-medium text-[#52525b] tracking-[2px] uppercase pointer-events-none select-none">ghost</span>
       </div>
 
       {/* Below title bar: sidebar + content */}
@@ -274,8 +296,17 @@ export function GhostLayout() {
               <EmptyState onAddFolder={addFolder} />
             ) : (
               <div>
-                <div className="px-4 pb-2 pt-1 text-[10px] font-medium uppercase text-[#3f3f46]" style={{ letterSpacing: "1.2px" }}>
-                  Workspace
+                <div className="flex items-center justify-between px-4 pb-2 pt-1">
+                  <span className="text-[10px] font-medium uppercase text-[#3f3f46]" style={{ letterSpacing: "1.2px" }}>
+                    Workspace
+                  </span>
+                  <button
+                    onClick={addFolder}
+                    className="text-[#3f3f46] hover:text-[#71717a] transition-colors cursor-pointer text-[16px] leading-none"
+                    title="Add folder (⌘O)"
+                  >
+                    +
+                  </button>
                 </div>
                 {folders.map((folder) => (
                   <FolderTree
@@ -296,6 +327,8 @@ export function GhostLayout() {
                     }}
                     onFileRenamed={handleFileRenamed}
                     onFileDeleted={handleFileDeleted}
+                    newlyCreatedFile={newlyCreatedFile}
+                    onNewFileRenamed={() => setNewlyCreatedFile(null)}
                     activeDropFolder={activeDropFolder}
                   />
                 ))}

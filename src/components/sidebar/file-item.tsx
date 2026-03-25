@@ -17,7 +17,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Pencil, Trash2 } from "lucide-react";
 import type { FileEntry } from "@/types";
 
@@ -28,6 +27,9 @@ interface FileItemProps {
   onSelect: () => void;
   onDeleted?: () => void;
   onRenamed?: (newPath: string) => void;
+  autoRename?: boolean;
+  onAutoRenameDone?: () => void;
+  rootGuideX?: number | null;
 }
 
 export function FileItem({
@@ -37,6 +39,9 @@ export function FileItem({
   onSelect,
   onDeleted,
   onRenamed,
+  autoRename,
+  onAutoRenameDone,
+  rootGuideX,
 }: FileItemProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [displayName, setDisplayName] = useState(entry.name);
@@ -64,6 +69,15 @@ export function FileItem({
   useEffect(() => {
     setDisplayName(entry.name);
   }, [entry.name]);
+
+  // Auto-enter rename mode for newly created files
+  useEffect(() => {
+    if (autoRename) {
+      setRenameName(entry.name);
+      setIsRenaming(true);
+      onAutoRenameDone?.();
+    }
+  }, [autoRename]);
 
   useEffect(() => {
     if (isRenaming && inputRef.current) {
@@ -110,9 +124,9 @@ export function FileItem({
 
   if (isRenaming) {
     return (
-      <div className="pl-4 py-0.5">
-        <Input
-          ref={inputRef}
+      <div className="py-1 pr-2" style={{ paddingLeft: `${indent}px` }}>
+        <input
+          ref={inputRef as React.RefObject<HTMLInputElement>}
           value={renameName}
           onChange={(e) => setRenameName(e.target.value)}
           onBlur={handleRename}
@@ -123,7 +137,7 @@ export function FileItem({
               setIsRenaming(false);
             }
           }}
-          className="h-6 text-xs px-1.5 bg-transparent border-sidebar-border"
+          className="w-full bg-transparent text-[13px] text-[#e4e4e7] outline-none caret-[#f57c00] border border-[#3f3f46] rounded-[4px] px-2 py-1"
         />
       </div>
     );
@@ -139,8 +153,14 @@ export function FileItem({
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
-            className={`mx-1.5 rounded-[5px] relative ${isActive ? "bg-[#18181b] active-file-indicator" : ""}`}
+            className={`mx-1.5 rounded-[5px] relative ${isActive ? "bg-white/[0.06]" : ""}`}
           >
+          {isActive && rootGuideX != null && (
+            <div
+              className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
+              style={{ left: `${rootGuideX - 6}px`, backgroundColor: "#f57c00" }}
+            />
+          )}
           <button
             onClick={onSelect}
             className={`w-full text-left py-1 pr-2 text-[13px] truncate transition-colors cursor-pointer

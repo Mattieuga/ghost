@@ -114,7 +114,7 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   html, body, #root {
@@ -122,16 +122,4 @@
     margin: 0;
     overflow: hidden;
   }
-}
-
-.active-file-indicator::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 2px;
-  height: 20px;
-  background: #f57c00;
-  border-radius: 1px;
 }

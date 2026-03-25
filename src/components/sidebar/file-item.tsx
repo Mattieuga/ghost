@@ -50,7 +50,7 @@ export function FileItem({
   onAutoRenameDone,
   rootGuideX,
 }: FileItemProps) {
-  const [isRenaming, setIsRenaming] = useState(!!autoRename);
+  const [isRenaming, setIsRenaming] = useState(false);
   const [displayName, setDisplayName] = useState(entry.name);
   const [renameName, setRenameName] = useState(entry.name);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -76,6 +76,14 @@ export function FileItem({
   useEffect(() => {
     setDisplayName(entry.name);
   }, [entry.name]);
+
+  // Auto-enter rename mode for newly created files
+  useEffect(() => {
+    if (autoRename) {
+      setRenameName(entry.name);
+      setIsRenaming(true);
+    }
+  }, [autoRename]);
 
   useEffect(() => {
     if (isRenaming && inputRef.current) {

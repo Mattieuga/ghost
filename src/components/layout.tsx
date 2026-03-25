@@ -38,6 +38,7 @@ export function GhostLayout() {
   const [newlyCreatedFolder, setNewlyCreatedFolder] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [rootFolderOpen, setRootFolderOpen] = useState<Record<string, boolean>>({});
   const sidebarHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headerInputRef = useRef<HTMLInputElement>(null);
   const activeFileRef = useRef<string | null>(null);
@@ -283,11 +284,17 @@ export function GhostLayout() {
       clearTimeout(sidebarHoverTimeout.current);
       sidebarHoverTimeout.current = null;
     }
-    setSidebarHovered(true);
+    sidebarHoverTimeout.current = setTimeout(() => {
+      setSidebarHovered(true);
+    }, 200);
   }, [sidebarCollapsed]);
 
   const handleSidebarMouseLeave = useCallback(() => {
     if (!sidebarCollapsed) return;
+    if (sidebarHoverTimeout.current) {
+      clearTimeout(sidebarHoverTimeout.current);
+      sidebarHoverTimeout.current = null;
+    }
     setSidebarHovered(false);
   }, [sidebarCollapsed]);
 
@@ -335,13 +342,14 @@ export function GhostLayout() {
           <div className="flex flex-col items-start gap-[22px]" style={{ paddingLeft: "19px", paddingTop: "76px" }}>
             {folders.map((folder) => {
               const hasActive = folderHasActiveFile(folder);
+              const isOpen = rootFolderOpen[folder] !== false; // default to open
               const dotColor = hasActive ? "#f57c00" : "#52525b";
               return (
                 <span
                   key={folder}
                   className="inline-block size-[7px] shrink-0 rounded-full transition-colors cursor-pointer"
                   style={{
-                    backgroundColor: dotColor,
+                    backgroundColor: isOpen ? dotColor : "transparent",
                     border: `1.5px solid ${dotColor}`,
                   }}
                 />
@@ -424,6 +432,7 @@ export function GhostLayout() {
                     onNewFolderCreated={(path) => setNewlyCreatedFolder(path)}
                     onNewFolderRenamed={() => setNewlyCreatedFolder(null)}
                     activeDropFolder={activeDropFolder}
+                    onRootOpenChange={(path, isOpen) => setRootFolderOpen(prev => ({ ...prev, [path]: isOpen }))}
                   />
                 ))}
               </div>

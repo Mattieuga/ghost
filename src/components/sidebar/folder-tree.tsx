@@ -281,11 +281,11 @@ function DroppableFolder({
             Open in New Window
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem onSelect={() => onCreateFile(id)}>
+          <ContextMenuItem onSelect={() => { setOpen(true); onCreateFile(id); }}>
             New File
             <ContextMenuShortcut>⌘N</ContextMenuShortcut>
           </ContextMenuItem>
-          <ContextMenuItem onSelect={() => onCreateFolder(id)}>
+          <ContextMenuItem onSelect={() => { setOpen(true); onCreateFolder(id); }}>
             New Folder
             <ContextMenuShortcut>⇧⌘N</ContextMenuShortcut>
           </ContextMenuItem>

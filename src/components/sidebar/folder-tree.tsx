@@ -226,7 +226,19 @@ function DroppableFolder({
           )}
         </ContextMenuContent>
       </ContextMenu>
-      {open && <div>{children}</div>}
+      {open && (
+        <div className="relative">
+          {/* Vertical guide line */}
+          <div
+            className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
+            style={{
+              left: `${togglePadding + (isRoot ? 3 : 7)}px`,
+              backgroundColor: isRoot && hasActiveFile ? "#f57c00" : "#1c1c20",
+            }}
+          />
+          {children}
+        </div>
+      )}
     </div>
   );
 }

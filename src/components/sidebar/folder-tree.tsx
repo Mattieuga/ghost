@@ -273,7 +273,7 @@ function DroppableFolder({
   const renderContextMenu = () => {
     if (isRoot) {
       return (
-        <ContextMenuContent className="w-56">
+        <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
           <ContextMenuItem onSelect={() => onRemoveFolder?.(id)}>
             Close Project
           </ContextMenuItem>

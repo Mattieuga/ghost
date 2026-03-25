@@ -232,7 +232,7 @@ export function FileItem({
           </button>
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className="w-56">
+        <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
           <ContextMenuItem onSelect={onSelect} disabled={isActive}>
             Open File
           </ContextMenuItem>

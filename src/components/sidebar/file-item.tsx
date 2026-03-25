@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { SidebarMenuItem, SidebarMenuButton } from "@/components/ui/sidebar";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -19,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FileText, Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import type { FileEntry } from "@/types";
 
 interface FileItemProps {
@@ -109,7 +108,7 @@ export function FileItem({
 
   if (isRenaming) {
     return (
-      <SidebarMenuItem>
+      <div className="pl-4 py-0.5">
         <Input
           ref={inputRef}
           value={renameName}
@@ -122,9 +121,9 @@ export function FileItem({
               setIsRenaming(false);
             }
           }}
-          className="h-7 text-sm px-2"
+          className="h-6 text-xs px-1.5 bg-transparent border-sidebar-border"
         />
-      </SidebarMenuItem>
+      </div>
     );
   }
 
@@ -137,16 +136,16 @@ export function FileItem({
     >
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              isActive={isActive}
-              onClick={onSelect}
-              className="cursor-pointer"
-            >
-              <FileText className="size-3.5 shrink-0" />
-              <span className="truncate">{displayName}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+          <button
+            onClick={onSelect}
+            className={`w-full text-left pl-4 pr-2 py-0.5 text-[13px] truncate rounded-sm transition-colors
+              ${isActive
+                ? "text-sidebar-primary font-medium border-l-2 border-ghost-amber -ml-px"
+                : "text-sidebar-foreground hover:text-sidebar-primary"
+              }`}
+          >
+            {displayName}
+          </button>
         </ContextMenuTrigger>
         <ContextMenuContent>
           <ContextMenuItem

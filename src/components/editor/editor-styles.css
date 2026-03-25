@@ -1,38 +1,46 @@
 .ghost-editor {
-  padding: 2rem 3rem;
-  max-width: 48rem;
+  padding: 3rem 4rem;
+  max-width: 52rem;
   margin: 0 auto;
   min-height: 100%;
   outline: none;
+  color: var(--muted-foreground);
 }
 
 .ghost-editor:focus {
   outline: none;
 }
 
-/* Headings */
+/* Headings — white/foreground, not muted */
 .ghost-editor h1 {
-  font-size: 2rem;
+  font-size: 2.25rem;
   font-weight: 700;
   line-height: 1.2;
-  margin-top: 1.5rem;
-  margin-bottom: 0.75rem;
+  margin-top: 2rem;
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+}
+
+.ghost-editor h1:first-child {
+  margin-top: 0;
 }
 
 .ghost-editor h2 {
   font-size: 1.5rem;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.3;
-  margin-top: 1.25rem;
+  margin-top: 2rem;
   margin-bottom: 0.5rem;
+  color: var(--foreground);
 }
 
 .ghost-editor h3 {
   font-size: 1.25rem;
   font-weight: 600;
   line-height: 1.4;
-  margin-top: 1rem;
+  margin-top: 1.5rem;
   margin-bottom: 0.5rem;
+  color: var(--foreground);
 }
 
 .ghost-editor h4,
@@ -41,19 +49,22 @@
   font-size: 1rem;
   font-weight: 600;
   line-height: 1.5;
-  margin-top: 1rem;
+  margin-top: 1.5rem;
   margin-bottom: 0.25rem;
+  color: var(--foreground);
 }
 
 /* Paragraphs */
 .ghost-editor p {
-  margin-bottom: 0.75rem;
-  line-height: 1.7;
+  margin-bottom: 1rem;
+  line-height: 1.75;
+  font-size: 0.9375rem;
 }
 
-/* Bold and italic */
+/* Bold — slightly brighter */
 .ghost-editor strong {
   font-weight: 700;
+  color: var(--foreground);
 }
 
 .ghost-editor em {
@@ -62,42 +73,44 @@
 
 .ghost-editor s {
   text-decoration: line-through;
-  opacity: 0.7;
+  opacity: 0.6;
 }
 
 /* Inline code */
 .ghost-editor code {
   background: var(--muted);
   color: var(--foreground);
-  padding: 0.15em 0.35em;
-  border-radius: 0.25rem;
-  font-size: 0.875em;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  padding: 0.15em 0.4em;
+  border-radius: 0.3rem;
+  font-size: 0.85em;
+  font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 /* Code blocks */
 .ghost-editor pre {
   background: var(--muted);
-  color: var(--foreground);
-  padding: 1rem;
-  border-radius: 0.5rem;
-  margin-bottom: 0.75rem;
+  color: var(--muted-foreground);
+  padding: 1.25rem 1.5rem;
+  border-radius: 0.75rem;
+  margin-bottom: 1rem;
   overflow-x: auto;
+  position: relative;
 }
 
 .ghost-editor pre code {
   background: none;
   padding: 0;
-  font-size: 0.875rem;
-  line-height: 1.6;
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: var(--foreground);
 }
 
 /* Blockquotes */
 .ghost-editor blockquote {
-  border-left: 3px solid var(--border);
-  padding-left: 1rem;
+  border-left: 2px solid var(--border);
+  padding-left: 1.25rem;
   margin-left: 0;
-  margin-bottom: 0.75rem;
+  margin-bottom: 1rem;
   color: var(--muted-foreground);
 }
 
@@ -105,18 +118,23 @@
 .ghost-editor ul {
   list-style-type: disc;
   padding-left: 1.5rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 1rem;
 }
 
 .ghost-editor ol {
   list-style-type: decimal;
   padding-left: 1.5rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 1rem;
 }
 
 .ghost-editor li {
-  margin-bottom: 0.25rem;
-  line-height: 1.7;
+  margin-bottom: 0.375rem;
+  line-height: 1.75;
+  font-size: 0.9375rem;
+}
+
+.ghost-editor li::marker {
+  color: var(--muted-foreground);
 }
 
 .ghost-editor li p {
@@ -140,7 +158,7 @@
 }
 
 .ghost-editor ul[data-type="taskList"] li input[type="checkbox"] {
-  accent-color: var(--primary);
+  accent-color: var(--ghost-amber);
   cursor: pointer;
 }
 
@@ -148,14 +166,15 @@
 .ghost-editor hr {
   border: none;
   border-top: 1px solid var(--border);
-  margin: 1.5rem 0;
+  margin: 2rem 0;
 }
 
 /* Links */
 .ghost-editor a {
-  color: var(--primary);
+  color: var(--ghost-amber);
   text-decoration: underline;
   text-underline-offset: 2px;
+  text-decoration-color: var(--ghost-amber);
 }
 
 /* Placeholder */
@@ -174,4 +193,9 @@
 
 .tiptap:focus {
   outline: none;
+}
+
+/* Caret color */
+.ghost-editor {
+  caret-color: var(--ghost-amber);
 }

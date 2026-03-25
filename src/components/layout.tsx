@@ -10,21 +10,6 @@ import {
   type DragOverEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-  SidebarProvider,
-  SidebarGroup,
-  SidebarGroupLabel,
-} from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FolderTree } from "@/components/sidebar/folder-tree";
 import { EmptyState } from "@/components/sidebar/empty-state";
@@ -34,7 +19,7 @@ import { useTrackedFolders } from "@/hooks/use-tracked-folders";
 import { useFileWatcher } from "@/hooks/use-file-watcher";
 import { useSettings } from "@/hooks/use-settings";
 import { useTheme } from "@/components/theme-provider";
-import { FileText, FolderPlus, Ghost, Settings } from "lucide-react";
+import { Search } from "lucide-react";
 
 export function GhostLayout() {
   const { folders, loading, addFolder, removeFolder } = useTrackedFolders();
@@ -48,9 +33,9 @@ export function GhostLayout() {
   const [isRenamingHeader, setIsRenamingHeader] = useState(false);
   const [headerRenameName, setHeaderRenameName] = useState("");
   const [activeDragName, setActiveDragName] = useState<string | null>(null);
+  const [wordCount, setWordCount] = useState(0);
   const headerInputRef = useRef<HTMLInputElement>(null);
 
-  // dnd-kit sensors — PointerSensor with 5px activation distance
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 5 },
@@ -72,6 +57,9 @@ export function GhostLayout() {
       setActiveFile(path);
       setFileContent(content);
       setSelectedItem(path);
+      // Count words
+      const words = content.trim().split(/\s+/).filter(Boolean).length;
+      setWordCount(words);
     } catch (err) {
       console.error("Failed to read file:", err);
     }
@@ -84,6 +72,9 @@ export function GhostLayout() {
   const handleContentChange = useCallback(
     async (markdown: string) => {
       if (!activeFile) return;
+      // Update word count
+      const words = markdown.trim().split(/\s+/).filter(Boolean).length;
+      setWordCount(words);
       try {
         await invoke("write_file", { path: activeFile, content: markdown });
       } catch (err) {
@@ -144,7 +135,6 @@ export function GhostLayout() {
       const folderPath = (over.data.current as { folderPath?: string })?.folderPath;
       if (!folderPath) return;
 
-      // Don't move into the same parent
       const parentDir = filePath.substring(0, filePath.lastIndexOf("/"));
       if (folderPath === parentDir) return;
 
@@ -159,7 +149,7 @@ export function GhostLayout() {
     [activeFile, handleFsChange]
   );
 
-  // Global keyboard shortcuts
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
@@ -198,12 +188,19 @@ export function GhostLayout() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [folders, addFolder, handleFileSelect]);
 
-  const activeFileName = useMemo(() => {
+  // Breadcrumb from active file
+  const breadcrumb = useMemo(() => {
     if (!activeFile) return null;
     const parts = activeFile.split("/");
-    return parts[parts.length - 1];
+    // Get folder name and filename
+    const fileName = parts[parts.length - 1];
+    const folderName = parts[parts.length - 2] || "";
+    return { folderName, fileName };
   }, [activeFile]);
 
+  const activeFileName = breadcrumb?.fileName ?? null;
+
+  // Header rename
   const startHeaderRename = useCallback(() => {
     if (!activeFileName) return;
     setHeaderRenameName(activeFileName);
@@ -242,20 +239,23 @@ export function GhostLayout() {
   }, [activeFile, headerRenameName, activeFileName, handleFsChange]);
 
   return (
-    <SidebarProvider defaultOpen={true}>
-      <Sidebar collapsible="none">
-        <SidebarHeader>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton size="lg">
-                <Ghost className="size-5" />
-                <span className="font-semibold tracking-tight">Ghost</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarHeader>
+    <div className="flex h-svh w-full overflow-hidden">
+      {/* Sidebar */}
+      <div className="flex w-56 shrink-0 flex-col bg-sidebar border-r border-sidebar-border">
+        {/* Drag region for macOS title bar */}
+        <div className="h-8 shrink-0" style={{ WebkitAppRegion: "drag" } as React.CSSProperties} />
 
-        <SidebarContent>
+        {/* Search bar (UI only) */}
+        <div className="px-3 pb-3">
+          <div className="flex items-center gap-2 h-7 px-2.5 rounded-md bg-sidebar-accent/50 border border-sidebar-border text-[12px] text-sidebar-foreground cursor-pointer">
+            <Search className="size-3 opacity-50" />
+            <span className="flex-1 opacity-50">Search...</span>
+            <kbd className="text-[10px] opacity-30">&#8984;K</kbd>
+          </div>
+        </div>
+
+        {/* Folder tree */}
+        <div className="flex-1 overflow-y-auto overscroll-contain px-1">
           <DndContext
             sensors={sensors}
             onDragStart={handleDragStart}
@@ -265,18 +265,10 @@ export function GhostLayout() {
             {loading ? null : folders.length === 0 ? (
               <EmptyState onAddFolder={addFolder} />
             ) : (
-              <SidebarGroup>
-                <SidebarGroupLabel className="flex items-center justify-between">
-                  <span>Folders</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-5"
-                    onClick={addFolder}
-                  >
-                    <FolderPlus className="size-3.5" />
-                  </Button>
-                </SidebarGroupLabel>
+              <div>
+                <div className="px-2 pb-1.5 pt-1 text-[10px] font-medium uppercase tracking-wider text-sidebar-foreground/60">
+                  Workspace
+                </div>
                 {folders.map((folder) => (
                   <FolderTree
                     key={folder}
@@ -299,62 +291,67 @@ export function GhostLayout() {
                     activeDropFolder={activeDropFolder}
                   />
                 ))}
-              </SidebarGroup>
+              </div>
             )}
             <DragOverlay dropAnimation={null}>
               {activeDragName ? (
                 <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-popover/80 border shadow-md text-xs opacity-75 scale-90">
-                  <FileText className="size-3 shrink-0" />
                   <span>{activeDragName}</span>
                 </div>
               ) : null}
             </DragOverlay>
           </DndContext>
-        </SidebarContent>
+        </div>
 
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => setShowSettings(true)}
-                className="cursor-pointer"
-              >
-                <Settings className="size-4" />
-                <span>Settings</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
-      </Sidebar>
+        {/* Settings at bottom */}
+        <div className="shrink-0 px-3 py-3">
+          <button
+            onClick={() => setShowSettings(true)}
+            className="text-[13px] text-sidebar-foreground/40 hover:text-sidebar-foreground transition-colors"
+          >
+            Settings
+          </button>
+        </div>
+      </div>
 
-      <SidebarInset>
-        <header className="flex h-10 shrink-0 items-center gap-2 border-b px-4">
-          <Separator orientation="vertical" className="h-4" />
-          {isRenamingHeader ? (
-            <Input
-              ref={headerInputRef}
-              value={headerRenameName}
-              onChange={(e) => setHeaderRenameName(e.target.value)}
-              onBlur={handleHeaderRename}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleHeaderRename();
-                if (e.key === "Escape") setIsRenamingHeader(false);
-              }}
-              className="h-6 text-sm px-1 w-48"
-            />
-          ) : (
-            <span
-              className={`text-sm truncate ${
-                activeFileName
-                  ? "text-foreground cursor-pointer hover:text-muted-foreground"
-                  : "text-muted-foreground"
-              }`}
-              onClick={activeFileName ? startHeaderRename : undefined}
-            >
-              {activeFileName ?? "No file selected"}
+      {/* Main content */}
+      <div className="flex flex-1 flex-col overflow-hidden bg-background">
+        {/* Header with breadcrumb and word count */}
+        <div className="flex h-10 shrink-0 items-center justify-between px-4 border-b border-border" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
+          <div className="flex items-center gap-1 text-[13px]" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+            {isRenamingHeader ? (
+              <Input
+                ref={headerInputRef}
+                value={headerRenameName}
+                onChange={(e) => setHeaderRenameName(e.target.value)}
+                onBlur={handleHeaderRename}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleHeaderRename();
+                  if (e.key === "Escape") setIsRenamingHeader(false);
+                }}
+                className="h-6 text-[13px] px-1 w-48 bg-transparent"
+              />
+            ) : breadcrumb ? (
+              <>
+                <span className="text-muted-foreground">{breadcrumb.folderName}</span>
+                <span className="text-muted-foreground/40 mx-0.5">/</span>
+                <span
+                  className="text-foreground font-medium cursor-pointer hover:text-muted-foreground transition-colors"
+                  onClick={startHeaderRename}
+                >
+                  {breadcrumb.fileName}
+                </span>
+              </>
+            ) : null}
+          </div>
+          {activeFile && (
+            <span className="text-[12px] text-muted-foreground/50">
+              {wordCount} words
             </span>
           )}
-        </header>
+        </div>
+
+        {/* Editor */}
         <main className="flex-1 overflow-auto overscroll-contain">
           {activeFile ? (
             <MarkdownEditor
@@ -364,13 +361,13 @@ export function GhostLayout() {
             />
           ) : (
             <div className="flex h-full items-center justify-center">
-              <p className="text-muted-foreground text-sm">
+              <p className="text-muted-foreground/40 text-sm">
                 Select a file to start editing
               </p>
             </div>
           )}
         </main>
-      </SidebarInset>
+      </div>
 
       <SettingsDialog
         open={showSettings}
@@ -378,6 +375,6 @@ export function GhostLayout() {
         settings={settings}
         onUpdateSettings={updateSettings}
       />
-    </SidebarProvider>
+    </div>
   );
 }

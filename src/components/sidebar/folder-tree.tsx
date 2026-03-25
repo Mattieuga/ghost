@@ -4,31 +4,13 @@ import type { FileEntry } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
 import { useDroppable } from "@dnd-kit/core";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-  SidebarMenuSub,
-} from "@/components/ui/sidebar";
-import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import {
-  ChevronDown,
-  ChevronRight,
-  Folder,
-  FolderMinus,
-  FilePlus,
-  FolderPlus,
-} from "lucide-react";
+import { FolderMinus, FilePlus, FolderPlus } from "lucide-react";
 import { useMemo, useState, useCallback } from "react";
 
 interface FolderTreeProps {
@@ -104,62 +86,52 @@ export function FolderTree({
 
   if (error) {
     return (
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton className="text-destructive text-xs">
-            <Folder className="size-4 shrink-0" />
-            <span className="truncate">{folderName}</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
+      <div className="px-3 py-1 text-xs text-destructive truncate">
+        {folderName}
+      </div>
     );
   }
 
   return (
-    <SidebarMenu>
-      <DroppableFolder
-        id={path}
-        folderName={folderName}
+    <DroppableFolder
+      id={path}
+      folderName={folderName}
+      activeDropFolder={activeDropFolder}
+      onFolderSelect={onFolderSelect}
+      onRemoveFolder={onRemoveFolder}
+      onCreateFile={handleCreateFile}
+      onCreateFolder={handleCreateFolder}
+      defaultOpen={true}
+    >
+      <FileTree
+        entries={entries}
+        activeFile={activeFile}
         selectedItem={selectedItem}
         activeDropFolder={activeDropFolder}
+        onFileSelect={onFileSelect}
         onFolderSelect={onFolderSelect}
-        onRemoveFolder={onRemoveFolder}
+        onFileRenamed={onFileRenamed}
+        onFileDeleted={onFileDeleted}
         onCreateFile={handleCreateFile}
         onCreateFolder={handleCreateFolder}
-        defaultOpen={true}
-      >
-        <FileTree
-          entries={entries}
-          activeFile={activeFile}
-          selectedItem={selectedItem}
-          activeDropFolder={activeDropFolder}
-          onFileSelect={onFileSelect}
-          onFolderSelect={onFolderSelect}
-          onFileRenamed={onFileRenamed}
-          onFileDeleted={onFileDeleted}
-          onCreateFile={handleCreateFile}
-          onCreateFolder={handleCreateFolder}
-        />
-      </DroppableFolder>
-    </SidebarMenu>
+      />
+    </DroppableFolder>
   );
 }
 
 function DroppableFolder({
   id,
   folderName,
-  selectedItem,
+  activeDropFolder,
   onFolderSelect,
   onRemoveFolder,
   onCreateFile,
   onCreateFolder,
-  activeDropFolder,
   defaultOpen = false,
   children,
 }: {
   id: string;
   folderName: string;
-  selectedItem: string | null;
   activeDropFolder: string | null;
   onFolderSelect: (path: string) => void;
   onRemoveFolder?: (path: string) => void;
@@ -178,56 +150,42 @@ function DroppableFolder({
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-md transition-colors ${isHighlighted ? "bg-accent/50 ring-1 ring-accent" : ""}`}
+      className={`rounded-md transition-colors ${isHighlighted ? "bg-sidebar-accent/60 ring-1 ring-sidebar-border" : ""}`}
     >
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <SidebarMenuItem>
-          <ContextMenu>
-            <ContextMenuTrigger asChild>
-              <CollapsibleTrigger asChild>
-                <SidebarMenuButton
-                  className="font-medium"
-                  isActive={selectedItem === id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onFolderSelect(id);
-                  }}
-                >
-                  {open ? (
-                    <ChevronDown className="size-4 shrink-0" />
-                  ) : (
-                    <ChevronRight className="size-4 shrink-0" />
-                  )}
-                  <Folder className="size-4 shrink-0" />
-                  <span className="truncate">{folderName}</span>
-                </SidebarMenuButton>
-              </CollapsibleTrigger>
-            </ContextMenuTrigger>
-            <ContextMenuContent>
-              <ContextMenuItem onSelect={() => onCreateFile(id)}>
-                <FilePlus className="size-4" />
-                New File
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <button
+            onClick={() => {
+              setOpen(!open);
+              onFolderSelect(id);
+            }}
+            className="w-full text-left flex items-center gap-1.5 px-3 py-1 text-[13px] text-sidebar-foreground hover:text-sidebar-primary transition-colors"
+          >
+            <span className="text-[10px] leading-none opacity-50">{open ? ">" : ">"}</span>
+            <span className={open ? "" : ""}>{folderName}</span>
+          </button>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onSelect={() => onCreateFile(id)}>
+            <FilePlus className="size-4" />
+            New File
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => onCreateFolder(id)}>
+            <FolderPlus className="size-4" />
+            New Folder
+          </ContextMenuItem>
+          {onRemoveFolder && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem onSelect={() => onRemoveFolder(id)}>
+                <FolderMinus className="size-4" />
+                Remove Folder
               </ContextMenuItem>
-              <ContextMenuItem onSelect={() => onCreateFolder(id)}>
-                <FolderPlus className="size-4" />
-                New Folder
-              </ContextMenuItem>
-              {onRemoveFolder && (
-                <>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem onSelect={() => onRemoveFolder(id)}>
-                    <FolderMinus className="size-4" />
-                    Remove Folder
-                  </ContextMenuItem>
-                </>
-              )}
-            </ContextMenuContent>
-          </ContextMenu>
-        <CollapsibleContent>
-          <SidebarMenuSub>{children}</SidebarMenuSub>
-        </CollapsibleContent>
-      </SidebarMenuItem>
-    </Collapsible>
+            </>
+          )}
+        </ContextMenuContent>
+      </ContextMenu>
+      {open && <div className="ml-1">{children}</div>}
     </div>
   );
 }
@@ -263,7 +221,6 @@ function FileTree({
             key={entry.path}
             id={entry.path}
             folderName={entry.name}
-            selectedItem={selectedItem}
             activeDropFolder={activeDropFolder}
             onFolderSelect={onFolderSelect}
             onCreateFile={onCreateFile}

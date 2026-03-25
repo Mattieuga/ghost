@@ -12,12 +12,14 @@
   "app": {
     "windows": [
       {
-        "title": "Ghost",
+        "title": "ghost",
         "width": 1200,
         "height": 800,
         "minWidth": 600,
         "minHeight": 400,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {

@@ -295,7 +295,9 @@ export function GhostLayout() {
       clearTimeout(sidebarHoverTimeout.current);
       sidebarHoverTimeout.current = null;
     }
-    setSidebarHovered(false);
+    sidebarHoverTimeout.current = setTimeout(() => {
+      setSidebarHovered(false);
+    }, 200);
   }, [sidebarCollapsed]);
 
   const toggleSidebar = useCallback(() => {

@@ -242,7 +242,7 @@ export function GhostLayout() {
     <div className="flex flex-col h-svh w-full overflow-hidden">
       {/* Title bar — full width, sidebar color, with divider below */}
       <div
-        className="flex h-10 shrink-0 items-center justify-center bg-sidebar border-b border-[#1c1c20]"
+        className="flex h-12 shrink-0 items-center justify-center bg-sidebar border-b border-[#1c1c20]"
         data-tauri-drag-region
       >
         <span className="text-[13px] font-medium text-[#52525b] tracking-[0.3px] pointer-events-none select-none">ghost</span>

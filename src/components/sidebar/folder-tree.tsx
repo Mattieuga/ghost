@@ -31,6 +31,8 @@ interface FolderTreeProps {
   onRemoveFolder: (path: string) => void;
   onFileRenamed: (oldPath: string, newPath: string) => void;
   onFileDeleted: (path: string) => void;
+  newlyCreatedFile: string | null;
+  onNewFileRenamed: () => void;
 }
 
 export function FolderTree({
@@ -45,6 +47,8 @@ export function FolderTree({
   onFileRenamed,
   onFileDeleted,
   activeDropFolder,
+  newlyCreatedFile,
+  onNewFileRenamed,
 }: FolderTreeProps) {
   const { entries, error, refresh } = useDirectory(path, extensions, refreshTrigger);
 
@@ -121,6 +125,8 @@ export function FolderTree({
         onFileDeleted={onFileDeleted}
         onCreateFile={handleCreateFile}
         onCreateFolder={handleCreateFolder}
+        newlyCreatedFile={newlyCreatedFile}
+        onNewFileRenamed={onNewFileRenamed}
         depth={0}
       />
     </DroppableFolder>
@@ -214,6 +220,8 @@ function FileTree({
   onFileDeleted,
   onCreateFile,
   onCreateFolder,
+  newlyCreatedFile,
+  onNewFileRenamed,
   depth,
 }: {
   entries: FileEntry[];
@@ -226,6 +234,8 @@ function FileTree({
   onFileDeleted: (path: string) => void;
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
+  newlyCreatedFile: string | null;
+  onNewFileRenamed: () => void;
   depth: number;
 }) {
   return (
@@ -253,6 +263,8 @@ function FileTree({
               onFileDeleted={onFileDeleted}
               onCreateFile={onCreateFile}
               onCreateFolder={onCreateFolder}
+              newlyCreatedFile={newlyCreatedFile}
+              onNewFileRenamed={onNewFileRenamed}
               depth={depth + 1}
             />
           </DroppableFolder>
@@ -265,6 +277,8 @@ function FileTree({
             onRenamed={(newPath) => onFileRenamed(entry.path, newPath)}
             onDeleted={() => onFileDeleted(entry.path)}
             indent={INDENT_BASE + (depth + 1) * INDENT_STEP + FILE_EXTRA}
+            autoRename={entry.path === newlyCreatedFile}
+            onAutoRenameDone={onNewFileRenamed}
           />
         )
       )}

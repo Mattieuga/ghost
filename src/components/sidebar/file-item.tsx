@@ -28,6 +28,8 @@ interface FileItemProps {
   onSelect: () => void;
   onDeleted?: () => void;
   onRenamed?: (newPath: string) => void;
+  autoRename?: boolean;
+  onAutoRenameDone?: () => void;
 }
 
 export function FileItem({
@@ -37,6 +39,8 @@ export function FileItem({
   onSelect,
   onDeleted,
   onRenamed,
+  autoRename,
+  onAutoRenameDone,
 }: FileItemProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [displayName, setDisplayName] = useState(entry.name);
@@ -64,6 +68,15 @@ export function FileItem({
   useEffect(() => {
     setDisplayName(entry.name);
   }, [entry.name]);
+
+  // Auto-enter rename mode for newly created files
+  useEffect(() => {
+    if (autoRename) {
+      setRenameName(entry.name);
+      setIsRenaming(true);
+      onAutoRenameDone?.();
+    }
+  }, [autoRename]);
 
   useEffect(() => {
     if (isRenaming && inputRef.current) {

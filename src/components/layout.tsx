@@ -34,6 +34,7 @@ export function GhostLayout() {
   const [headerRenameName, setHeaderRenameName] = useState("");
   const [activeDragName, setActiveDragName] = useState<string | null>(null);
   const [wordCount, setWordCount] = useState(0);
+  const [newlyCreatedFile, setNewlyCreatedFile] = useState<string | null>(null);
   const headerInputRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(
@@ -168,7 +169,10 @@ export function GhostLayout() {
           addFolder();
           return;
         }
-        const targetDir = folders[0];
+        // Use active file's parent folder, or first tracked folder as fallback
+        const targetDir = activeFile
+          ? activeFile.substring(0, activeFile.lastIndexOf("/"))
+          : folders[0];
         let name = "Untitled.md";
         let counter = 1;
         while (true) {
@@ -178,6 +182,8 @@ export function GhostLayout() {
               name,
             });
             await handleFileSelect(path);
+            setNewlyCreatedFile(path);
+            handleFsChange();
             break;
           } catch {
             counter++;
@@ -318,6 +324,8 @@ export function GhostLayout() {
                     }}
                     onFileRenamed={handleFileRenamed}
                     onFileDeleted={handleFileDeleted}
+                    newlyCreatedFile={newlyCreatedFile}
+                    onNewFileRenamed={() => setNewlyCreatedFile(null)}
                     activeDropFolder={activeDropFolder}
                   />
                 ))}

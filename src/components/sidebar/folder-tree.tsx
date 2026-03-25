@@ -102,6 +102,8 @@ export function FolderTree({
     );
   }
 
+  const hasActiveFile = activeFile ? activeFile.startsWith(path + "/") : false;
+
   return (
     <DroppableFolder
       id={path}
@@ -113,6 +115,8 @@ export function FolderTree({
       onCreateFolder={handleCreateFolder}
       defaultOpen={true}
       depth={0}
+      isRoot={true}
+      hasActiveFile={hasActiveFile}
     >
       <FileTree
         entries={entries}
@@ -143,6 +147,8 @@ function DroppableFolder({
   onCreateFolder,
   defaultOpen = false,
   depth,
+  isRoot = false,
+  hasActiveFile = false,
   children,
 }: {
   id: string;
@@ -154,6 +160,8 @@ function DroppableFolder({
   onCreateFolder: (dir: string) => void;
   defaultOpen?: boolean;
   depth: number;
+  isRoot?: boolean;
+  hasActiveFile?: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -164,6 +172,10 @@ function DroppableFolder({
   });
 
   const togglePadding = INDENT_BASE + depth * INDENT_STEP;
+
+  // Root folders: dot indicator (filled = open, outline = collapsed)
+  // Dot color: amber if has active file, muted otherwise
+  const dotColor = isRoot && hasActiveFile ? "#f57c00" : "#52525b";
 
   return (
     <div
@@ -177,11 +189,21 @@ function DroppableFolder({
               setOpen(!open);
               onFolderSelect(id);
             }}
-            className="w-full text-left flex items-center gap-1.5 py-1.5 pr-2 hover:text-[#e4e4e7] transition-colors cursor-pointer"
+            className="w-full text-left flex items-center gap-2 py-1.5 pr-2 hover:text-[#e4e4e7] transition-colors cursor-pointer"
             style={{ paddingLeft: `${togglePadding}px` }}
           >
-            <span className="text-[16px] leading-none text-[#52525b]">{open ? "▾" : "▸"}</span>
-            <span className="text-[13px] text-[#a1a1aa] font-medium">{folderName}</span>
+            {isRoot ? (
+              <span
+                className="inline-block size-[7px] shrink-0 rounded-full transition-colors"
+                style={{
+                  backgroundColor: open ? dotColor : "transparent",
+                  border: `1.5px solid ${dotColor}`,
+                }}
+              />
+            ) : (
+              <span className="text-[16px] leading-none text-[#52525b]">{open ? "▾" : "▸"}</span>
+            )}
+            <span className={`text-[13px] font-medium ${isRoot ? "text-[#e4e4e7]" : "text-[#a1a1aa]"}`}>{folderName}</span>
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent>

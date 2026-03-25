@@ -267,7 +267,7 @@ export function GhostLayout() {
         className="flex h-12 shrink-0 items-center justify-center bg-sidebar border-b border-[#1c1c20]"
         data-tauri-drag-region
       >
-        <span className="text-[13px] font-medium text-[#52525b] tracking-[0.3px] pointer-events-none select-none">ghost</span>
+        <span className="text-[11px] font-medium text-[#52525b] tracking-[2px] uppercase pointer-events-none select-none">ghost</span>
       </div>
 
       {/* Below title bar: sidebar + content */}

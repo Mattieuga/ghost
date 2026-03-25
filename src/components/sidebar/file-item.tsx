@@ -135,7 +135,7 @@ export function FileItem({
               setIsRenaming(false);
             }
           }}
-          className="w-full bg-transparent text-[13px] text-[#e4e4e7] outline-none caret-[#f57c00]"
+          className="w-full bg-transparent text-[13px] text-[#e4e4e7] outline-none caret-[#f57c00] border border-[#3f3f46] rounded-[4px] px-2 py-1"
         />
       </div>
     );

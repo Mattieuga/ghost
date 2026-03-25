@@ -26,7 +26,7 @@
 
 ## **Editor fixes**
 
-- Too muhc new paragraph space
+- Too muhc new paragraph spaceaaaa
 
 - Too much space between bullets
 
@@ -52,4 +52,5 @@
 
 - Local and cloud files
 - Let's work on the new window feature.
-- asda
+- test
+- Asdasdasda

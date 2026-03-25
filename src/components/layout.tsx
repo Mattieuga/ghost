@@ -266,7 +266,7 @@ export function GhostLayout() {
               <EmptyState onAddFolder={addFolder} />
             ) : (
               <div>
-                <div className="px-2 pb-1.5 pt-1 text-[10px] font-medium uppercase tracking-wider text-sidebar-foreground/60">
+                <div className="px-3 pb-2 pt-2 text-[10px] font-medium uppercase tracking-widest text-sidebar-foreground/50">
                   Workspace
                 </div>
                 {folders.map((folder) => (

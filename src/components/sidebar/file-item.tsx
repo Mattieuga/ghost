@@ -6,6 +6,10 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
@@ -17,7 +21,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2 } from "lucide-react";
 import type { FileEntry } from "@/types";
 
 interface FileItemProps {
@@ -27,6 +30,8 @@ interface FileItemProps {
   onSelect: () => void;
   onDeleted?: () => void;
   onRenamed?: (newPath: string) => void;
+  onNewSibling?: () => void;
+  onNewFolderSibling?: () => void;
   autoRename?: boolean;
   onAutoRenameDone?: () => void;
   rootGuideX?: number | null;
@@ -39,6 +44,8 @@ export function FileItem({
   onSelect,
   onDeleted,
   onRenamed,
+  onNewSibling,
+  onNewFolderSibling,
   autoRename,
   onAutoRenameDone,
   rootGuideX,
@@ -48,6 +55,7 @@ export function FileItem({
   const [renameName, setRenameName] = useState(entry.name);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const blurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const parentDir = entry.path.substring(0, entry.path.lastIndexOf("/"));
 
@@ -75,7 +83,6 @@ export function FileItem({
     if (autoRename) {
       setRenameName(entry.name);
       setIsRenaming(true);
-      onAutoRenameDone?.();
     }
   }, [autoRename]);
 
@@ -92,6 +99,7 @@ export function FileItem({
   }, [isRenaming]);
 
   const handleRename = async () => {
+    onAutoRenameDone?.();
     if (!renameName || renameName === entry.name) {
       setIsRenaming(false);
       setRenameName(entry.name);
@@ -122,17 +130,67 @@ export function FileItem({
     }
   };
 
+  const handleDuplicate = async () => {
+    try {
+      await invoke<string>("duplicate_file", { path: entry.path });
+    } catch (err) {
+      console.error("Failed to duplicate:", err);
+    }
+  };
+
+  const handleRevealInFinder = async () => {
+    try {
+      await invoke("reveal_in_finder", { path: entry.path });
+    } catch (err) {
+      console.error("Failed to reveal:", err);
+    }
+  };
+
+  const handleCopyPath = async () => {
+    try {
+      await navigator.clipboard.writeText(entry.path);
+    } catch (err) {
+      console.error("Failed to copy path:", err);
+    }
+  };
+
+  const handleCopyTextAs = async (format: "plain" | "markdown" | "rich") => {
+    try {
+      const content = await invoke<string>("read_file", { path: entry.path });
+      if (format === "plain" || format === "markdown") {
+        await navigator.clipboard.writeText(content);
+      } else {
+        // Rich text — write as HTML
+        const blob = new Blob([content], { type: "text/html" });
+        await navigator.clipboard.write([
+          new ClipboardItem({ "text/html": blob, "text/plain": new Blob([content], { type: "text/plain" }) }),
+        ]);
+      }
+    } catch (err) {
+      console.error("Failed to copy text:", err);
+    }
+  };
+
   if (isRenaming) {
     return (
-      <div className="py-1 pr-2" style={{ paddingLeft: `${indent}px` }}>
+      <div className="py-0.5 pr-2" style={{ paddingLeft: `${indent}px` }}>
         <input
           ref={inputRef as React.RefObject<HTMLInputElement>}
           value={renameName}
           onChange={(e) => setRenameName(e.target.value)}
-          onBlur={handleRename}
+          onFocus={() => {
+            if (blurTimeout.current) {
+              clearTimeout(blurTimeout.current);
+              blurTimeout.current = null;
+            }
+          }}
+          onBlur={() => {
+            blurTimeout.current = setTimeout(() => handleRename(), 50);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") handleRename();
             if (e.key === "Escape") {
+              onAutoRenameDone?.();
               setRenameName(entry.name);
               setIsRenaming(false);
             }
@@ -163,7 +221,7 @@ export function FileItem({
           )}
           <button
             onClick={onSelect}
-            className={`w-full text-left py-1 pr-2 text-[13px] truncate transition-colors cursor-pointer
+            className={`w-full text-left py-1 pr-2 text-[13px] truncate transition-colors cursor-pointer select-none
               ${isActive
                 ? "text-[#e4e4e7] font-medium"
                 : "text-[#71717a] hover:text-[#a1a1aa]"
@@ -174,22 +232,65 @@ export function FileItem({
           </button>
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent>
+        <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <ContextMenuItem onSelect={onSelect} disabled={isActive}>
+            Open File
+          </ContextMenuItem>
+          <ContextMenuItem disabled>
+            Open File in New Window
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={onNewSibling}>
+            New File
+            <ContextMenuShortcut>⌘N</ContextMenuShortcut>
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={onNewFolderSibling}>
+            New Folder
+            <ContextMenuShortcut>⇧⌘N</ContextMenuShortcut>
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => handleCopyPath()}>
+            Copy File
+            <ContextMenuShortcut>⌘C</ContextMenuShortcut>
+          </ContextMenuItem>
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>Copy Text As</ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              <ContextMenuItem onSelect={() => handleCopyTextAs("plain")}>
+                Plain Text
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={() => handleCopyTextAs("markdown")}>
+                Markdown
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={() => handleCopyTextAs("rich")}>
+                Rich Text
+              </ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={handleRevealInFinder}>
+            Reveal in Finder
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={handleCopyPath}>
+            Copy File Path
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={handleDuplicate}>
+            Duplicate
+          </ContextMenuItem>
           <ContextMenuItem
             onSelect={() => {
               setRenameName(displayName);
               setIsRenaming(true);
             }}
           >
-            <Pencil className="size-4" />
-            Rename
+            Rename...
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem
             onSelect={() => setShowDeleteDialog(true)}
             className="text-destructive"
           >
-            <Trash2 className="size-4" />
             Delete
           </ContextMenuItem>
         </ContextMenuContent>

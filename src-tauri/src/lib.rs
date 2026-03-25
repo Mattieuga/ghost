@@ -20,6 +20,8 @@ pub fn run() {
             commands::fs::move_file,
             commands::fs::rename_file,
             commands::fs::delete_file,
+            commands::fs::duplicate_file,
+            commands::fs::reveal_in_finder,
             watcher::watch_directories,
         ])
         .setup(|app| {

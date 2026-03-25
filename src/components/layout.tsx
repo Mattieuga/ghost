@@ -35,6 +35,7 @@ export function GhostLayout() {
   const [activeDragName, setActiveDragName] = useState<string | null>(null);
   const [wordCount, setWordCount] = useState(0);
   const [newlyCreatedFile, setNewlyCreatedFile] = useState<string | null>(null);
+  const [newlyCreatedFolder, setNewlyCreatedFolder] = useState<string | null>(null);
   const headerInputRef = useRef<HTMLInputElement>(null);
   const activeFileRef = useRef<string | null>(null);
   activeFileRef.current = activeFile;
@@ -165,13 +166,37 @@ export function GhostLayout() {
     const handleKeyDown = async (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
 
-      if (mod && e.key === "n") {
+      if (mod && e.shiftKey && e.key.toLowerCase() === "n") {
+        // Cmd+Shift+N — new folder
+        e.preventDefault();
+        if (folders.length === 0) return;
+        const currentFile = activeFileRef.current;
+        const targetDir = currentFile
+          ? currentFile.substring(0, currentFile.lastIndexOf("/"))
+          : folders[0];
+        let name = "New Folder";
+        let counter = 1;
+        while (true) {
+          try {
+            const path = await invoke<string>("create_directory", {
+              parent: targetDir,
+              name,
+            });
+            setNewlyCreatedFolder(path);
+            handleFsChange();
+            break;
+          } catch {
+            counter++;
+            name = `New Folder ${counter}`;
+          }
+        }
+      } else if (mod && !e.shiftKey && e.key.toLowerCase() === "n") {
+        // Cmd+N — new file
         e.preventDefault();
         if (folders.length === 0) {
           addFolder();
           return;
         }
-        // Use active file's parent folder, or first tracked folder as fallback
         const currentFile = activeFileRef.current;
         const targetDir = currentFile
           ? currentFile.substring(0, currentFile.lastIndexOf("/"))
@@ -184,9 +209,9 @@ export function GhostLayout() {
               dir: targetDir,
               name,
             });
-            await handleFileSelect(path);
             setNewlyCreatedFile(path);
             handleFsChange();
+            handleFileSelect(path);
             break;
           } catch {
             counter++;
@@ -328,7 +353,11 @@ export function GhostLayout() {
                     onFileRenamed={handleFileRenamed}
                     onFileDeleted={handleFileDeleted}
                     newlyCreatedFile={newlyCreatedFile}
+                    onNewFileCreated={(path) => { setNewlyCreatedFile(path); handleFsChange(); }}
                     onNewFileRenamed={() => setNewlyCreatedFile(null)}
+                    newlyCreatedFolder={newlyCreatedFolder}
+                    onNewFolderCreated={(path) => setNewlyCreatedFolder(path)}
+                    onNewFolderRenamed={() => setNewlyCreatedFolder(null)}
                     activeDropFolder={activeDropFolder}
                   />
                 ))}

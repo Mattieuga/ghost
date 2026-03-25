@@ -468,10 +468,10 @@ function FileTree({
 }) {
   return (
     <>
-      {entries.map((entry) =>
+      {entries.map((entry, index) =>
         entry.is_directory ? (
           <DroppableFolder
-            key={entry.path}
+            key={`dir-${index}`}
             id={entry.path}
             folderName={entry.name}
             activeDropFolder={activeDropFolder}

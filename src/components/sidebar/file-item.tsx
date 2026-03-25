@@ -138,10 +138,10 @@ export function FileItem({
         <ContextMenuTrigger asChild>
           <button
             onClick={onSelect}
-            className={`w-full text-left pl-5 pr-2 py-0.5 text-[13px] truncate rounded-sm transition-colors
+            className={`w-full text-left py-1 text-[13px] truncate transition-colors
               ${isActive
-                ? "text-sidebar-primary font-medium border-l-2 border-ghost-amber -ml-px"
-                : "text-sidebar-foreground/70 hover:text-sidebar-foreground"
+                ? "text-[#e4e4e7] font-medium bg-[#18181b] rounded-[5px] px-3 mx-1.5 border-l-2 border-[#f57c00]"
+                : "text-[#71717a] hover:text-[#a1a1aa] pl-[42px] pr-2"
               }`}
           >
             {displayName}

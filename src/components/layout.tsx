@@ -240,17 +240,17 @@ export function GhostLayout() {
 
   return (
     <div className="flex h-svh w-full overflow-hidden">
-      {/* Sidebar */}
-      <div className="flex w-56 shrink-0 flex-col bg-sidebar border-r border-sidebar-border">
-        {/* Drag region for macOS title bar / traffic lights */}
-        <div className="h-11 shrink-0" style={{ WebkitAppRegion: "drag" } as React.CSSProperties} />
+      {/* Sidebar — 240px per Figma */}
+      <div className="flex w-[240px] shrink-0 flex-col bg-sidebar border-r border-sidebar-border">
+        {/* Drag region for macOS title bar — 40px per Figma */}
+        <div className="h-10 shrink-0" style={{ WebkitAppRegion: "drag" } as React.CSSProperties} />
 
-        {/* Search bar (UI only) */}
-        <div className="px-3 pb-3">
-          <div className="flex items-center gap-2 h-7 px-2.5 rounded-md bg-sidebar-accent/50 border border-sidebar-border text-[12px] text-sidebar-foreground cursor-pointer">
-            <Search className="size-3 opacity-50" />
-            <span className="flex-1 opacity-50">Search...</span>
-            <kbd className="text-[10px] opacity-30">&#8984;K</kbd>
+        {/* Search bar (UI only) — Figma: 216x32, 12px from edges, #18181b bg, rounded-[6px] */}
+        <div className="px-3 pb-4">
+          <div className="flex items-center gap-2 h-8 px-3 rounded-[6px] bg-[#18181b] text-[13px] cursor-pointer">
+            <Search className="size-3.5 text-[#3f3f46]" />
+            <span className="flex-1 text-[#3f3f46]">Search...</span>
+            <kbd className="text-[11px] font-medium text-[#3f3f46]">&#8984;K</kbd>
           </div>
         </div>
 
@@ -266,7 +266,7 @@ export function GhostLayout() {
               <EmptyState onAddFolder={addFolder} />
             ) : (
               <div>
-                <div className="px-3 pb-2 pt-2 text-[10px] font-medium uppercase tracking-widest text-sidebar-foreground/50">
+                <div className="px-4 pb-2 pt-1 text-[10px] font-medium uppercase text-[#3f3f46]" style={{ letterSpacing: "1.2px" }}>
                   Workspace
                 </div>
                 {folders.map((folder) => (
@@ -303,11 +303,11 @@ export function GhostLayout() {
           </DndContext>
         </div>
 
-        {/* Settings at bottom */}
-        <div className="shrink-0 px-3 py-3">
+        {/* Settings at bottom — Figma: #3f3f46, separator above */}
+        <div className="shrink-0 border-t border-sidebar-border px-4 py-3">
           <button
             onClick={() => setShowSettings(true)}
-            className="text-[13px] text-sidebar-foreground/40 hover:text-sidebar-foreground transition-colors"
+            className="text-[13px] text-[#3f3f46] hover:text-[#71717a] transition-colors"
           >
             Settings
           </button>
@@ -317,7 +317,8 @@ export function GhostLayout() {
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden bg-background">
         {/* Header with breadcrumb and word count */}
-        <div className="flex h-11 shrink-0 items-center justify-between px-4 pt-2 border-b border-border" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
+        {/* Editor header — Figma: 44px, breadcrumb + word count */}
+        <div className="flex h-11 shrink-0 items-center justify-between px-8 border-b border-border" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
           <div className="flex items-center gap-1 text-[13px]" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
             {isRenamingHeader ? (
               <Input
@@ -333,10 +334,10 @@ export function GhostLayout() {
               />
             ) : breadcrumb ? (
               <>
-                <span className="text-muted-foreground">{breadcrumb.folderName}</span>
-                <span className="text-muted-foreground/40 mx-0.5">/</span>
+                <span className="text-[#52525b]">{breadcrumb.folderName}</span>
+                <span className="text-[#3f3f46] mx-1">/</span>
                 <span
-                  className="text-foreground font-medium cursor-pointer hover:text-muted-foreground transition-colors"
+                  className="text-[#a1a1aa] font-medium cursor-pointer hover:text-[#71717a] transition-colors"
                   onClick={startHeaderRename}
                 >
                   {breadcrumb.fileName}
@@ -345,7 +346,7 @@ export function GhostLayout() {
             ) : null}
           </div>
           {activeFile && (
-            <span className="text-[12px] text-muted-foreground/50">
+            <span className="text-[12px] text-[#3f3f46]">
               {wordCount} words
             </span>
           )}

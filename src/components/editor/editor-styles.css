@@ -1,24 +1,26 @@
 .ghost-editor {
-  padding: 3rem 4rem;
-  max-width: 52rem;
+  padding: 2.5rem 0;
+  max-width: 640px;
   margin: 0 auto;
   min-height: 100%;
   outline: none;
-  color: var(--muted-foreground);
+  color: #71717a; /* zinc-500 — body text */
+  font-size: 16px;
+  line-height: 28px;
 }
 
 .ghost-editor:focus {
   outline: none;
 }
 
-/* Headings — white/foreground, not muted */
+/* Headings */
 .ghost-editor h1 {
-  font-size: 2.25rem;
+  font-size: 34px;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 42px;
   margin-top: 2rem;
   margin-bottom: 0.5rem;
-  color: var(--foreground);
+  color: #fafafa; /* zinc-50 */
 }
 
 .ghost-editor h1:first-child {
@@ -26,45 +28,45 @@
 }
 
 .ghost-editor h2 {
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 600;
   line-height: 1.3;
   margin-top: 2rem;
   margin-bottom: 0.5rem;
-  color: var(--foreground);
+  color: #e4e4e7; /* zinc-200 */
 }
 
 .ghost-editor h3 {
-  font-size: 1.25rem;
+  font-size: 18px;
   font-weight: 600;
   line-height: 1.4;
   margin-top: 1.5rem;
   margin-bottom: 0.5rem;
-  color: var(--foreground);
+  color: #e4e4e7;
 }
 
 .ghost-editor h4,
 .ghost-editor h5,
 .ghost-editor h6 {
-  font-size: 1rem;
+  font-size: 16px;
   font-weight: 600;
   line-height: 1.5;
   margin-top: 1.5rem;
   margin-bottom: 0.25rem;
-  color: var(--foreground);
+  color: #e4e4e7;
 }
 
 /* Paragraphs */
 .ghost-editor p {
   margin-bottom: 1rem;
-  line-height: 1.75;
-  font-size: 0.9375rem;
+  line-height: 28px;
+  font-size: 16px;
 }
 
-/* Bold — slightly brighter */
+/* Bold — brighter */
 .ghost-editor strong {
   font-weight: 700;
-  color: var(--foreground);
+  color: #e4e4e7; /* zinc-200 */
 }
 
 .ghost-editor em {
@@ -78,20 +80,19 @@
 
 /* Inline code */
 .ghost-editor code {
-  background: var(--muted);
-  color: var(--foreground);
+  background: #18181b; /* zinc-900 */
+  color: #a1a1aa; /* zinc-400 */
   padding: 0.15em 0.4em;
-  border-radius: 0.3rem;
-  font-size: 0.85em;
-  font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: "Roboto Mono", "SF Mono", ui-monospace, monospace;
 }
 
 /* Code blocks */
 .ghost-editor pre {
-  background: var(--muted);
-  color: var(--muted-foreground);
-  padding: 1.25rem 1.5rem;
-  border-radius: 0.75rem;
+  background: #18181b; /* zinc-900 */
+  padding: 16px 20px;
+  border-radius: 8px;
   margin-bottom: 1rem;
   overflow-x: auto;
   position: relative;
@@ -100,25 +101,38 @@
 .ghost-editor pre code {
   background: none;
   padding: 0;
-  font-size: 0.85rem;
-  line-height: 1.7;
-  color: var(--foreground);
+  font-size: 13px;
+  line-height: 22px;
+  color: #a1a1aa; /* zinc-400 */
 }
 
 /* Blockquotes */
 .ghost-editor blockquote {
-  border-left: 2px solid var(--border);
+  border-left: 2px solid #1c1c20;
   padding-left: 1.25rem;
   margin-left: 0;
   margin-bottom: 1rem;
-  color: var(--muted-foreground);
+  color: #71717a;
 }
 
 /* Lists */
 .ghost-editor ul {
-  list-style-type: disc;
-  padding-left: 1.5rem;
+  list-style-type: none;
+  padding-left: 0;
   margin-bottom: 1rem;
+}
+
+.ghost-editor ul > li {
+  padding-left: 18px;
+  position: relative;
+}
+
+.ghost-editor ul > li::before {
+  content: "•";
+  position: absolute;
+  left: 2px;
+  color: #3f3f46; /* zinc-700 */
+  font-size: 14px;
 }
 
 .ghost-editor ol {
@@ -129,12 +143,8 @@
 
 .ghost-editor li {
   margin-bottom: 0.375rem;
-  line-height: 1.75;
-  font-size: 0.9375rem;
-}
-
-.ghost-editor li::marker {
-  color: var(--muted-foreground);
+  line-height: 26px;
+  font-size: 16px;
 }
 
 .ghost-editor li p {
@@ -151,6 +161,11 @@
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
+  padding-left: 0;
+}
+
+.ghost-editor ul[data-type="taskList"] li::before {
+  display: none;
 }
 
 .ghost-editor ul[data-type="taskList"] li label {
@@ -158,29 +173,29 @@
 }
 
 .ghost-editor ul[data-type="taskList"] li input[type="checkbox"] {
-  accent-color: var(--ghost-amber);
+  accent-color: #f57c00;
   cursor: pointer;
 }
 
 /* Horizontal rule */
 .ghost-editor hr {
   border: none;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid #1c1c20;
   margin: 2rem 0;
+  width: 48px;
 }
 
 /* Links */
 .ghost-editor a {
-  color: var(--ghost-amber);
+  color: #f57c00;
   text-decoration: underline;
   text-underline-offset: 2px;
-  text-decoration-color: var(--ghost-amber);
 }
 
 /* Placeholder */
 .ghost-editor p.is-editor-empty:first-child::before {
   content: "Start writing...";
-  color: var(--muted-foreground);
+  color: #3f3f46; /* zinc-700 */
   float: left;
   pointer-events: none;
   height: 0;
@@ -197,5 +212,5 @@
 
 /* Caret color */
 .ghost-editor {
-  caret-color: var(--ghost-amber);
+  caret-color: #f57c00;
 }

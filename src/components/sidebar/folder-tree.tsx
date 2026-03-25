@@ -159,10 +159,10 @@ function DroppableFolder({
               setOpen(!open);
               onFolderSelect(id);
             }}
-            className="w-full text-left flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-sidebar-foreground hover:text-sidebar-primary transition-colors"
+            className="w-full text-left flex items-center gap-1.5 px-4 py-1.5 text-[13px] hover:text-[#e4e4e7] transition-colors"
           >
-            <span className="text-[8px] leading-none opacity-40">&#8250;</span>
-            <span className="text-sidebar-primary">{folderName}</span>
+            <span className="text-[10px] leading-none text-[#52525b]">{open ? "▾" : "▸"}</span>
+            <span className="text-[#a1a1aa] font-medium">{folderName}</span>
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent>

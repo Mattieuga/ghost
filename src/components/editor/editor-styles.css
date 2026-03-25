@@ -4,7 +4,7 @@
   margin: 0 auto;
   min-height: 100%;
   outline: none;
-  color: #71717a; /* zinc-500 — body text */
+  color: #e4e4e7; /* zinc-200 — same as headings */
   font-size: 16px;
   line-height: 28px;
 }
@@ -142,7 +142,7 @@
 }
 
 .ghost-editor li {
-  margin-bottom: 0.375rem;
+  margin-bottom: 0.125rem;
   line-height: 26px;
   font-size: 16px;
 }

@@ -53,6 +53,7 @@ export function GhostLayout() {
     setTheme(settings.theme);
   }, [settings.theme, setTheme]);
 
+
   const extensions = useMemo(
     () => (settings.showAllFiles ? [] : ["md"]),
     [settings.showAllFiles]
@@ -329,17 +330,19 @@ export function GhostLayout() {
         >
           {/* Drag region for traffic lights */}
           <div className="h-12" data-tauri-drag-region />
-          {/* Project dots */}
-          <div className="flex flex-col items-start gap-3 pt-4" style={{ paddingLeft: "19px" }}>
+          {/* Project dots — positioned to match sidebar's first dot location */}
+          {/* Title bar 48px + search 48px + WORKSPACE label ~28px = ~124px, minus the 48px title bar above = 76px */}
+          <div className="flex flex-col items-start gap-[22px]" style={{ paddingLeft: "19px", paddingTop: "76px" }}>
             {folders.map((folder) => {
               const hasActive = folderHasActiveFile(folder);
+              const dotColor = hasActive ? "#f57c00" : "#52525b";
               return (
                 <span
                   key={folder}
-                  className="inline-block size-[7px] shrink-0 rounded-full transition-colors"
+                  className="inline-block size-[7px] shrink-0 rounded-full transition-colors cursor-pointer"
                   style={{
-                    backgroundColor: hasActive ? "#f57c00" : "#52525b",
-                    border: `1.5px solid ${hasActive ? "#f57c00" : "#52525b"}`,
+                    backgroundColor: dotColor,
+                    border: `1.5px solid ${dotColor}`,
                   }}
                 />
               );

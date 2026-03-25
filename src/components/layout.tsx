@@ -286,22 +286,19 @@ export function GhostLayout() {
   }, [activeFile, headerRenameName, activeFileName, handleFsChange]);
 
   return (
-    <div className="flex flex-col h-svh w-full overflow-hidden">
-      {/* Title bar — full width, sidebar color, with divider below */}
-      <div
-        className="flex h-12 shrink-0 items-center justify-center bg-sidebar border-b border-[#1c1c20]"
-        data-tauri-drag-region
-      >
-        <span className="text-[11px] font-medium text-[#52525b] tracking-[2px] uppercase pointer-events-none select-none">ghost</span>
-      </div>
-
-      {/* Below title bar: sidebar + content */}
-      <div className="flex flex-1 overflow-hidden">
-      {/* Sidebar — 240px per Figma, no top border since title bar covers it */}
+    <div className="flex h-svh w-full overflow-hidden">
+      {/* Sidebar — 240px, has its own title bar area */}
       <div className="flex w-[240px] shrink-0 flex-col bg-sidebar border-r border-sidebar-border">
+        {/* Sidebar title bar — drag region for traffic lights */}
+        <div
+          className="flex h-12 shrink-0 items-center justify-center"
+          data-tauri-drag-region
+        >
+          <span className="text-[11px] font-medium text-[#52525b] tracking-[2px] uppercase pointer-events-none select-none">ghost</span>
+        </div>
 
         {/* Search bar (UI only) */}
-        <div className="px-3 pt-2 pb-4">
+        <div className="px-3 pt-0 pb-4">
           <div className="flex items-center gap-2 h-8 px-3 rounded-[6px] bg-[#18181b] text-[13px] cursor-pointer">
             <Search className="size-3.5 text-[#3f3f46]" />
             <span className="flex-1 text-[#3f3f46]">Search...</span>
@@ -384,11 +381,11 @@ export function GhostLayout() {
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="flex flex-1 flex-col overflow-hidden bg-background">
-        {/* Editor header — breadcrumb + word count */}
-        <div className="flex h-11 shrink-0 items-center justify-between px-8 border-b border-border">
-          <div className="flex items-center gap-1 text-[13px]">
+      {/* Main content — full height, no top bar */}
+      <div className="relative flex-1 overflow-hidden bg-background">
+        {/* Floating header overlay — semi-transparent, content scrolls behind */}
+        <div className="absolute top-0 left-0 right-0 z-10 flex h-11 items-center justify-between px-8 bg-background/80 backdrop-blur-sm" data-tauri-drag-region>
+          <div className="flex items-center gap-1 text-[13px] pointer-events-auto">
             {isRenamingHeader ? (
               <Input
                 ref={headerInputRef}
@@ -403,8 +400,8 @@ export function GhostLayout() {
               />
             ) : breadcrumb ? (
               <>
-                <span className="text-[#52525b]">{breadcrumb.folderName}</span>
-                <span className="text-[#3f3f46] mx-1">/</span>
+                <span className="text-[#52525b] pointer-events-none select-none">{breadcrumb.folderName}</span>
+                <span className="text-[#3f3f46] mx-1 pointer-events-none select-none">/</span>
                 <span
                   className="text-[#a1a1aa] font-medium cursor-pointer hover:text-[#71717a] transition-colors"
                   onClick={startHeaderRename}
@@ -415,14 +412,14 @@ export function GhostLayout() {
             ) : null}
           </div>
           {activeFile && (
-            <span className="text-[12px] text-[#3f3f46]">
+            <span className="text-[12px] text-[#3f3f46] pointer-events-none select-none">
               {wordCount} words
             </span>
           )}
         </div>
 
-        {/* Editor */}
-        <main className="flex-1 overflow-auto overscroll-contain">
+        {/* Editor — scrolls behind the floating header */}
+        <main className="h-full overflow-auto overscroll-contain">
           {activeFile ? (
             <MarkdownEditor
               key={activeFile}
@@ -437,7 +434,6 @@ export function GhostLayout() {
             </div>
           )}
         </main>
-      </div>
       </div>
 
       <SettingsDialog

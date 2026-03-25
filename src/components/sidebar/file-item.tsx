@@ -55,6 +55,7 @@ export function FileItem({
   const [renameName, setRenameName] = useState(entry.name);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const blurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const parentDir = entry.path.substring(0, entry.path.lastIndexOf("/"));
 
@@ -97,18 +98,13 @@ export function FileItem({
     }
   }, [isRenaming]);
 
-  const handleRename = async (force?: boolean) => {
+  const handleRename = async () => {
+    onAutoRenameDone?.();
     if (!renameName || renameName === entry.name) {
-      // Only exit rename mode on intentional action (Enter/Escape),
-      // not on blur which can fire during re-renders
-      if (force) {
-        onAutoRenameDone?.();
-        setIsRenaming(false);
-        setRenameName(entry.name);
-      }
+      setIsRenaming(false);
+      setRenameName(entry.name);
       return;
     }
-    onAutoRenameDone?.();
     setDisplayName(renameName);
     setIsRenaming(false);
     try {
@@ -182,9 +178,17 @@ export function FileItem({
           ref={inputRef as React.RefObject<HTMLInputElement>}
           value={renameName}
           onChange={(e) => setRenameName(e.target.value)}
-          onBlur={() => handleRename()}
+          onFocus={() => {
+            if (blurTimeout.current) {
+              clearTimeout(blurTimeout.current);
+              blurTimeout.current = null;
+            }
+          }}
+          onBlur={() => {
+            blurTimeout.current = setTimeout(() => handleRename(), 50);
+          }}
           onKeyDown={(e) => {
-            if (e.key === "Enter") handleRename(true);
+            if (e.key === "Enter") handleRename();
             if (e.key === "Escape") {
               onAutoRenameDone?.();
               setRenameName(entry.name);

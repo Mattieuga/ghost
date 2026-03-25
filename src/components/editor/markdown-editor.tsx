@@ -77,12 +77,16 @@ export function MarkdownEditor({
     },
   });
 
-  // Update content when file changes
+  // Set content only on initial mount (key={activeFile} handles file switches)
+  // Do NOT depend on [editor] — Tiptap can recreate the editor reference
+  // during re-renders, which would reset user's in-progress edits
+  const contentSet = useRef(false);
   useEffect(() => {
-    if (editor && content !== undefined) {
+    if (editor && !contentSet.current) {
       editor.commands.setContent(content);
+      contentSet.current = true;
     }
-  }, [editor, content]);
+  }, [editor]);
 
   // Cleanup timeout on unmount
   useEffect(() => {

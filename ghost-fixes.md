@@ -51,3 +51,5 @@
 ## Future
 
 - Local and cloud files
+- Let's work on the new window feature.
+- asda

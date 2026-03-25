@@ -243,7 +243,7 @@ export function GhostLayout() {
       {/* Sidebar — 240px per Figma */}
       <div className="flex w-[240px] shrink-0 flex-col bg-sidebar border-r border-sidebar-border">
         {/* Title bar drag area */}
-        <div className="h-10 shrink-0" style={{ WebkitAppRegion: "drag" } as React.CSSProperties} />
+        <div className="h-10 shrink-0" data-tauri-drag-region />
 
         {/* Search bar (UI only) */}
         <div className="px-3 pt-2 pb-4">
@@ -319,7 +319,7 @@ export function GhostLayout() {
         {/* Title bar drag area with "ghost" centered */}
         <div
           className="flex h-10 shrink-0 items-center justify-center"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+          data-tauri-drag-region
         >
           <span className="text-[13px] font-medium text-[#52525b] tracking-[0.3px]">ghost</span>
         </div>

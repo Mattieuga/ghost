@@ -353,6 +353,7 @@ export function GhostLayout() {
                     onFileRenamed={handleFileRenamed}
                     onFileDeleted={handleFileDeleted}
                     newlyCreatedFile={newlyCreatedFile}
+                    onNewFileCreated={(path) => setNewlyCreatedFile(path)}
                     onNewFileRenamed={() => setNewlyCreatedFile(null)}
                     newlyCreatedFolder={newlyCreatedFolder}
                     onNewFolderCreated={(path) => setNewlyCreatedFolder(path)}

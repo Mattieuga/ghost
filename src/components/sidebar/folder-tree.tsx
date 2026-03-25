@@ -31,6 +31,7 @@ interface FolderTreeProps {
   onFileDeleted: (path: string) => void;
   newlyCreatedFile: string | null;
   onNewFileRenamed: () => void;
+  onNewFileCreated?: (path: string) => void;
   newlyCreatedFolder: string | null;
   onNewFolderCreated?: (path: string) => void;
   onNewFolderRenamed: () => void;
@@ -50,6 +51,7 @@ export function FolderTree({
   activeDropFolder,
   newlyCreatedFile,
   onNewFileRenamed,
+  onNewFileCreated,
   newlyCreatedFolder,
   onNewFolderCreated,
   onNewFolderRenamed,
@@ -68,6 +70,7 @@ export function FolderTree({
       while (true) {
         try {
           const newPath = await invoke<string>("create_file", { dir, name });
+          onNewFileCreated?.(newPath);
           refresh();
           onFileSelect(newPath);
           return;
@@ -77,7 +80,7 @@ export function FolderTree({
         }
       }
     },
-    [refresh, onFileSelect]
+    [refresh, onFileSelect, onNewFileCreated]
   );
 
   const handleCreateFolder = useCallback(

@@ -209,9 +209,9 @@ export function GhostLayout() {
               dir: targetDir,
               name,
             });
-            await handleFileSelect(path);
             setNewlyCreatedFile(path);
             handleFsChange();
+            handleFileSelect(path);
             break;
           } catch {
             counter++;

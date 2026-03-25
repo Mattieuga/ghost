@@ -171,7 +171,7 @@ function DroppableFolder({
               setOpen(!open);
               onFolderSelect(id);
             }}
-            className="w-full text-left flex items-center gap-1.5 py-1.5 pr-2 hover:text-[#e4e4e7] transition-colors"
+            className="w-full text-left flex items-center gap-1.5 py-1.5 pr-2 hover:text-[#e4e4e7] transition-colors cursor-pointer"
             style={{ paddingLeft: `${togglePadding}px` }}
           >
             <span className="text-[10px] leading-none text-[#52525b]">{open ? "▾" : "▸"}</span>
@@ -264,7 +264,7 @@ function FileTree({
             onSelect={() => onFileSelect(entry.path)}
             onRenamed={(newPath) => onFileRenamed(entry.path, newPath)}
             onDeleted={() => onFileDeleted(entry.path)}
-            indent={INDENT_BASE + depth * INDENT_STEP + FILE_EXTRA}
+            indent={INDENT_BASE + (depth + 1) * INDENT_STEP + FILE_EXTRA}
           />
         )
       )}

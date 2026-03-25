@@ -138,17 +138,21 @@ export function FileItem({
     >
       <ContextMenu>
         <ContextMenuTrigger asChild>
+          <div
+            className={`mx-1.5 rounded-[5px] ${isActive ? "bg-[#18181b] active-file-indicator" : ""}`}
+          >
           <button
             onClick={onSelect}
-            className={`w-full text-left py-1 pr-2 text-[13px] truncate transition-colors relative
+            className={`w-full text-left py-1 pr-2 text-[13px] truncate transition-colors cursor-pointer
               ${isActive
-                ? "text-[#e4e4e7] font-medium bg-[#18181b] rounded-[5px] mx-1.5 active-file-indicator"
+                ? "text-[#e4e4e7] font-medium"
                 : "text-[#71717a] hover:text-[#a1a1aa]"
               }`}
-            style={{ paddingLeft: `${indent}px` }}
+            style={{ paddingLeft: `${indent - 6}px` }}
           >
             {displayName}
           </button>
+          </div>
         </ContextMenuTrigger>
         <ContextMenuContent>
           <ContextMenuItem

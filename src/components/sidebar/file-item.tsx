@@ -97,13 +97,18 @@ export function FileItem({
     }
   }, [isRenaming]);
 
-  const handleRename = async () => {
-    onAutoRenameDone?.();
+  const handleRename = async (force?: boolean) => {
     if (!renameName || renameName === entry.name) {
-      setIsRenaming(false);
-      setRenameName(entry.name);
+      // Only exit rename mode on intentional action (Enter/Escape),
+      // not on blur which can fire during re-renders
+      if (force) {
+        onAutoRenameDone?.();
+        setIsRenaming(false);
+        setRenameName(entry.name);
+      }
       return;
     }
+    onAutoRenameDone?.();
     setDisplayName(renameName);
     setIsRenaming(false);
     try {
@@ -177,13 +182,13 @@ export function FileItem({
           ref={inputRef as React.RefObject<HTMLInputElement>}
           value={renameName}
           onChange={(e) => setRenameName(e.target.value)}
-          onBlur={handleRename}
+          onBlur={() => handleRename()}
           onKeyDown={(e) => {
-            if (e.key === "Enter") handleRename();
+            if (e.key === "Enter") handleRename(true);
             if (e.key === "Escape") {
+              onAutoRenameDone?.();
               setRenameName(entry.name);
               setIsRenaming(false);
-              onAutoRenameDone?.();
             }
           }}
           className="w-full bg-transparent text-[13px] text-[#e4e4e7] outline-none caret-[#f57c00] border border-[#3f3f46] rounded-[4px] px-2 py-1"

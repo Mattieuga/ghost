@@ -24,6 +24,18 @@ pub fn run() {
         ])
         .setup(|app| {
             // Build macOS menu bar
+            let app_menu = SubmenuBuilder::new(app, "Ghost")
+                .about(None)
+                .separator()
+                .services()
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+
             let file_menu = SubmenuBuilder::new(app, "File")
                 .item(&MenuItemBuilder::with_id("add_folder", "Add Folder")
                     .accelerator("CmdOrCtrl+O")
@@ -50,6 +62,7 @@ pub fn run() {
                 .build()?;
 
             let menu = MenuBuilder::new(app)
+                .item(&app_menu)
                 .item(&file_menu)
                 .item(&edit_menu)
                 .item(&view_menu)

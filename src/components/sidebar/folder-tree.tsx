@@ -174,7 +174,7 @@ function DroppableFolder({
             className="w-full text-left flex items-center gap-1.5 py-1.5 pr-2 hover:text-[#e4e4e7] transition-colors cursor-pointer"
             style={{ paddingLeft: `${togglePadding}px` }}
           >
-            <span className="text-[10px] leading-none text-[#52525b]">{open ? "▾" : "▸"}</span>
+            <span className="text-[16px] leading-none text-[#52525b]">{open ? "▾" : "▸"}</span>
             <span className="text-[13px] text-[#a1a1aa] font-medium">{folderName}</span>
           </button>
         </ContextMenuTrigger>

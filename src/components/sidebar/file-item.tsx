@@ -139,7 +139,7 @@ export function FileItem({
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
-            className={`mx-1.5 rounded-[5px] ${isActive ? "bg-[#18181b] active-file-indicator" : ""}`}
+            className={`mx-1.5 rounded-[5px] relative ${isActive ? "bg-[#18181b] active-file-indicator" : ""}`}
           >
           <button
             onClick={onSelect}

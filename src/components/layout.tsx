@@ -242,8 +242,8 @@ export function GhostLayout() {
     <div className="flex h-svh w-full overflow-hidden">
       {/* Sidebar */}
       <div className="flex w-56 shrink-0 flex-col bg-sidebar border-r border-sidebar-border">
-        {/* Drag region for macOS title bar */}
-        <div className="h-8 shrink-0" style={{ WebkitAppRegion: "drag" } as React.CSSProperties} />
+        {/* Drag region for macOS title bar / traffic lights */}
+        <div className="h-11 shrink-0" style={{ WebkitAppRegion: "drag" } as React.CSSProperties} />
 
         {/* Search bar (UI only) */}
         <div className="px-3 pb-3">
@@ -317,7 +317,7 @@ export function GhostLayout() {
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden bg-background">
         {/* Header with breadcrumb and word count */}
-        <div className="flex h-10 shrink-0 items-center justify-between px-4 border-b border-border" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
+        <div className="flex h-11 shrink-0 items-center justify-between px-4 pt-2 border-b border-border" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
           <div className="flex items-center gap-1 text-[13px]" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
             {isRenamingHeader ? (
               <Input

@@ -35,6 +35,7 @@ export function GhostLayout() {
   const [activeDragName, setActiveDragName] = useState<string | null>(null);
   const [wordCount, setWordCount] = useState(0);
   const [newlyCreatedFile, setNewlyCreatedFile] = useState<string | null>(null);
+  const [newlyCreatedFolder, setNewlyCreatedFolder] = useState<string | null>(null);
   const headerInputRef = useRef<HTMLInputElement>(null);
   const activeFileRef = useRef<string | null>(null);
   activeFileRef.current = activeFile;
@@ -329,6 +330,9 @@ export function GhostLayout() {
                     onFileDeleted={handleFileDeleted}
                     newlyCreatedFile={newlyCreatedFile}
                     onNewFileRenamed={() => setNewlyCreatedFile(null)}
+                    newlyCreatedFolder={newlyCreatedFolder}
+                    onNewFolderCreated={(path) => setNewlyCreatedFolder(path)}
+                    onNewFolderRenamed={() => setNewlyCreatedFolder(null)}
                     activeDropFolder={activeDropFolder}
                   />
                 ))}

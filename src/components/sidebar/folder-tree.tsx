@@ -31,6 +31,9 @@ interface FolderTreeProps {
   onFileDeleted: (path: string) => void;
   newlyCreatedFile: string | null;
   onNewFileRenamed: () => void;
+  newlyCreatedFolder: string | null;
+  onNewFolderCreated?: (path: string) => void;
+  onNewFolderRenamed: () => void;
 }
 
 export function FolderTree({
@@ -47,6 +50,9 @@ export function FolderTree({
   activeDropFolder,
   newlyCreatedFile,
   onNewFileRenamed,
+  newlyCreatedFolder,
+  onNewFolderCreated,
+  onNewFolderRenamed,
 }: FolderTreeProps) {
   const { entries, error, refresh } = useDirectory(path, extensions, refreshTrigger);
 
@@ -80,8 +86,9 @@ export function FolderTree({
       let counter = 1;
       while (true) {
         try {
-          await invoke<string>("create_directory", { parent: parentDir, name });
+          const newPath = await invoke<string>("create_directory", { parent: parentDir, name });
           refresh();
+          onNewFolderCreated?.(newPath);
           return;
         } catch {
           counter++;
@@ -89,7 +96,7 @@ export function FolderTree({
         }
       }
     },
-    [refresh]
+    [refresh, onNewFolderCreated]
   );
 
   if (error) {
@@ -132,6 +139,8 @@ export function FolderTree({
         onRefresh={refresh}
         newlyCreatedFile={newlyCreatedFile}
         onNewFileRenamed={onNewFileRenamed}
+        newlyCreatedFolder={newlyCreatedFolder}
+        onNewFolderRenamed={onNewFolderRenamed}
         depth={0}
         rootGuideX={hasActiveFile ? rootGuideX : null}
       />
@@ -152,6 +161,8 @@ function DroppableFolder({
   depth,
   isRoot = false,
   hasActiveFile = false,
+  autoRename,
+  onAutoRenameDone,
   children,
 }: {
   id: string;
@@ -166,6 +177,8 @@ function DroppableFolder({
   depth: number;
   isRoot?: boolean;
   hasActiveFile?: boolean;
+  autoRename?: boolean;
+  onAutoRenameDone?: () => void;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -187,6 +200,15 @@ function DroppableFolder({
       renameInputRef.current.select();
     }
   }, [isRenaming]);
+
+  // Auto-enter rename mode for newly created folders
+  useEffect(() => {
+    if (autoRename) {
+      setRenameName(folderName);
+      setIsRenaming(true);
+      onAutoRenameDone?.();
+    }
+  }, [autoRename]);
 
   const handleRename = async () => {
     if (!renameName || renameName === folderName) {
@@ -447,6 +469,8 @@ function FileTree({
   onRefresh,
   newlyCreatedFile,
   onNewFileRenamed,
+  newlyCreatedFolder,
+  onNewFolderRenamed,
   depth,
   rootGuideX,
 }: {
@@ -463,6 +487,8 @@ function FileTree({
   onRefresh: () => void;
   newlyCreatedFile: string | null;
   onNewFileRenamed: () => void;
+  newlyCreatedFolder: string | null;
+  onNewFolderRenamed: () => void;
   depth: number;
   rootGuideX: number | null;
 }) {
@@ -480,6 +506,8 @@ function FileTree({
             onCreateFolder={onCreateFolder}
             onRefresh={onRefresh}
             depth={depth + 1}
+            autoRename={entry.path === newlyCreatedFolder}
+            onAutoRenameDone={onNewFolderRenamed}
           >
             <FileTree
               entries={entry.children ?? []}
@@ -495,6 +523,8 @@ function FileTree({
               onRefresh={onRefresh}
               newlyCreatedFile={newlyCreatedFile}
               onNewFileRenamed={onNewFileRenamed}
+              newlyCreatedFolder={newlyCreatedFolder}
+              onNewFolderRenamed={onNewFolderRenamed}
               depth={depth + 1}
               rootGuideX={rootGuideX}
             />

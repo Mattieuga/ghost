@@ -53,15 +53,13 @@ fn read_dir_recursive(dir: &Path, extensions: &[String]) -> Result<Vec<FileEntry
 
         if is_dir {
             let children = read_dir_recursive(&path, extensions)?;
-            // Only include directories that have matching files (or subdirs with matching files)
-            if !children.is_empty() || extensions.is_empty() {
-                entries.push(FileEntry {
-                    name,
-                    path: path.to_string_lossy().to_string(),
-                    is_directory: true,
-                    children: Some(children),
-                });
-            }
+            // Always show directories (even empty ones)
+            entries.push(FileEntry {
+                name,
+                path: path.to_string_lossy().to_string(),
+                is_directory: true,
+                children: Some(children),
+            });
         } else {
             // Filter by extension if extensions list is not empty
             if !extensions.is_empty() {

@@ -36,6 +36,10 @@ export function GhostLayout() {
   const [wordCount, setWordCount] = useState(0);
   const [newlyCreatedFile, setNewlyCreatedFile] = useState<string | null>(null);
   const [newlyCreatedFolder, setNewlyCreatedFolder] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [rootFolderOpen, setRootFolderOpen] = useState<Record<string, boolean>>({});
+  const sidebarHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headerInputRef = useRef<HTMLInputElement>(null);
   const activeFileRef = useRef<string | null>(null);
   activeFileRef.current = activeFile;
@@ -49,6 +53,7 @@ export function GhostLayout() {
   useEffect(() => {
     setTheme(settings.theme);
   }, [settings.theme, setTheme]);
+
 
   const extensions = useMemo(
     () => (settings.showAllFiles ? [] : ["md"]),
@@ -225,6 +230,12 @@ export function GhostLayout() {
         addFolder();
       }
 
+      if (mod && e.key === "\\") {
+        e.preventDefault();
+        setSidebarCollapsed((c) => !c);
+        setSidebarHovered(false);
+      }
+
       if (mod && e.key === ",") {
         e.preventDefault();
         setShowSettings(true);
@@ -266,6 +277,37 @@ export function GhostLayout() {
     }
   }, [isRenamingHeader]);
 
+  // Sidebar hover handlers for collapsed mode
+  const handleSidebarMouseEnter = useCallback(() => {
+    if (!sidebarCollapsed) return;
+    if (sidebarHoverTimeout.current) {
+      clearTimeout(sidebarHoverTimeout.current);
+      sidebarHoverTimeout.current = null;
+    }
+    sidebarHoverTimeout.current = setTimeout(() => {
+      setSidebarHovered(true);
+    }, 200);
+  }, [sidebarCollapsed]);
+
+  const handleSidebarMouseLeave = useCallback(() => {
+    if (!sidebarCollapsed) return;
+    if (sidebarHoverTimeout.current) {
+      clearTimeout(sidebarHoverTimeout.current);
+      sidebarHoverTimeout.current = null;
+    }
+    setSidebarHovered(false);
+  }, [sidebarCollapsed]);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((c) => !c);
+    setSidebarHovered(false);
+  }, []);
+
+  // Which folders have the active file
+  const folderHasActiveFile = useCallback((folderPath: string) => {
+    return activeFile ? activeFile.startsWith(folderPath + "/") : false;
+  }, [activeFile]);
+
   const handleHeaderRename = useCallback(async () => {
     if (!activeFile || !headerRenameName || headerRenameName === activeFileName) {
       setIsRenamingHeader(false);
@@ -286,16 +328,50 @@ export function GhostLayout() {
   }, [activeFile, headerRenameName, activeFileName, handleFsChange]);
 
   return (
-    <div className="flex h-svh w-full overflow-hidden">
-      {/* Sidebar — 240px, has its own title bar area */}
-      <div className="flex w-[240px] shrink-0 flex-col bg-sidebar border-r border-sidebar-border">
+    <div className="flex h-svh w-full overflow-hidden relative">
+      {/* Collapsed dots — only visible when sidebar is collapsed and not hovered */}
+      {sidebarCollapsed && !sidebarHovered && (
+        <div
+          className="absolute left-0 top-0 bottom-0 w-10 z-20"
+          onMouseEnter={handleSidebarMouseEnter}
+        >
+          {/* Drag region for traffic lights */}
+          <div className="h-12" data-tauri-drag-region />
+          {/* Project dots — positioned to match sidebar's first dot location */}
+          {/* Title bar 48px + search 48px + WORKSPACE label ~28px = ~124px, minus the 48px title bar above = 76px */}
+          <div className="flex flex-col items-start gap-[22px]" style={{ paddingLeft: "19px", paddingTop: "76px" }}>
+            {folders.map((folder) => {
+              const hasActive = folderHasActiveFile(folder);
+              const isOpen = rootFolderOpen[folder] !== false; // default to open
+              const dotColor = hasActive ? "#f57c00" : "#52525b";
+              return (
+                <span
+                  key={folder}
+                  className="inline-block size-[7px] shrink-0 rounded-full transition-colors cursor-pointer"
+                  style={{
+                    backgroundColor: isOpen ? dotColor : "transparent",
+                    border: `1.5px solid ${dotColor}`,
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Sidebar — expanded or overlay (always rendered when collapsed for animation) */}
+      <div
+        className={`flex w-[240px] flex-col bg-sidebar border-r border-sidebar-border transition-transform duration-150 ease-out
+          ${sidebarCollapsed ? "absolute left-0 top-0 bottom-0 z-30 shadow-2xl shadow-black/50" : "shrink-0"}
+          ${sidebarCollapsed && !sidebarHovered ? "-translate-x-full" : "translate-x-0"}`}
+        onMouseEnter={handleSidebarMouseEnter}
+        onMouseLeave={handleSidebarMouseLeave}
+      >
         {/* Sidebar title bar — drag region for traffic lights */}
         <div
-          className="flex h-12 shrink-0 items-center justify-center"
+          className="h-12 shrink-0"
           data-tauri-drag-region
-        >
-          <span className="text-[11px] font-medium text-[#52525b] tracking-[2px] uppercase pointer-events-none select-none">ghost</span>
-        </div>
+        />
 
         {/* Search bar (UI only) */}
         <div className="px-3 pt-0 pb-4">
@@ -356,6 +432,7 @@ export function GhostLayout() {
                     onNewFolderCreated={(path) => setNewlyCreatedFolder(path)}
                     onNewFolderRenamed={() => setNewlyCreatedFolder(null)}
                     activeDropFolder={activeDropFolder}
+                    onRootOpenChange={(path, isOpen) => setRootFolderOpen(prev => ({ ...prev, [path]: isOpen }))}
                   />
                 ))}
               </div>
@@ -370,13 +447,26 @@ export function GhostLayout() {
           </DndContext>
         </div>
 
-        {/* Settings at bottom — Figma: #3f3f46, separator above */}
-        <div className="shrink-0 border-t border-sidebar-border px-4 py-3">
+        {/* Footer — Settings + Collapse */}
+        <div className="shrink-0 border-t border-sidebar-border px-4 py-3 flex items-center justify-between">
           <button
             onClick={() => setShowSettings(true)}
-            className="text-[13px] text-[#3f3f46] hover:text-[#71717a] transition-colors"
+            className="text-[13px] text-[#3f3f46] hover:text-[#71717a] transition-colors cursor-pointer"
           >
             Settings
+          </button>
+          <button
+            onClick={toggleSidebar}
+            className="text-[#3f3f46] hover:text-[#71717a] transition-colors cursor-pointer"
+            title={sidebarCollapsed ? "Expand sidebar (⌘\\)" : "Collapse sidebar (⌘\\)"}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              {sidebarCollapsed ? (
+                <path d="M6 3L11 8L6 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              ) : (
+                <path d="M10 3L5 8L10 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              )}
+            </svg>
           </button>
         </div>
       </div>
@@ -384,7 +474,12 @@ export function GhostLayout() {
       {/* Main content — full height, no top bar */}
       <div className="relative flex-1 overflow-hidden bg-background">
         {/* Floating header overlay — semi-transparent, content scrolls behind */}
-        <div className="absolute top-0 left-0 right-0 z-10 flex h-11 items-center justify-between px-8 bg-background/80 backdrop-blur-sm" data-tauri-drag-region>
+        <div
+          className={`absolute top-0 left-0 right-0 z-10 flex h-12 items-center justify-between bg-background/80 backdrop-blur-sm ${
+            sidebarCollapsed ? "pl-[100px] pr-8" : "px-8"
+          }`}
+          data-tauri-drag-region
+        >
           <div className="flex items-center gap-1 text-[13px] pointer-events-auto">
             {isRenamingHeader ? (
               <Input

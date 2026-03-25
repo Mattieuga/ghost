@@ -35,6 +35,7 @@ interface FolderTreeProps {
   newlyCreatedFolder: string | null;
   onNewFolderCreated?: (path: string) => void;
   onNewFolderRenamed: () => void;
+  onRootOpenChange?: (path: string, isOpen: boolean) => void;
 }
 
 export function FolderTree({
@@ -55,6 +56,7 @@ export function FolderTree({
   newlyCreatedFolder,
   onNewFolderCreated,
   onNewFolderRenamed,
+  onRootOpenChange,
 }: FolderTreeProps) {
   const { entries, error, refresh } = useDirectory(path, extensions, refreshTrigger);
 
@@ -126,6 +128,7 @@ export function FolderTree({
       depth={0}
       isRoot={true}
       hasActiveFile={hasActiveFile}
+      onOpenChange={(isOpen) => onRootOpenChange?.(path, isOpen)}
     >
       <FileTree
         entries={entries}
@@ -165,6 +168,7 @@ function DroppableFolder({
   hasActiveFile = false,
   autoRename,
   onAutoRenameDone,
+  onOpenChange,
   children,
 }: {
   id: string;
@@ -181,6 +185,7 @@ function DroppableFolder({
   hasActiveFile?: boolean;
   autoRename?: boolean;
   onAutoRenameDone?: () => void;
+  onOpenChange?: (isOpen: boolean) => void;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -314,7 +319,7 @@ function DroppableFolder({
     // Sub-folder menu
     return (
       <ContextMenuContent className="w-56">
-        <ContextMenuItem onSelect={() => setOpen(!open)}>
+        <ContextMenuItem onSelect={() => { const next = !open; setOpen(next); onOpenChange?.(next); }}>
           {open ? "Collapse" : "Expand"}
         </ContextMenuItem>
         <ContextMenuItem disabled>
@@ -418,7 +423,9 @@ function DroppableFolder({
         <ContextMenuTrigger asChild>
           <button
             onClick={() => {
-              setOpen(!open);
+              const next = !open;
+              setOpen(next);
+              onOpenChange?.(next);
               onFolderSelect(id);
             }}
             className="w-full text-left flex items-center gap-2 py-1.5 pr-2 hover:text-[#e4e4e7] transition-colors cursor-pointer select-none"

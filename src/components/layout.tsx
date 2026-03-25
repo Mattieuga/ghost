@@ -36,6 +36,9 @@ export function GhostLayout() {
   const [wordCount, setWordCount] = useState(0);
   const [newlyCreatedFile, setNewlyCreatedFile] = useState<string | null>(null);
   const [newlyCreatedFolder, setNewlyCreatedFolder] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const sidebarHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headerInputRef = useRef<HTMLInputElement>(null);
   const activeFileRef = useRef<string | null>(null);
   activeFileRef.current = activeFile;
@@ -225,6 +228,12 @@ export function GhostLayout() {
         addFolder();
       }
 
+      if (mod && e.key === "\\") {
+        e.preventDefault();
+        setSidebarCollapsed((c) => !c);
+        setSidebarHovered(false);
+      }
+
       if (mod && e.key === ",") {
         e.preventDefault();
         setShowSettings(true);
@@ -266,6 +275,33 @@ export function GhostLayout() {
     }
   }, [isRenamingHeader]);
 
+  // Sidebar hover handlers for collapsed mode
+  const handleSidebarMouseEnter = useCallback(() => {
+    if (!sidebarCollapsed) return;
+    if (sidebarHoverTimeout.current) {
+      clearTimeout(sidebarHoverTimeout.current);
+      sidebarHoverTimeout.current = null;
+    }
+    setSidebarHovered(true);
+  }, [sidebarCollapsed]);
+
+  const handleSidebarMouseLeave = useCallback(() => {
+    if (!sidebarCollapsed) return;
+    sidebarHoverTimeout.current = setTimeout(() => {
+      setSidebarHovered(false);
+    }, 300);
+  }, [sidebarCollapsed]);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((c) => !c);
+    setSidebarHovered(false);
+  }, []);
+
+  // Which folders have the active file
+  const folderHasActiveFile = useCallback((folderPath: string) => {
+    return activeFile ? activeFile.startsWith(folderPath + "/") : false;
+  }, [activeFile]);
+
   const handleHeaderRename = useCallback(async () => {
     if (!activeFile || !headerRenameName || headerRenameName === activeFileName) {
       setIsRenamingHeader(false);
@@ -285,10 +321,46 @@ export function GhostLayout() {
     setIsRenamingHeader(false);
   }, [activeFile, headerRenameName, activeFileName, handleFsChange]);
 
+  const showSidebar = !sidebarCollapsed || sidebarHovered;
+
   return (
-    <div className="flex h-svh w-full overflow-hidden">
-      {/* Sidebar — 240px, has its own title bar area */}
-      <div className="flex w-[240px] shrink-0 flex-col bg-sidebar border-r border-sidebar-border">
+    <div className="flex h-svh w-full overflow-hidden relative">
+      {/* Collapsed dots — only visible when sidebar is collapsed and not hovered */}
+      {sidebarCollapsed && !sidebarHovered && (
+        <div
+          className="absolute left-0 top-0 bottom-0 w-10 z-20"
+          onMouseEnter={handleSidebarMouseEnter}
+        >
+          {/* Drag region for traffic lights */}
+          <div className="h-12" data-tauri-drag-region />
+          {/* Project dots */}
+          <div className="flex flex-col items-start gap-3 pt-4" style={{ paddingLeft: "19px" }}>
+            {folders.map((folder) => {
+              const hasActive = folderHasActiveFile(folder);
+              return (
+                <span
+                  key={folder}
+                  className="inline-block size-[7px] shrink-0 rounded-full transition-colors"
+                  style={{
+                    backgroundColor: hasActive ? "#f57c00" : "#52525b",
+                    border: `1.5px solid ${hasActive ? "#f57c00" : "#52525b"}`,
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Sidebar — expanded or overlay */}
+      {showSidebar && (
+      <div
+        className={`flex w-[240px] shrink-0 flex-col bg-sidebar border-r border-sidebar-border
+          ${sidebarCollapsed ? "absolute left-0 top-0 bottom-0 z-30 shadow-2xl shadow-black/50" : ""}
+          ${sidebarCollapsed ? "animate-in slide-in-from-left duration-150" : ""}`}
+        onMouseEnter={handleSidebarMouseEnter}
+        onMouseLeave={handleSidebarMouseLeave}
+      >
         {/* Sidebar title bar — drag region for traffic lights */}
         <div
           className="h-12 shrink-0"
@@ -377,20 +449,31 @@ export function GhostLayout() {
             Settings
           </button>
           <button
+            onClick={toggleSidebar}
             className="text-[#3f3f46] hover:text-[#71717a] transition-colors cursor-pointer"
-            title="Collapse sidebar"
+            title={sidebarCollapsed ? "Expand sidebar (⌘\\)" : "Collapse sidebar (⌘\\)"}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M10 3L5 8L10 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              {sidebarCollapsed ? (
+                <path d="M6 3L11 8L6 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              ) : (
+                <path d="M10 3L5 8L10 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              )}
             </svg>
           </button>
         </div>
       </div>
+      )}
 
       {/* Main content — full height, no top bar */}
       <div className="relative flex-1 overflow-hidden bg-background">
         {/* Floating header overlay — semi-transparent, content scrolls behind */}
-        <div className="absolute top-0 left-0 right-0 z-10 flex h-11 items-center justify-between px-8 bg-background/80 backdrop-blur-sm" data-tauri-drag-region>
+        <div
+          className={`absolute top-0 left-0 right-0 z-10 flex h-11 items-center justify-between bg-background/80 backdrop-blur-sm ${
+            sidebarCollapsed ? "pl-20 pr-8" : "px-8"
+          }`}
+          data-tauri-drag-region
+        >
           <div className="flex items-center gap-1 text-[13px] pointer-events-auto">
             {isRenamingHeader ? (
               <Input

@@ -17,7 +17,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Pencil, Trash2 } from "lucide-react";
 import type { FileEntry } from "@/types";
 
@@ -123,9 +122,9 @@ export function FileItem({
 
   if (isRenaming) {
     return (
-      <div className="pl-4 py-0.5">
-        <Input
-          ref={inputRef}
+      <div className="py-1 pr-2" style={{ paddingLeft: `${indent}px` }}>
+        <input
+          ref={inputRef as React.RefObject<HTMLInputElement>}
           value={renameName}
           onChange={(e) => setRenameName(e.target.value)}
           onBlur={handleRename}
@@ -136,7 +135,7 @@ export function FileItem({
               setIsRenaming(false);
             }
           }}
-          className="h-6 text-xs px-1.5 bg-transparent border-sidebar-border"
+          className="w-full bg-transparent text-[13px] text-[#e4e4e7] outline-none caret-[#f57c00]"
         />
       </div>
     );

@@ -319,7 +319,7 @@ function DroppableFolder({
         <ContextMenuItem onSelect={handleDuplicate}>
           Duplicate
         </ContextMenuItem>
-        <ContextMenuItem onSelect={() => {/* TODO: rename sub-folder */}}>
+        <ContextMenuItem onSelect={startRename}>
           Rename...
         </ContextMenuItem>
         <ContextMenuSeparator />

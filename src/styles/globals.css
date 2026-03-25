@@ -3,6 +3,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Enable native window dragging on elements with data-tauri-drag-region */
+[data-tauri-drag-region] {
+  app-region: drag;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

@@ -321,7 +321,7 @@ export function GhostLayout() {
           className="flex h-10 shrink-0 items-center justify-center"
           data-tauri-drag-region
         >
-          <span className="text-[13px] font-medium text-[#52525b] tracking-[0.3px]">ghost</span>
+          <span className="text-[13px] font-medium text-[#52525b] tracking-[0.3px] pointer-events-none select-none">ghost</span>
         </div>
 
         {/* Editor header — breadcrumb + word count */}

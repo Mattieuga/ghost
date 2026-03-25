@@ -475,8 +475,8 @@ export function GhostLayout() {
       <div className="relative flex-1 overflow-hidden bg-background">
         {/* Floating header overlay — semi-transparent, content scrolls behind */}
         <div
-          className={`absolute top-0 left-0 right-0 z-10 flex h-11 items-center justify-between bg-background/80 backdrop-blur-sm ${
-            sidebarCollapsed ? "pl-20 pr-8" : "px-8"
+          className={`absolute top-0 left-0 right-0 z-10 flex h-12 items-center justify-between bg-background/80 backdrop-blur-sm ${
+            sidebarCollapsed ? "pl-[100px] pr-8" : "px-8"
           }`}
           data-tauri-drag-region
         >

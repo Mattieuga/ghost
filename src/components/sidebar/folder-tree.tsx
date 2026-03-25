@@ -196,7 +196,9 @@ function DroppableFolder({
     }
     try {
       await invoke<string>("rename_file", { oldPath: id, newName: renameName });
-      onRefresh();
+      // Don't call onRefresh() — let the file watcher handle the update.
+      // This prevents the folder from collapsing because the parent
+      // re-fetches entries with a new path (new key = remount = defaultOpen).
     } catch (err) {
       console.error("Failed to rename folder:", err);
       setRenameName(folderName);

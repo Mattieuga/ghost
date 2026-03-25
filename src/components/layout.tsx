@@ -239,21 +239,14 @@ export function GhostLayout() {
   }, [activeFile, headerRenameName, activeFileName, handleFsChange]);
 
   return (
-    <div className="flex flex-col h-svh w-full overflow-hidden">
-      {/* Title bar — 40px, spans full window, Figma: #0e0e10 bg */}
-      <div
-        className="flex h-10 shrink-0 items-center justify-center bg-[#0e0e10] border-b border-[#1c1c20]"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-      >
-        <span className="text-[13px] font-medium text-[#52525b] tracking-[0.3px]">ghost</span>
-      </div>
-
-      {/* Main content below title bar */}
-      <div className="flex flex-1 overflow-hidden">
+    <div className="flex h-svh w-full overflow-hidden">
       {/* Sidebar — 240px per Figma */}
       <div className="flex w-[240px] shrink-0 flex-col bg-sidebar border-r border-sidebar-border">
-        {/* Search bar (UI only) — Figma: 216x32, 16px below title bar */}
-        <div className="px-3 pt-4 pb-4">
+        {/* Native title bar drag area — 40px top padding */}
+        <div className="h-10 shrink-0" />
+
+        {/* Search bar (UI only) */}
+        <div className="px-3 pt-2 pb-4">
           <div className="flex items-center gap-2 h-8 px-3 rounded-[6px] bg-[#18181b] text-[13px] cursor-pointer">
             <Search className="size-3.5 text-[#3f3f46]" />
             <span className="flex-1 text-[#3f3f46]">Search...</span>
@@ -323,8 +316,12 @@ export function GhostLayout() {
 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden bg-background">
-        {/* Header with breadcrumb and word count */}
-        {/* Editor header — Figma: 44px, breadcrumb + word count */}
+        {/* Native title bar area — "ghost" centered */}
+        <div className="flex h-10 shrink-0 items-center justify-center">
+          <span className="text-[13px] font-medium text-[#52525b] tracking-[0.3px]">ghost</span>
+        </div>
+
+        {/* Editor header — breadcrumb + word count */}
         <div className="flex h-11 shrink-0 items-center justify-between px-8 border-b border-border">
           <div className="flex items-center gap-1 text-[13px]">
             {isRenamingHeader ? (
@@ -375,7 +372,6 @@ export function GhostLayout() {
             </div>
           )}
         </main>
-      </div>
       </div>
 
       <SettingsDialog

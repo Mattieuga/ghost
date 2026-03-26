@@ -363,7 +363,7 @@ function DroppableFolder({
           Rename...
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={handleDelete} className="text-destructive">
+        <ContextMenuItem onSelect={() => setShowDeleteDialog(true)} className="text-destructive">
           Delete Folder
         </ContextMenuItem>
       </ContextMenuContent>

@@ -303,15 +303,15 @@ function DroppableFolder({
     if (isRoot) {
       return (
         <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
-          <ContextMenuItem onSelect={onAddProject}>
-            Open New Project
-            <ContextMenuShortcut>⌘O</ContextMenuShortcut>
-          </ContextMenuItem>
           <ContextMenuItem onSelect={() => onRemoveFolder?.(id)}>
             Close Project
           </ContextMenuItem>
           <ContextMenuItem disabled>
             Open in New Window
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={onAddProject}>
+            Open New Project
+            <ContextMenuShortcut>⌘O</ContextMenuShortcut>
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem onSelect={() => { setOpen(true); onCreateFile(id); }}>
@@ -347,15 +347,15 @@ function DroppableFolder({
     // Sub-folder menu
     return (
       <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
-        <ContextMenuItem onSelect={onAddProject}>
-          Open New Project
-          <ContextMenuShortcut>⌘O</ContextMenuShortcut>
-        </ContextMenuItem>
         <ContextMenuItem onSelect={() => { const next = !open; setOpen(next); onOpenChange?.(next); }}>
           {open ? "Collapse" : "Expand"}
         </ContextMenuItem>
         <ContextMenuItem disabled>
           Open in New Window
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={onAddProject}>
+          Open New Project
+          <ContextMenuShortcut>⌘O</ContextMenuShortcut>
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => { setOpen(true); onCreateFile(id); }}>

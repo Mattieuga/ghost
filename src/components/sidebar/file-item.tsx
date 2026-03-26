@@ -238,15 +238,15 @@ export function FileItem({
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
-          <ContextMenuItem onSelect={onAddProject}>
-            Open New Project
-            <ContextMenuShortcut>⌘O</ContextMenuShortcut>
-          </ContextMenuItem>
           <ContextMenuItem onSelect={onSelect} disabled={isActive}>
             Open File
           </ContextMenuItem>
           <ContextMenuItem disabled>
             Open File in New Window
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={onAddProject}>
+            Open New Project
+            <ContextMenuShortcut>⌘O</ContextMenuShortcut>
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem onSelect={onNewSibling}>

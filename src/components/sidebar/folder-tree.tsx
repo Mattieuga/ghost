@@ -448,7 +448,7 @@ function DroppableFolder({
               onOpenChange?.(next);
               onFolderSelect(id);
             }}
-            className="w-full text-left flex items-center gap-2 py-1.5 pr-2 hover:text-[#e4e4e7] transition-colors cursor-pointer select-none"
+            className="w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-[#e4e4e7] transition-colors cursor-pointer select-none"
             style={{ paddingLeft: `${togglePadding}px` }}
           >
             {isRoot ? (
@@ -462,7 +462,7 @@ function DroppableFolder({
             ) : (
               <span className="text-[16px] leading-none text-[#52525b]">{open ? "▾" : "▸"}</span>
             )}
-            <span className={`text-[13px] font-medium ${isRoot ? "text-[#e4e4e7]" : "text-[#a1a1aa]"}`}>{displayFolderName}</span>
+            <span className={`text-[13px] font-medium truncate ${isRoot ? "text-[#e4e4e7]" : "text-[#a1a1aa]"}`}>{displayFolderName}</span>
           </button>
         </ContextMenuTrigger>
         {renderContextMenu()}

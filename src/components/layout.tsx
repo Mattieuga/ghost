@@ -328,7 +328,8 @@ export function GhostLayout() {
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing.current) return;
-      const newWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startWidth + (e.clientX - startX)));
+      const maxForWindow = window.innerWidth - EDITOR_MIN;
+      const newWidth = Math.min(SIDEBAR_MAX, maxForWindow, Math.max(SIDEBAR_MIN, startWidth + (e.clientX - startX)));
       setSidebarWidth(newWidth);
     };
 

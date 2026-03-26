@@ -517,7 +517,7 @@ export function GhostLayout() {
         {/* Resize handle */}
         {!sidebarCollapsed && (
           <div
-            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[#f57c00]/30 active:bg-[#f57c00]/50 transition-colors z-10"
+            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-10 border-r border-sidebar-border"
             onMouseDown={handleResizeStart}
           />
         )}

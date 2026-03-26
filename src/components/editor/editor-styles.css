@@ -1,6 +1,6 @@
 .ghost-editor {
-  padding: 3.5rem 0 2.5rem 0;
-  max-width: 640px;
+  padding: 3.5rem 40px 2.5rem 40px;
+  max-width: 720px;
   margin: 0 auto;
   min-height: 100%;
   outline: none;

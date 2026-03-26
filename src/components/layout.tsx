@@ -30,6 +30,13 @@ import { useTrackedFolders } from "@/hooks/use-tracked-folders";
 import { useFileWatcher } from "@/hooks/use-file-watcher";
 import { useSettings } from "@/hooks/use-settings";
 import { useTheme } from "@/components/theme-provider";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Search } from "lucide-react";
 
 export function GhostLayout() {
@@ -499,6 +506,8 @@ export function GhostLayout() {
         </div>
 
         {/* Folder tree */}
+        <ContextMenu>
+        <ContextMenuTrigger asChild>
         <div className="flex-1 overflow-y-auto overscroll-contain px-1">
           <DndContext
             sensors={sensors}
@@ -549,6 +558,7 @@ export function GhostLayout() {
                     onNewFolderRenamed={() => setNewlyCreatedFolder(null)}
                     activeDropFolder={activeDropFolder}
                     onRootOpenChange={(path, isOpen) => setRootFolderOpen(prev => ({ ...prev, [path]: isOpen }))}
+                    onAddProject={addFolder}
                   />
                 ))}
               </div>
@@ -562,6 +572,14 @@ export function GhostLayout() {
             </DragOverlay>
           </DndContext>
         </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <ContextMenuItem onSelect={addFolder}>
+            Open New Project
+            <ContextMenuShortcut>⌘O</ContextMenuShortcut>
+          </ContextMenuItem>
+        </ContextMenuContent>
+        </ContextMenu>
 
         {/* Footer — Settings + Collapse */}
         <div className="shrink-0 border-t border-sidebar-border px-4 py-3 flex items-center justify-between">

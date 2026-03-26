@@ -35,6 +35,7 @@ interface FileItemProps {
   autoRename?: boolean;
   onAutoRenameDone?: () => void;
   rootGuideX?: number | null;
+  onAddProject?: () => void;
 }
 
 export function FileItem({
@@ -49,6 +50,7 @@ export function FileItem({
   autoRename,
   onAutoRenameDone,
   rootGuideX,
+  onAddProject,
 }: FileItemProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [displayName, setDisplayName] = useState(entry.name);
@@ -236,6 +238,10 @@ export function FileItem({
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <ContextMenuItem onSelect={onAddProject}>
+            Open New Project
+            <ContextMenuShortcut>⌘O</ContextMenuShortcut>
+          </ContextMenuItem>
           <ContextMenuItem onSelect={onSelect} disabled={isActive}>
             Open File
           </ContextMenuItem>

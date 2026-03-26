@@ -45,6 +45,7 @@ interface FolderTreeProps {
   onNewFolderCreated?: (path: string) => void;
   onNewFolderRenamed: () => void;
   onRootOpenChange?: (path: string, isOpen: boolean) => void;
+  onAddProject?: () => void;
 }
 
 export function FolderTree({
@@ -66,6 +67,7 @@ export function FolderTree({
   onNewFolderCreated,
   onNewFolderRenamed,
   onRootOpenChange,
+  onAddProject,
 }: FolderTreeProps) {
   const { entries, error, refresh } = useDirectory(path, extensions, refreshTrigger);
 
@@ -138,6 +140,7 @@ export function FolderTree({
       isRoot={true}
       hasActiveFile={hasActiveFile}
       onOpenChange={(isOpen) => onRootOpenChange?.(path, isOpen)}
+      onAddProject={onAddProject}
     >
       <FileTree
         entries={entries}
@@ -155,6 +158,7 @@ export function FolderTree({
         onNewFileRenamed={onNewFileRenamed}
         newlyCreatedFolder={newlyCreatedFolder}
         onNewFolderRenamed={onNewFolderRenamed}
+        onAddProject={onAddProject}
         depth={0}
         rootGuideX={hasActiveFile ? rootGuideX : null}
       />
@@ -178,6 +182,7 @@ function DroppableFolder({
   autoRename,
   onAutoRenameDone,
   onOpenChange,
+  onAddProject,
   children,
 }: {
   id: string;
@@ -195,6 +200,7 @@ function DroppableFolder({
   autoRename?: boolean;
   onAutoRenameDone?: () => void;
   onOpenChange?: (isOpen: boolean) => void;
+  onAddProject?: () => void;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -297,6 +303,10 @@ function DroppableFolder({
     if (isRoot) {
       return (
         <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <ContextMenuItem onSelect={onAddProject}>
+            Open New Project
+            <ContextMenuShortcut>⌘O</ContextMenuShortcut>
+          </ContextMenuItem>
           <ContextMenuItem onSelect={() => onRemoveFolder?.(id)}>
             Close Project
           </ContextMenuItem>
@@ -336,7 +346,11 @@ function DroppableFolder({
 
     // Sub-folder menu
     return (
-      <ContextMenuContent className="w-56">
+      <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
+        <ContextMenuItem onSelect={onAddProject}>
+          Open New Project
+          <ContextMenuShortcut>⌘O</ContextMenuShortcut>
+        </ContextMenuItem>
         <ContextMenuItem onSelect={() => { const next = !open; setOpen(next); onOpenChange?.(next); }}>
           {open ? "Collapse" : "Expand"}
         </ContextMenuItem>
@@ -519,6 +533,7 @@ function FileTree({
   onNewFileRenamed,
   newlyCreatedFolder,
   onNewFolderRenamed,
+  onAddProject,
   depth,
   rootGuideX,
 }: {
@@ -533,6 +548,7 @@ function FileTree({
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
   onRefresh: () => void;
+  onAddProject?: () => void;
   newlyCreatedFile: string | null;
   onNewFileRenamed: () => void;
   newlyCreatedFolder: string | null;
@@ -553,6 +569,7 @@ function FileTree({
             onCreateFile={onCreateFile}
             onCreateFolder={onCreateFolder}
             onRefresh={onRefresh}
+            onAddProject={onAddProject}
             depth={depth + 1}
             autoRename={entry.path === newlyCreatedFolder}
             onAutoRenameDone={onNewFolderRenamed}
@@ -573,6 +590,7 @@ function FileTree({
               onNewFileRenamed={onNewFileRenamed}
               newlyCreatedFolder={newlyCreatedFolder}
               onNewFolderRenamed={onNewFolderRenamed}
+              onAddProject={onAddProject}
               depth={depth + 1}
               rootGuideX={rootGuideX}
             />
@@ -591,6 +609,7 @@ function FileTree({
             autoRename={entry.path === newlyCreatedFile}
             onAutoRenameDone={onNewFileRenamed}
             rootGuideX={rootGuideX}
+            onAddProject={onAddProject}
           />
         )
       )}

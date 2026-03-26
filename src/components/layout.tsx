@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import {
   DndContext,
   DragOverlay,
@@ -248,8 +249,7 @@ export function GhostLayout() {
 
       if (mod && e.key === "\\") {
         e.preventDefault();
-        setSidebarCollapsed((c) => !c);
-        setSidebarHovered(false);
+        toggleSidebar();
       }
 
       if (mod && e.key === ",") {
@@ -318,6 +318,7 @@ export function GhostLayout() {
 
   const SIDEBAR_MIN = 180;
   const SIDEBAR_MAX = 400;
+  const EDITOR_MIN = 390; // 300px content + 90px padding
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -341,10 +342,46 @@ export function GhostLayout() {
     window.addEventListener("mouseup", handleMouseUp);
   }, [sidebarWidth]);
 
-  const toggleSidebar = useCallback(() => {
+  const toggleSidebar = useCallback(async () => {
+    const willExpand = sidebarCollapsed;
+    if (willExpand) {
+      // Expanding — grow window if needed to fit sidebar + editor min
+      const needed = sidebarWidth + EDITOR_MIN;
+      const windowWidth = window.innerWidth;
+      if (windowWidth < needed) {
+        try {
+          await getCurrentWindow().setSize(new LogicalSize(needed, window.innerHeight));
+        } catch (err) {
+          console.error("Failed to resize window:", err);
+        }
+      }
+    }
     setSidebarCollapsed((c) => !c);
     setSidebarHovered(false);
-  }, []);
+  }, [sidebarCollapsed, sidebarWidth]);
+
+  // Dynamic window min size based on sidebar state
+  useEffect(() => {
+    const minWidth = sidebarCollapsed ? EDITOR_MIN : SIDEBAR_MIN + EDITOR_MIN;
+    getCurrentWindow().setSizeConstraints({
+      minWidth,
+      minHeight: 300,
+    }).catch(() => {});
+  }, [sidebarCollapsed]);
+
+  // Shrink sidebar when window is too small for sidebar + editor min
+  useEffect(() => {
+    const handleResize = () => {
+      if (sidebarCollapsed) return;
+      const windowWidth = window.innerWidth;
+      if (windowWidth < sidebarWidth + EDITOR_MIN) {
+        const newWidth = Math.max(SIDEBAR_MIN, windowWidth - EDITOR_MIN);
+        setSidebarWidth(newWidth);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [sidebarWidth, sidebarCollapsed]);
 
   // Which folders have the active file
   const folderHasActiveFile = useCallback((folderPath: string) => {
@@ -405,9 +442,9 @@ export function GhostLayout() {
       {/* Sidebar — expanded or overlay (always rendered when collapsed for animation) */}
       <div
         className={`flex flex-col bg-sidebar overflow-hidden transition-transform duration-150 ease-out
-          ${sidebarCollapsed ? "absolute left-0 top-0 bottom-0 z-30 shadow-2xl shadow-black/50 w-[240px]" : "relative shrink-0 border-r border-sidebar-border"}
+          ${sidebarCollapsed ? "absolute left-0 top-0 bottom-0 z-30 shadow-2xl shadow-black/50 w-[240px]" : "relative border-r border-sidebar-border"}
           ${sidebarCollapsed && !sidebarHovered ? "-translate-x-full" : "translate-x-0"}`}
-        style={!sidebarCollapsed ? { width: `${sidebarWidth}px` } : undefined}
+        style={!sidebarCollapsed ? { width: `${sidebarWidth}px`, minWidth: `${SIDEBAR_MIN}px`, flexShrink: 0 } : undefined}
         onMouseEnter={handleSidebarMouseEnter}
         onMouseLeave={handleSidebarMouseLeave}
       >

@@ -151,7 +151,8 @@ export function FileItem({
 
   const handleCopyPath = async () => {
     try {
-      await navigator.clipboard.writeText(entry.path);
+      const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+      await writeText(entry.path);
     } catch (err) {
       console.error("Failed to copy path:", err);
     }
@@ -159,15 +160,17 @@ export function FileItem({
 
   const handleCopyTextAs = async (format: "plain" | "markdown" | "rich") => {
     try {
+      const { writeText, writeHtml } = await import("@tauri-apps/plugin-clipboard-manager");
       const content = await invoke<string>("read_file", { path: entry.path });
-      if (format === "plain" || format === "markdown") {
-        await navigator.clipboard.writeText(content);
+
+      if (format === "markdown") {
+        await writeText(content);
+      } else if (format === "plain") {
+        const plainText = await invoke<string>("markdown_to_plain_text", { markdown: content });
+        await writeText(plainText);
       } else {
-        // Rich text — write as HTML
-        const blob = new Blob([content], { type: "text/html" });
-        await navigator.clipboard.write([
-          new ClipboardItem({ "text/html": blob, "text/plain": new Blob([content], { type: "text/plain" }) }),
-        ]);
+        const html = await invoke<string>("markdown_to_html", { markdown: content });
+        await writeHtml(html);
       }
     } catch (err) {
       console.error("Failed to copy text:", err);

@@ -274,7 +274,8 @@ function DroppableFolder({
 
   const handleCopyPath = async () => {
     try {
-      await navigator.clipboard.writeText(id);
+      const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+      await writeText(id);
     } catch (err) {
       console.error("Failed to copy path:", err);
     }

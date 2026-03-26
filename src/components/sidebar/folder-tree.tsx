@@ -30,11 +30,11 @@ interface FolderTreeProps {
   path: string;
   extensions: string[];
   activeFile: string | null;
-  selectedItem: string | null;
+
   refreshTrigger: number;
   activeDropFolder: string | null;
   onFileSelect: (path: string) => void;
-  onFolderSelect: (path: string) => void;
+
   onRemoveFolder: (path: string) => void;
   onFileRenamed: (oldPath: string, newPath: string) => void;
   onFileDeleted: (path: string) => void;
@@ -52,10 +52,10 @@ export function FolderTree({
   path,
   extensions,
   activeFile,
-  selectedItem,
+
   refreshTrigger,
   onFileSelect,
-  onFolderSelect,
+
   onRemoveFolder,
   onFileRenamed,
   onFileDeleted,
@@ -130,7 +130,7 @@ export function FolderTree({
       id={path}
       folderName={folderName}
       activeDropFolder={activeDropFolder}
-      onFolderSelect={onFolderSelect}
+
       onRemoveFolder={onRemoveFolder}
       onCreateFile={handleCreateFile}
       onCreateFolder={handleCreateFolder}
@@ -145,10 +145,10 @@ export function FolderTree({
       <FileTree
         entries={entries}
         activeFile={activeFile}
-        selectedItem={selectedItem}
+
         activeDropFolder={activeDropFolder}
         onFileSelect={onFileSelect}
-        onFolderSelect={onFolderSelect}
+  
         onFileRenamed={onFileRenamed}
         onFileDeleted={onFileDeleted}
         onCreateFile={handleCreateFile}
@@ -170,7 +170,7 @@ function DroppableFolder({
   id,
   folderName,
   activeDropFolder,
-  onFolderSelect,
+
   onRemoveFolder,
   onCreateFile,
   onCreateFolder,
@@ -188,7 +188,7 @@ function DroppableFolder({
   id: string;
   folderName: string;
   activeDropFolder: string | null;
-  onFolderSelect: (path: string) => void;
+
   onRemoveFolder?: (path: string) => void;
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
@@ -461,7 +461,6 @@ function DroppableFolder({
               const next = !open;
               setOpen(next);
               onOpenChange?.(next);
-              onFolderSelect(id);
             }}
             className="w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-[#e4e4e7] transition-colors cursor-pointer select-none rounded-[5px] data-[state=open]:bg-white/[0.06]"
             style={{ paddingLeft: `${togglePadding}px` }}
@@ -521,10 +520,10 @@ function DroppableFolder({
 function FileTree({
   entries,
   activeFile,
-  selectedItem,
+
   activeDropFolder,
   onFileSelect,
-  onFolderSelect,
+
   onFileRenamed,
   onFileDeleted,
   onCreateFile,
@@ -540,10 +539,10 @@ function FileTree({
 }: {
   entries: FileEntry[];
   activeFile: string | null;
-  selectedItem: string | null;
+
   activeDropFolder: string | null;
   onFileSelect: (path: string) => void;
-  onFolderSelect: (path: string) => void;
+
   onFileRenamed: (oldPath: string, newPath: string) => void;
   onFileDeleted: (path: string) => void;
   onCreateFile: (dir: string) => void;
@@ -566,7 +565,7 @@ function FileTree({
             id={entry.path}
             folderName={entry.name}
             activeDropFolder={activeDropFolder}
-            onFolderSelect={onFolderSelect}
+      
             onCreateFile={onCreateFile}
             onCreateFolder={onCreateFolder}
             onRefresh={onRefresh}
@@ -578,10 +577,10 @@ function FileTree({
             <FileTree
               entries={entry.children ?? []}
               activeFile={activeFile}
-              selectedItem={selectedItem}
+      
               activeDropFolder={activeDropFolder}
               onFileSelect={onFileSelect}
-              onFolderSelect={onFolderSelect}
+        
               onFileRenamed={onFileRenamed}
               onFileDeleted={onFileDeleted}
               onCreateFile={onCreateFile}

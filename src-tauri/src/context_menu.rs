@@ -22,12 +22,12 @@ pub unsafe fn install_context_menu_hook(webview_ptr: *mut c_void) {
     // Check if already installed by us (avoid double-install on hot reload)
     let existing = objc2::ffi::class_getInstanceMethod(class as *const _, sel_will_open);
     if !existing.is_null() {
-        eprintln!("[ghost] willOpenMenu:withEvent: already exists on class, attempting method_setImplementation...");
+
         // Replace the existing implementation instead of adding a new one
         let imp = transmute::<unsafe extern "C" fn(&AnyObject, Sel, *mut AnyObject, *mut AnyObject), unsafe extern "C-unwind" fn()>(will_open_menu);
         objc2::ffi::method_setImplementation(existing, imp);
     } else {
-        eprintln!("[ghost] Adding willOpenMenu:withEvent: to class...");
+
         class_addMethod(
             class,
             sel_will_open,
@@ -56,7 +56,7 @@ pub unsafe fn install_context_menu_hook(webview_ptr: *mut c_void) {
         std::ptr::null(),
     );
 
-    eprintln!("[ghost] Context menu hook installed");
+
 }
 
 #[cfg(target_os = "macos")]
@@ -66,7 +66,6 @@ unsafe extern "C" fn will_open_menu(
     menu: *mut AnyObject,
     _event: *mut AnyObject,
 ) {
-    eprintln!("[ghost] willOpenMenu called! menu ptr: {:?}", menu);
 
     // Use raw ObjC messaging only — avoid objc2 high-level APIs that may panic
     let menu = menu as *mut AnyObject;
@@ -90,7 +89,7 @@ unsafe extern "C" fn will_open_menu(
             break;
         }
     }
-    eprintln!("[ghost] Found {} items, copy at index {}", count, copy_index);
+
 
     // Create submenu using raw alloc/init
     let submenu_title = NSString::from_str("Copy As\u{2026}");
@@ -129,7 +128,6 @@ unsafe extern "C" fn will_open_menu(
     // Insert after Copy
     let insert_index = if copy_index >= 0 { copy_index + 1 } else { count };
     let _: () = msg_send![menu, insertItem: parent_item, atIndex: insert_index];
-    eprintln!("[ghost] Inserted Copy As... at index {}", insert_index);
 }
 
 /// Helper: evaluate JS that calls the global __ghostCopyAs function

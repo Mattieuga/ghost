@@ -45,7 +45,6 @@ export function GhostLayout() {
   const { setTheme } = useTheme();
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
-  const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [isRenamingHeader, setIsRenamingHeader] = useState(false);
@@ -86,7 +85,6 @@ export function GhostLayout() {
       const content = await invoke<string>("read_file", { path });
       setActiveFile(path);
       setFileContent(content);
-      setSelectedItem(path);
       // Count words
       const words = content.trim().split(/\s+/).filter(Boolean).length;
       setWordCount(words);
@@ -95,9 +93,6 @@ export function GhostLayout() {
     }
   }, []);
 
-  const handleFolderSelect = useCallback((path: string) => {
-    setSelectedItem(path);
-  }, []);
 
   const handleContentChange = useCallback(
     async (markdown: string) => {
@@ -123,10 +118,9 @@ export function GhostLayout() {
   const handleFileRenamed = useCallback(
     (oldPath: string, newPath: string) => {
       if (activeFile === oldPath) setActiveFile(newPath);
-      if (selectedItem === oldPath) setSelectedItem(newPath);
       handleFsChange();
     },
-    [activeFile, selectedItem, handleFsChange]
+    [activeFile, handleFsChange]
   );
 
   const handleFileDeleted = useCallback(
@@ -135,10 +129,9 @@ export function GhostLayout() {
         setActiveFile(null);
         setFileContent("");
       }
-      if (selectedItem === path) setSelectedItem(null);
       handleFsChange();
     },
-    [activeFile, selectedItem, handleFsChange]
+    [activeFile, handleFsChange]
   );
 
   // dnd-kit handlers
@@ -184,12 +177,41 @@ export function GhostLayout() {
   );
 
   // Expose functions for Rust menu events
+  const createNewFile = useCallback(async () => {
+    if (folders.length === 0) { addFolder(); return; }
+    const currentFile = activeFileRef.current;
+    const targetDir = currentFile
+      ? currentFile.substring(0, currentFile.lastIndexOf("/"))
+      : folders[0];
+    let name = "Untitled.md";
+    let counter = 1;
+    while (true) {
+      try {
+        const path = await invoke<string>("create_file", { dir: targetDir, name });
+        setNewlyCreatedFile(path);
+        handleFsChange();
+        handleFileSelect(path);
+        break;
+      } catch {
+        counter++;
+        name = `Untitled ${counter}.md`;
+        if (counter > 100) break;
+      }
+    }
+  }, [folders, addFolder, handleFileSelect, handleFsChange]);
+
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__ghostAddFolder = addFolder;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return () => { delete (window as any).__ghostAddFolder; };
-  }, [addFolder]);
+    (window as any).__ghostNewFile = createNewFile;
+    return () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (window as any).__ghostAddFolder;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (window as any).__ghostNewFile;
+    };
+  }, [addFolder, createNewFile]);
 
   // Handle files opened from Finder (file associations)
   const openExternalFile = useCallback(async (filePath: string) => {
@@ -441,7 +463,6 @@ export function GhostLayout() {
         newName: headerRenameName,
       });
       setActiveFile(newPath);
-      setSelectedItem(newPath);
       handleFsChange();
     } catch (err) {
       console.error("Failed to rename:", err);
@@ -537,10 +558,8 @@ export function GhostLayout() {
                     path={folder}
                     extensions={extensions}
                     activeFile={activeFile}
-                    selectedItem={selectedItem}
                     refreshTrigger={refreshTrigger}
                     onFileSelect={handleFileSelect}
-                    onFolderSelect={handleFolderSelect}
                     onRemoveFolder={(path) => {
                       removeFolder(path);
                       if (activeFile?.startsWith(path)) {

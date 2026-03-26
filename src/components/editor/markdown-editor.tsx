@@ -5,6 +5,8 @@ import TaskItem from "@tiptap/extension-task-item";
 import Link from "@tiptap/extension-link";
 import { Markdown } from "tiptap-markdown";
 import { useEffect, useRef, useCallback } from "react";
+// @ts-expect-error — getHTMLFromFragment exists in @tiptap/core but types may not export it
+import { getHTMLFromFragment } from "@tiptap/core";
 import "./editor-styles.css";
 
 interface MarkdownEditorProps {
@@ -96,6 +98,40 @@ export function MarkdownEditor({
       }
     };
   }, []);
+
+  // Expose copy-as function for native context menu
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__ghostCopyAs = async (format: string) => {
+      if (!editor) return;
+      const { from, to } = editor.state.selection;
+      if (from === to) return;
+
+      const { writeText, writeHtml } = await import("@tauri-apps/plugin-clipboard-manager");
+
+      if (format === "plain") {
+        const text = editor.state.doc.textBetween(from, to, "\n");
+        await writeText(text);
+      } else if (format === "markdown") {
+        // Get just the selected portion — serialize the slice
+        const slice = editor.state.doc.slice(from, to);
+        const tempDoc = editor.schema.topNodeType.create(null, slice.content);
+        try {
+          const selectedMd = editor.storage.markdown.serializer.serialize(tempDoc);
+          await writeText(selectedMd);
+        } catch {
+          // Fallback to full markdown if serializer fails on slice
+          await writeText(editor.state.doc.textBetween(from, to, "\n"));
+        }
+      } else if (format === "rich") {
+        const slice = editor.state.doc.slice(from, to);
+        const html = getHTMLFromFragment(slice.content, editor.schema);
+        await writeHtml(html);
+      }
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return () => { delete (window as any).__ghostCopyAs; };
+  }, [editor]);
 
   return (
     <div className="h-full">

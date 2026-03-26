@@ -132,56 +132,15 @@ unsafe extern "C" fn will_open_menu(
     eprintln!("[ghost] Inserted Copy As... at index {}", insert_index);
 }
 
-/// Helper: evaluate JS and write result to NSPasteboard as string
+/// Helper: evaluate JS that calls the global __ghostCopyAs function
 #[cfg(target_os = "macos")]
-unsafe fn eval_and_copy(webview: &AnyObject, js: &str, as_html: bool) {
-    let js_str = NSString::from_str(js);
-
-    // We can't easily create ObjC blocks from Rust, so instead we use
-    // a JS approach: have the JS write to a hidden input, then immediately
-    // read it. But simplest: just use JS to write to clipboard via
-    // a synchronous execCommand approach.
-
-    // For plain text: select the text in a textarea and execCommand copy
-    // For HTML: select in a contentEditable div and execCommand copy
-    let wrapper_js = if as_html {
-        format!(
-            r#"(() => {{
-                const result = {};
-                if (!result) return;
-                const div = document.createElement('div');
-                div.contentEditable = true;
-                div.innerHTML = result;
-                div.style.cssText = 'position:fixed;opacity:0;left:-9999px';
-                document.body.appendChild(div);
-                const range = document.createRange();
-                range.selectNodeContents(div);
-                const sel = window.getSelection();
-                sel.removeAllRanges();
-                sel.addRange(range);
-                document.execCommand('copy');
-                document.body.removeChild(div);
-            }})()"#,
-            js
-        )
-    } else {
-        format!(
-            r#"(() => {{
-                const result = {};
-                if (!result) return;
-                const ta = document.createElement('textarea');
-                ta.value = result;
-                ta.style.cssText = 'position:fixed;opacity:0;left:-9999px';
-                document.body.appendChild(ta);
-                ta.select();
-                document.execCommand('copy');
-                document.body.removeChild(ta);
-            }})()"#,
-            js
-        )
-    };
-    let wrapper_str = NSString::from_str(&wrapper_js);
-    let _: () = msg_send![webview, evaluateJavaScript: &*wrapper_str, completionHandler: std::ptr::null::<c_void>()];
+unsafe fn eval_copy_as(webview: &AnyObject, format: &str) {
+    let js = format!(
+        r#"window.__ghostCopyAs && window.__ghostCopyAs("{}")"#,
+        format
+    );
+    let js_str = NSString::from_str(&js);
+    let _: () = msg_send![webview, evaluateJavaScript: &*js_str, completionHandler: std::ptr::null::<c_void>()];
 }
 
 /// Copy selected text as plain text
@@ -191,17 +150,17 @@ unsafe extern "C" fn ghost_copy_as_plain_text(
     _cmd: Sel,
     _sender: *mut AnyObject,
 ) {
-    eval_and_copy(this, "window.getSelection()?.toString()", false);
+    eval_copy_as(this, "plain");
 }
 
-/// Copy selected text as markdown (same as plain for now — selection is rendered text)
+/// Copy selected text as markdown
 #[cfg(target_os = "macos")]
 unsafe extern "C" fn ghost_copy_as_markdown(
     this: &AnyObject,
     _cmd: Sel,
     _sender: *mut AnyObject,
 ) {
-    eval_and_copy(this, "window.getSelection()?.toString()", false);
+    eval_copy_as(this, "markdown");
 }
 
 /// Copy selected text as rich text (HTML)
@@ -211,9 +170,5 @@ unsafe extern "C" fn ghost_copy_as_rich_text(
     _cmd: Sel,
     _sender: *mut AnyObject,
 ) {
-    eval_and_copy(
-        this,
-        "(() => { const sel = window.getSelection(); if (!sel || sel.rangeCount === 0) return null; const range = sel.getRangeAt(0); const div = document.createElement('div'); div.appendChild(range.cloneContents()); return div.innerHTML; })()",
-        true,
-    );
+    eval_copy_as(this, "rich");
 }

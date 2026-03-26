@@ -11,6 +11,15 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 
 const INDENT_BASE = 16;
@@ -190,7 +199,15 @@ function DroppableFolder({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [isRenaming, setIsRenaming] = useState(false);
+  const [displayFolderName, setDisplayFolderName] = useState(folderName);
   const [renameName, setRenameName] = useState(folderName);
+  const [renameError, setRenameError] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  // Sync display name with prop
+  useEffect(() => {
+    setDisplayFolderName(folderName);
+  }, [folderName]);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const isHighlighted = activeDropFolder === id;
   const { setNodeRef } = useDroppable({
@@ -223,16 +240,17 @@ function DroppableFolder({
       setRenameName(folderName);
       return;
     }
+    setDisplayFolderName(renameName);
+    setIsRenaming(false);
     try {
       await invoke<string>("rename_file", { oldPath: id, newName: renameName });
-      // Don't call onRefresh() — let the file watcher handle the update.
-      // This prevents the folder from collapsing because the parent
-      // re-fetches entries with a new path (new key = remount = defaultOpen).
     } catch (err) {
       console.error("Failed to rename folder:", err);
-      setRenameName(folderName);
+      setDisplayFolderName(folderName);
+      setIsRenaming(true);
+      setRenameError(true);
+      setTimeout(() => setRenameError(false), 500);
     }
-    setIsRenaming(false);
   };
 
   const startRename = () => {
@@ -309,7 +327,7 @@ function DroppableFolder({
             Rename...
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem onSelect={handleDelete} className="text-destructive">
+          <ContextMenuItem onSelect={() => setShowDeleteDialog(true)} className="text-destructive">
             Delete Folder
           </ContextMenuItem>
         </ContextMenuContent>
@@ -354,7 +372,7 @@ function DroppableFolder({
           Rename...
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={handleDelete} className="text-destructive">
+        <ContextMenuItem onSelect={() => setShowDeleteDialog(true)} className="text-destructive">
           Delete Folder
         </ContextMenuItem>
       </ContextMenuContent>
@@ -394,7 +412,9 @@ function DroppableFolder({
                 setIsRenaming(false);
               }
             }}
-            className="flex-1 bg-transparent text-[13px] text-[#e4e4e7] font-medium outline-none caret-[#f57c00] border border-[#3f3f46] rounded-[4px] px-2 py-0.5"
+            className={`flex-1 bg-transparent text-[13px] text-[#e4e4e7] font-medium outline-none caret-[#f57c00] border rounded-[4px] px-2 py-0.5 transition-colors ${
+              renameError ? "border-red-500 shake-error" : "border-[#3f3f46]"
+            }`}
           />
         </div>
         {open && (
@@ -428,7 +448,7 @@ function DroppableFolder({
               onOpenChange?.(next);
               onFolderSelect(id);
             }}
-            className="w-full text-left flex items-center gap-2 py-1.5 pr-2 hover:text-[#e4e4e7] transition-colors cursor-pointer select-none"
+            className="w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-[#e4e4e7] transition-colors cursor-pointer select-none"
             style={{ paddingLeft: `${togglePadding}px` }}
           >
             {isRoot ? (
@@ -442,7 +462,7 @@ function DroppableFolder({
             ) : (
               <span className="text-[16px] leading-none text-[#52525b]">{open ? "▾" : "▸"}</span>
             )}
-            <span className={`text-[13px] font-medium ${isRoot ? "text-[#e4e4e7]" : "text-[#a1a1aa]"}`}>{folderName}</span>
+            <span className={`text-[13px] font-medium truncate ${isRoot ? "text-[#e4e4e7]" : "text-[#a1a1aa]"}`}>{displayFolderName}</span>
           </button>
         </ContextMenuTrigger>
         {renderContextMenu()}
@@ -460,6 +480,25 @@ function DroppableFolder({
           {children}
         </div>
       )}
+
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent onKeyDown={(e) => { if (e.key === "Enter") { handleDelete(); setShowDeleteDialog(false); } }}>
+          <DialogHeader>
+            <DialogTitle>Delete folder</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{displayFolderName}" and all its contents? This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => { handleDelete(); setShowDeleteDialog(false); }}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

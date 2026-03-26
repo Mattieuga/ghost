@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import {
   DndContext,
@@ -32,7 +33,7 @@ import { useTheme } from "@/components/theme-provider";
 import { Search } from "lucide-react";
 
 export function GhostLayout() {
-  const { folders, loading, addFolder, removeFolder } = useTrackedFolders();
+  const { folders, loading, addFolder, addFolderByPath, removeFolder } = useTrackedFolders();
   const { settings, updateSettings } = useSettings();
   const { setTheme } = useTheme();
   const [activeFile, setActiveFile] = useState<string | null>(null);
@@ -182,6 +183,39 @@ export function GhostLayout() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return () => { delete (window as any).__ghostAddFolder; };
   }, [addFolder]);
+
+  // Handle files opened from Finder (file associations)
+  const openExternalFile = useCallback(async (filePath: string) => {
+    const parentDir = filePath.substring(0, filePath.lastIndexOf("/"));
+
+    // Add parent folder if not already tracked
+    const isTracked = folders.some((f) => filePath.startsWith(f + "/") || filePath.startsWith(f));
+    if (!isTracked) {
+      addFolderByPath(parentDir);
+      handleFsChange();
+    }
+
+    // Open the file
+    handleFileSelect(filePath);
+  }, [folders, addFolderByPath, handleFileSelect, handleFsChange]);
+
+  // Check for files opened during cold start
+  useEffect(() => {
+    if (loading) return; // Wait for tracked folders to load
+    invoke<string[]>("get_pending_open_files").then((paths) => {
+      if (paths.length > 0) {
+        openExternalFile(paths[0]);
+      }
+    }).catch(() => {});
+  }, [loading, openExternalFile]);
+
+  // Listen for files opened while app is running
+  useEffect(() => {
+    const unlisten = listen<string>("file-open", (event) => {
+      openExternalFile(event.payload);
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [openExternalFile]);
 
   // Keyboard shortcuts
   useEffect(() => {

@@ -2,6 +2,7 @@ mod commands;
 mod watcher;
 
 use tauri::Manager;
+use tauri::{Emitter, RunEvent};
 use tauri::menu::{MenuBuilder, SubmenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -91,6 +92,18 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let RunEvent::Opened { urls } = &event {
+                for url in urls {
+                    if url.scheme() == "file" {
+                        if let Ok(path) = url.to_file_path() {
+                            let path_str = path.to_string_lossy().to_string();
+                            let _ = app_handle.emit("file-open", path_str);
+                        }
+                    }
+                }
+            }
+        });
 }

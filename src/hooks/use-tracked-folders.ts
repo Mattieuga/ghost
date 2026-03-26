@@ -37,6 +37,15 @@ export function useTrackedFolders() {
     }
   }, [persist]);
 
+  const addFolderByPath = useCallback((path: string) => {
+    setFolders((prev) => {
+      if (prev.includes(path)) return prev;
+      const next = [...prev, path];
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
   const removeFolder = useCallback(
     (path: string) => {
       setFolders((prev) => {
@@ -48,5 +57,5 @@ export function useTrackedFolders() {
     [persist]
   );
 
-  return { folders, loading, addFolder, removeFolder };
+  return { folders, loading, addFolder, addFolderByPath, removeFolder };
 }

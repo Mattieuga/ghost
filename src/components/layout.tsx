@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import {
   DndContext,
@@ -32,7 +33,7 @@ import { useTheme } from "@/components/theme-provider";
 import { Search } from "lucide-react";
 
 export function GhostLayout() {
-  const { folders, loading, addFolder, removeFolder } = useTrackedFolders();
+  const { folders, loading, addFolder, addFolderByPath, removeFolder } = useTrackedFolders();
   const { settings, updateSettings } = useSettings();
   const { setTheme } = useTheme();
   const [activeFile, setActiveFile] = useState<string | null>(null);
@@ -182,6 +183,26 @@ export function GhostLayout() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return () => { delete (window as any).__ghostAddFolder; };
   }, [addFolder]);
+
+  // Handle files opened from Finder (file associations)
+  useEffect(() => {
+    const unlisten = listen<string>("file-open", async (event) => {
+      const filePath = event.payload;
+      const parentDir = filePath.substring(0, filePath.lastIndexOf("/"));
+
+      // Add parent folder if not already tracked
+      const isTracked = folders.some((f) => filePath.startsWith(f + "/") || filePath.startsWith(f));
+      if (!isTracked) {
+        addFolderByPath(parentDir);
+        handleFsChange();
+      }
+
+      // Open the file
+      handleFileSelect(filePath);
+    });
+
+    return () => { unlisten.then((fn) => fn()); };
+  }, [folders, addFolderByPath, handleFileSelect, handleFsChange]);
 
   // Keyboard shortcuts
   useEffect(() => {

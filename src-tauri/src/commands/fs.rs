@@ -113,12 +113,21 @@ pub async fn create_directory(parent: String, name: String) -> Result<String, St
 }
 
 #[tauri::command]
-pub async fn move_file(file_path: String, target_dir: String) -> Result<String, String> {
+pub async fn move_file(file_path: String, target_dir: String, force: Option<bool>) -> Result<String, String> {
     let source = Path::new(&file_path);
     let file_name = source.file_name().ok_or("Cannot determine file name")?;
     let dest = Path::new(&target_dir).join(file_name);
     if dest.exists() {
-        return Err(format!("A file with that name already exists in the target folder"));
+        if force.unwrap_or(false) {
+            // Remove existing before move
+            if dest.is_dir() {
+                fs::remove_dir_all(&dest).map_err(|e| format!("Failed to remove existing: {}", e))?;
+            } else {
+                fs::remove_file(&dest).map_err(|e| format!("Failed to remove existing: {}", e))?;
+            }
+        } else {
+            return Err("ALREADY_EXISTS".to_string());
+        }
     }
     fs::rename(&file_path, &dest).map_err(|e| format!("Failed to move file: {}", e))?;
     Ok(dest.to_string_lossy().to_string())

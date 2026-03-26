@@ -53,6 +53,7 @@ export function FileItem({
   const [isRenaming, setIsRenaming] = useState(false);
   const [displayName, setDisplayName] = useState(entry.name);
   const [renameName, setRenameName] = useState(entry.name);
+  const [renameError, setRenameError] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const blurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,18 +106,18 @@ export function FileItem({
       setRenameName(entry.name);
       return;
     }
-    setDisplayName(renameName);
-    setIsRenaming(false);
     try {
       const newPath = await invoke<string>("rename_file", {
         oldPath: entry.path,
         newName: renameName,
       });
+      setDisplayName(renameName);
+      setIsRenaming(false);
       onRenamed?.(newPath);
     } catch (err) {
       console.error("Failed to rename:", err);
-      setDisplayName(entry.name);
-      setRenameName(entry.name);
+      setRenameError(true);
+      setTimeout(() => setRenameError(false), 500);
     }
   };
 
@@ -195,7 +196,9 @@ export function FileItem({
               setIsRenaming(false);
             }
           }}
-          className="w-full bg-transparent text-[13px] text-[#e4e4e7] outline-none caret-[#f57c00] border border-[#3f3f46] rounded-[4px] px-2 py-1"
+          className={`w-full bg-transparent text-[13px] text-[#e4e4e7] outline-none caret-[#f57c00] border rounded-[4px] px-2 py-1 transition-colors ${
+            renameError ? "border-red-500 shake-error" : "border-[#3f3f46]"
+          }`}
         />
       </div>
     );
@@ -297,7 +300,7 @@ export function FileItem({
       </ContextMenu>
 
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent>
+        <DialogContent onKeyDown={(e) => { if (e.key === "Enter") handleDelete(); }}>
           <DialogHeader>
             <DialogTitle>Delete file</DialogTitle>
             <DialogDescription>

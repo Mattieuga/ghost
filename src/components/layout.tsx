@@ -11,6 +11,15 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { FolderTree } from "@/components/sidebar/folder-tree";
 import { EmptyState } from "@/components/sidebar/empty-state";
 import { MarkdownEditor } from "@/components/editor/markdown-editor";
@@ -39,6 +48,7 @@ export function GhostLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [rootFolderOpen, setRootFolderOpen] = useState<Record<string, boolean>>({});
+  const [pendingMove, setPendingMove] = useState<{ filePath: string; targetDir: string } | null>(null);
   const sidebarHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headerInputRef = useRef<HTMLInputElement>(null);
   const activeFileRef = useRef<string | null>(null);
@@ -152,7 +162,11 @@ export function GhostLayout() {
         if (activeFile === filePath) setActiveFile(newPath);
         handleFsChange();
       } catch (err) {
-        console.error("Failed to move file:", err);
+        if (String(err) === "ALREADY_EXISTS") {
+          setPendingMove({ filePath, targetDir: folderPath });
+        } else {
+          console.error("Failed to move file:", err);
+        }
       }
     },
     [activeFile, handleFsChange]
@@ -532,6 +546,45 @@ export function GhostLayout() {
           )}
         </main>
       </div>
+
+      {/* Override confirmation for drag move */}
+      <Dialog open={!!pendingMove} onOpenChange={(open) => { if (!open) setPendingMove(null); }}>
+        <DialogContent onKeyDown={(e) => {
+          if (e.key === "Enter" && pendingMove) {
+            invoke<string>("move_file", { filePath: pendingMove.filePath, targetDir: pendingMove.targetDir, force: true })
+              .then((newPath) => {
+                if (activeFile === pendingMove.filePath) setActiveFile(newPath);
+                handleFsChange();
+              })
+              .catch((err) => console.error("Failed to override:", err));
+            setPendingMove(null);
+          }
+        }}>
+          <DialogHeader>
+            <DialogTitle>File already exists</DialogTitle>
+            <DialogDescription>
+              A file with the same name already exists in the target folder. Do you want to replace it?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingMove(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => {
+              if (!pendingMove) return;
+              invoke<string>("move_file", { filePath: pendingMove.filePath, targetDir: pendingMove.targetDir, force: true })
+                .then((newPath) => {
+                  if (activeFile === pendingMove.filePath) setActiveFile(newPath);
+                  handleFsChange();
+                })
+                .catch((err) => console.error("Failed to override:", err));
+              setPendingMove(null);
+            }}>
+              Replace
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <SettingsDialog
         open={showSettings}

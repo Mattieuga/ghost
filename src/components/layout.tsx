@@ -404,8 +404,8 @@ export function GhostLayout() {
 
       {/* Sidebar — expanded or overlay (always rendered when collapsed for animation) */}
       <div
-        className={`flex flex-col bg-sidebar transition-transform duration-150 ease-out relative
-          ${sidebarCollapsed ? "absolute left-0 top-0 bottom-0 z-30 shadow-2xl shadow-black/50 w-[240px]" : "shrink-0"}
+        className={`flex flex-col bg-sidebar overflow-hidden transition-transform duration-150 ease-out relative
+          ${sidebarCollapsed ? "absolute left-0 top-0 bottom-0 z-30 shadow-2xl shadow-black/50 w-[240px]" : "shrink-0 border-r border-sidebar-border"}
           ${sidebarCollapsed && !sidebarHovered ? "-translate-x-full" : "translate-x-0"}`}
         style={!sidebarCollapsed ? { width: `${sidebarWidth}px` } : undefined}
         onMouseEnter={handleSidebarMouseEnter}

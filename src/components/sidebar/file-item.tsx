@@ -106,13 +106,13 @@ export function FileItem({
       setRenameName(entry.name);
       return;
     }
+    setDisplayName(renameName);
+    setIsRenaming(false);
     try {
       const newPath = await invoke<string>("rename_file", {
         oldPath: entry.path,
         newName: renameName,
       });
-      setDisplayName(renameName);
-      setIsRenaming(false);
       onRenamed?.(newPath);
     } catch (err) {
       console.error("Failed to rename:", err);

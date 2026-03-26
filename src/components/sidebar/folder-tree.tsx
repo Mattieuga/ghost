@@ -234,11 +234,12 @@ function DroppableFolder({
       setRenameName(folderName);
       return;
     }
+    setIsRenaming(false);
     try {
       await invoke<string>("rename_file", { oldPath: id, newName: renameName });
-      setIsRenaming(false);
     } catch (err) {
       console.error("Failed to rename folder:", err);
+      setIsRenaming(true);
       setRenameError(true);
       setTimeout(() => setRenameError(false), 500);
     }

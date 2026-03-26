@@ -214,7 +214,7 @@ export function FileItem({
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
-            className={`mx-1.5 rounded-[5px] relative ${isActive ? "bg-white/[0.06]" : ""}`}
+            className={`mx-1.5 rounded-[5px] relative ${isActive ? "bg-white/[0.06]" : "data-[state=open]:bg-white/[0.06]"}`}
           >
           {isActive && rootGuideX != null && (
             <div

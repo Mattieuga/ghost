@@ -448,7 +448,7 @@ function DroppableFolder({
               onOpenChange?.(next);
               onFolderSelect(id);
             }}
-            className="w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-[#e4e4e7] transition-colors cursor-pointer select-none"
+            className="w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-[#e4e4e7] transition-colors cursor-pointer select-none rounded-[5px] data-[state=open]:bg-white/[0.06]"
             style={{ paddingLeft: `${togglePadding}px` }}
           >
             {isRoot ? (

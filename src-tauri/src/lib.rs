@@ -1,5 +1,7 @@
 mod commands;
 mod watcher;
+#[cfg(target_os = "macos")]
+mod context_menu;
 
 use std::sync::Mutex;
 use tauri::Manager;
@@ -104,6 +106,16 @@ pub fn run() {
                     _ => {}
                 }
             });
+
+            // Install native context menu hook on macOS
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.with_webview(|webview| {
+                        unsafe { context_menu::install_context_menu_hook(webview.inner()); }
+                    });
+                }
+            }
 
             Ok(())
         })

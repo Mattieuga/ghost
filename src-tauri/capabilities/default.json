@@ -8,6 +8,7 @@
     "core:window:allow-start-dragging",
     "core:window:allow-set-size-constraints",
     "core:window:allow-set-size",
+    "clipboard-manager:default",
     "dialog:default",
     "store:default",
     "fs:default",

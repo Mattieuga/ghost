@@ -151,50 +151,26 @@ export function FileItem({
 
   const handleCopyPath = async () => {
     try {
-      await navigator.clipboard.writeText(entry.path);
+      const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+      await writeText(entry.path);
     } catch (err) {
       console.error("Failed to copy path:", err);
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.style.cssText = "position:fixed;opacity:0;left:-9999px";
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand("copy");
-    document.body.removeChild(textarea);
-  };
-
-  const copyRichToClipboard = (html: string, plainText: string) => {
-    // Use a hidden contentEditable div for rich text copy
-    const div = document.createElement("div");
-    div.contentEditable = "true";
-    div.innerHTML = html;
-    div.style.cssText = "position:fixed;opacity:0;left:-9999px";
-    document.body.appendChild(div);
-    const range = document.createRange();
-    range.selectNodeContents(div);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-    document.execCommand("copy");
-    document.body.removeChild(div);
-  };
-
   const handleCopyTextAs = async (format: "plain" | "markdown" | "rich") => {
     try {
+      const { writeText, writeHtml } = await import("@tauri-apps/plugin-clipboard-manager");
       const content = await invoke<string>("read_file", { path: entry.path });
+
       if (format === "markdown") {
-        copyToClipboard(content);
+        await writeText(content);
       } else if (format === "plain") {
         const plainText = await invoke<string>("markdown_to_plain_text", { markdown: content });
-        copyToClipboard(plainText);
+        await writeText(plainText);
       } else {
         const html = await invoke<string>("markdown_to_html", { markdown: content });
-        const plainText = await invoke<string>("markdown_to_plain_text", { markdown: content });
-        copyRichToClipboard(html, plainText);
+        await writeHtml(html);
       }
     } catch (err) {
       console.error("Failed to copy text:", err);

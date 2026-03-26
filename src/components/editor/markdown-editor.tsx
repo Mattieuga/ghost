@@ -60,7 +60,22 @@ export function MarkdownEditor({
       attributes: {
         class: "ghost-editor",
       },
-      handleKeyDown: (_view, event) => {
+      handleKeyDown: (view, event) => {
+        // Cmd+C for rich text copy
+        if ((event.metaKey || event.ctrlKey) && event.key === "c" && !event.shiftKey) {
+          const { from, to } = view.state.selection;
+          if (from !== to) {
+            event.preventDefault();
+            const slice = view.state.doc.slice(from, to);
+            const serializer = DOMSerializer.fromSchema(view.state.schema);
+            const div = document.createElement("div");
+            div.appendChild(serializer.serializeFragment(slice.content));
+            import("@tauri-apps/plugin-clipboard-manager").then(({ writeHtml }) => {
+              writeHtml(div.innerHTML);
+            });
+            return true;
+          }
+        }
         // Cmd+S for immediate save
         if ((event.metaKey || event.ctrlKey) && event.key === "s") {
           event.preventDefault();

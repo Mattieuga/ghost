@@ -5,8 +5,7 @@ import TaskItem from "@tiptap/extension-task-item";
 import Link from "@tiptap/extension-link";
 import { Markdown } from "tiptap-markdown";
 import { useEffect, useRef, useCallback } from "react";
-// @ts-expect-error — getHTMLFromFragment exists in @tiptap/core but types may not export it
-import { getHTMLFromFragment } from "@tiptap/core";
+import { DOMSerializer } from "@tiptap/pm/model";
 import "./editor-styles.css";
 
 interface MarkdownEditorProps {
@@ -125,8 +124,10 @@ export function MarkdownEditor({
         }
       } else if (format === "rich") {
         const slice = editor.state.doc.slice(from, to);
-        const html = getHTMLFromFragment(slice.content, editor.schema);
-        await writeHtml(html);
+        const serializer = DOMSerializer.fromSchema(editor.schema);
+        const div = document.createElement("div");
+        div.appendChild(serializer.serializeFragment(slice.content));
+        await writeHtml(div.innerHTML);
       }
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

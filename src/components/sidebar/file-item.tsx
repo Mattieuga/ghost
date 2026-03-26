@@ -160,13 +160,20 @@ export function FileItem({
   const handleCopyTextAs = async (format: "plain" | "markdown" | "rich") => {
     try {
       const content = await invoke<string>("read_file", { path: entry.path });
-      if (format === "plain" || format === "markdown") {
+
+      if (format === "markdown") {
         await navigator.clipboard.writeText(content);
+      } else if (format === "plain") {
+        const plainText = await invoke<string>("markdown_to_plain_text", { markdown: content });
+        await navigator.clipboard.writeText(plainText);
       } else {
-        // Rich text — write as HTML
-        const blob = new Blob([content], { type: "text/html" });
+        // Rich text — convert markdown to HTML, copy with both MIME types
+        const html = await invoke<string>("markdown_to_html", { markdown: content });
+        const plainText = await invoke<string>("markdown_to_plain_text", { markdown: content });
+        const htmlBlob = new Blob([html], { type: "text/html" });
+        const textBlob = new Blob([plainText], { type: "text/plain" });
         await navigator.clipboard.write([
-          new ClipboardItem({ "text/html": blob, "text/plain": new Blob([content], { type: "text/plain" }) }),
+          new ClipboardItem({ "text/html": htmlBlob, "text/plain": textBlob }),
         ]);
       }
     } catch (err) {

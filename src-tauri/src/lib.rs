@@ -34,6 +34,8 @@ pub fn run() {
             commands::fs::delete_file,
             commands::fs::duplicate_file,
             commands::fs::reveal_in_finder,
+            commands::fs::markdown_to_html,
+            commands::fs::markdown_to_plain_text,
             watcher::watch_directories,
             get_pending_open_files,
         ])

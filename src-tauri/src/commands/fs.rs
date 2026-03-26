@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::fs;
 use std::path::Path;
+use pulldown_cmark::{Parser, Options, html};
 
 #[derive(Debug, Serialize)]
 pub struct FileEntry {
@@ -220,4 +221,49 @@ pub async fn reveal_in_finder(path: String) -> Result<(), String> {
             .map_err(|e| format!("Failed to reveal in Finder: {}", e))?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn markdown_to_html(markdown: String) -> Result<String, String> {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_TASKLISTS);
+    let parser = Parser::new_ext(&markdown, options);
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, parser);
+    Ok(html_output)
+}
+
+#[tauri::command]
+pub async fn markdown_to_plain_text(markdown: String) -> Result<String, String> {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_TASKLISTS);
+    let parser = Parser::new_ext(&markdown, options);
+    let mut plain = String::new();
+    for event in parser {
+        match event {
+            pulldown_cmark::Event::Text(text) | pulldown_cmark::Event::Code(text) => {
+                plain.push_str(&text);
+            }
+            pulldown_cmark::Event::SoftBreak | pulldown_cmark::Event::HardBreak => {
+                plain.push('\n');
+            }
+            pulldown_cmark::Event::End(tag) => {
+                match tag {
+                    pulldown_cmark::TagEnd::Paragraph
+                    | pulldown_cmark::TagEnd::Heading(_)
+                    | pulldown_cmark::TagEnd::Item
+                    | pulldown_cmark::TagEnd::BlockQuote(_) => {
+                        plain.push('\n');
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(plain.trim().to_string())
 }

@@ -1,9 +1,19 @@
 mod commands;
 mod watcher;
 
+use std::sync::Mutex;
 use tauri::Manager;
 use tauri::{Emitter, RunEvent};
 use tauri::menu::{MenuBuilder, SubmenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+
+/// Stores file paths opened via Finder before the frontend is ready
+struct PendingOpenFiles(Mutex<Vec<String>>);
+
+#[tauri::command]
+fn get_pending_open_files(state: tauri::State<PendingOpenFiles>) -> Vec<String> {
+    let mut pending = state.0.lock().unwrap();
+    pending.drain(..).collect()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,6 +22,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(watcher::WatcherState::new())
+        .manage(PendingOpenFiles(Mutex::new(Vec::new())))
         .invoke_handler(tauri::generate_handler![
             commands::fs::read_directory,
             commands::fs::read_file,
@@ -24,6 +35,7 @@ pub fn run() {
             commands::fs::duplicate_file,
             commands::fs::reveal_in_finder,
             watcher::watch_directories,
+            get_pending_open_files,
         ])
         .setup(|app| {
             // Build macOS menu bar
@@ -100,7 +112,20 @@ pub fn run() {
                     if url.scheme() == "file" {
                         if let Ok(path) = url.to_file_path() {
                             let path_str = path.to_string_lossy().to_string();
-                            let _ = app_handle.emit("file-open", path_str);
+
+                            // Try to emit to frontend — if it fails (not ready yet),
+                            // store in pending for the frontend to pick up on mount
+                            if app_handle.emit("file-open", &path_str).is_err() {
+                                if let Some(state) = app_handle.try_state::<PendingOpenFiles>() {
+                                    state.0.lock().unwrap().push(path_str);
+                                }
+                            } else {
+                                // Also store in pending as backup — emit may succeed
+                                // but the listener might not be registered yet
+                                if let Some(state) = app_handle.try_state::<PendingOpenFiles>() {
+                                    state.0.lock().unwrap().push(path_str);
+                                }
+                            }
                         }
                     }
                 }

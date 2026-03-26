@@ -47,6 +47,8 @@ export function GhostLayout() {
   const [newlyCreatedFolder, setNewlyCreatedFolder] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const isResizing = useRef(false);
   const [rootFolderOpen, setRootFolderOpen] = useState<Record<string, boolean>>({});
   const [pendingMove, setPendingMove] = useState<{ filePath: string; targetDir: string } | null>(null);
   const sidebarHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -314,6 +316,31 @@ export function GhostLayout() {
     }, 200);
   }, [sidebarCollapsed]);
 
+  const SIDEBAR_MIN = 180;
+  const SIDEBAR_MAX = 400;
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current) return;
+      const newWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startWidth + (e.clientX - startX)));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      isResizing.current = false;
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  }, [sidebarWidth]);
+
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((c) => !c);
     setSidebarHovered(false);
@@ -377,9 +404,10 @@ export function GhostLayout() {
 
       {/* Sidebar — expanded or overlay (always rendered when collapsed for animation) */}
       <div
-        className={`flex w-[240px] flex-col bg-sidebar border-r border-sidebar-border transition-transform duration-150 ease-out
-          ${sidebarCollapsed ? "absolute left-0 top-0 bottom-0 z-30 shadow-2xl shadow-black/50" : "shrink-0"}
+        className={`flex flex-col bg-sidebar transition-transform duration-150 ease-out relative
+          ${sidebarCollapsed ? "absolute left-0 top-0 bottom-0 z-30 shadow-2xl shadow-black/50 w-[240px]" : "shrink-0"}
           ${sidebarCollapsed && !sidebarHovered ? "-translate-x-full" : "translate-x-0"}`}
+        style={!sidebarCollapsed ? { width: `${sidebarWidth}px` } : undefined}
         onMouseEnter={handleSidebarMouseEnter}
         onMouseLeave={handleSidebarMouseLeave}
       >
@@ -485,6 +513,14 @@ export function GhostLayout() {
             </svg>
           </button>
         </div>
+
+        {/* Resize handle */}
+        {!sidebarCollapsed && (
+          <div
+            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[#f57c00]/30 active:bg-[#f57c00]/50 transition-colors z-10"
+            onMouseDown={handleResizeStart}
+          />
+        )}
       </div>
 
       {/* Main content — full height, no top bar */}

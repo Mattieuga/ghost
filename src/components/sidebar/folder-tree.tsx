@@ -199,9 +199,15 @@ function DroppableFolder({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [isRenaming, setIsRenaming] = useState(false);
+  const [displayFolderName, setDisplayFolderName] = useState(folderName);
   const [renameName, setRenameName] = useState(folderName);
   const [renameError, setRenameError] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  // Sync display name with prop
+  useEffect(() => {
+    setDisplayFolderName(folderName);
+  }, [folderName]);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const isHighlighted = activeDropFolder === id;
   const { setNodeRef } = useDroppable({
@@ -234,11 +240,13 @@ function DroppableFolder({
       setRenameName(folderName);
       return;
     }
+    setDisplayFolderName(renameName);
     setIsRenaming(false);
     try {
       await invoke<string>("rename_file", { oldPath: id, newName: renameName });
     } catch (err) {
       console.error("Failed to rename folder:", err);
+      setDisplayFolderName(folderName);
       setIsRenaming(true);
       setRenameError(true);
       setTimeout(() => setRenameError(false), 500);
@@ -454,7 +462,7 @@ function DroppableFolder({
             ) : (
               <span className="text-[16px] leading-none text-[#52525b]">{open ? "▾" : "▸"}</span>
             )}
-            <span className={`text-[13px] font-medium ${isRoot ? "text-[#e4e4e7]" : "text-[#a1a1aa]"}`}>{folderName}</span>
+            <span className={`text-[13px] font-medium ${isRoot ? "text-[#e4e4e7]" : "text-[#a1a1aa]"}`}>{displayFolderName}</span>
           </button>
         </ContextMenuTrigger>
         {renderContextMenu()}
@@ -478,7 +486,7 @@ function DroppableFolder({
           <DialogHeader>
             <DialogTitle>Delete folder</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{folderName}" and all its contents? This cannot be undone.
+              Are you sure you want to delete "{displayFolderName}" and all its contents? This cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

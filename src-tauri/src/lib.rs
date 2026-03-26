@@ -1,5 +1,7 @@
 mod commands;
 mod watcher;
+#[cfg(target_os = "macos")]
+mod context_menu;
 
 use std::sync::Mutex;
 use tauri::Manager;
@@ -104,6 +106,25 @@ pub fn run() {
                     _ => {}
                 }
             });
+
+            // Install native context menu hook on macOS
+            #[cfg(target_os = "macos")]
+            {
+                eprintln!("[ghost] Attempting to install context menu hook...");
+                match app.get_webview_window("main") {
+                    Some(window) => {
+                        eprintln!("[ghost] Got main window, calling with_webview...");
+                        match window.with_webview(|webview| {
+                            eprintln!("[ghost] Inside with_webview callback, inner ptr: {:?}", webview.inner());
+                            unsafe { context_menu::install_context_menu_hook(webview.inner()); }
+                        }) {
+                            Ok(_) => eprintln!("[ghost] with_webview succeeded"),
+                            Err(e) => eprintln!("[ghost] with_webview failed: {:?}", e),
+                        }
+                    }
+                    None => eprintln!("[ghost] ERROR: could not get main window"),
+                }
+            }
 
             Ok(())
         })

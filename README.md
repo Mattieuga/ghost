@@ -8,19 +8,7 @@
 
 ---
 
-Type markdown, see rich text. Files live on your filesystem. No cloud, no database, no accounts.
-
-## Features
-
-- **Bear-style editing** — type `#`, `**`, `-` and see formatted text, not syntax
-- **Multiple project folders** — track folders from anywhere on disk
-- **File management** — create, rename, delete, duplicate, drag between folders
-- **Autosave** — 1s debounce + Cmd+S for immediate save
-- **Dark theme** — OKLCH color system with amber accents
-- **Collapsible sidebar** — hover to peek, Cmd+\ to toggle
-- **Native context menus** — Copy As (Plain Text, Markdown, Rich Text) injected into macOS right-click menu
-- **File associations** — register as default `.md` handler, open files from Finder
-- **Cmd+C copies rich text** — paste into Docs/Word with formatting preserved
+Type markdown, see rich text. Files live on your filesystem. No cloud, no database, no accounts. Some features still in development.
 
 ## Stack
 

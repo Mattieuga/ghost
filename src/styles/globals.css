@@ -74,6 +74,11 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
   --ghost-amber: #f57c00;
+  --checkbox-background: oklch(0.88 0 0);
+  --checkbox-border: oklch(0.75 0 0);
+  --checkbox-background-checked: oklch(0.97 0 0);
+  --checkbox-border-checked: oklch(0.93 0 0);
+  --checkbox-mark: oklch(0.82 0 0);
 }
 
 /* Exact Figma colors from zinc palette */
@@ -106,6 +111,11 @@
   --sidebar-border: #1c1c20;
   --sidebar-ring: #3f3f46;
   --ghost-amber: #f57c00;
+  --checkbox-background: #27272a;        /* zinc-800 */
+  --checkbox-border: #3f3f46;            /* zinc-700 */
+  --checkbox-background-checked: #18181b; /* zinc-900 */
+  --checkbox-border-checked: #27272a;    /* zinc-800 */
+  --checkbox-mark: #52525b;              /* zinc-600 */
 }
 
 @layer base {

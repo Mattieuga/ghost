@@ -173,46 +173,37 @@
 }
 
 .ghost-editor ul[data-type="taskList"] li input[type="checkbox"] {
-  --check-bg: oklch(0.88 0 0);
-  --check-border: oklch(0.75 0 0);
-  --check-bg-done: oklch(0.97 0 0);
-  --check-border-done: oklch(0.93 0 0);
-  --check-mark: oklch(0.82 0 0);
-
   appearance: none;
   -webkit-appearance: none;
   width: 20px;
   height: 20px;
   min-width: 20px;
   border-radius: 6px;
-  background: var(--check-bg);
-  border: 1.5px solid var(--check-border);
+  background: var(--checkbox-background);
+  border: 1.5px solid var(--checkbox-border);
   cursor: pointer;
   position: relative;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-:is(.dark) .ghost-editor ul[data-type="taskList"] li input[type="checkbox"] {
-  --check-bg: oklch(0.3 0.01 250);
-  --check-border: oklch(0.45 0.01 250);
-  --check-bg-done: oklch(0.22 0.005 250);
-  --check-border-done: oklch(0.3 0.005 250);
-  --check-mark: oklch(0.45 0.005 250);
+.ghost-editor ul[data-type="taskList"] li input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 .ghost-editor ul[data-type="taskList"] li input[type="checkbox"]:checked {
-  background: var(--check-bg-done);
-  border-color: var(--check-border-done);
+  background: var(--checkbox-background-checked);
+  border-color: var(--checkbox-border-checked);
 }
 
 .ghost-editor ul[data-type="taskList"] li input[type="checkbox"]:checked::after {
   content: "";
   position: absolute;
-  left: 5.5px;
+  left: 6px;
   top: 2px;
-  width: 5.5px;
+  width: 5px;
   height: 10px;
-  border: solid var(--check-mark);
+  border: solid var(--checkbox-mark);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }

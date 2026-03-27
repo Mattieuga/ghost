@@ -3,14 +3,14 @@ node_modules/
 
 # Build output
 dist/
-
-# Tauri
 src-tauri/target/
 src-tauri/gen/
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # OS
 .DS_Store
@@ -19,3 +19,19 @@ Thumbs.db
 # Env
 .env
 .env.local
+.env.*.local
+
+# Claude Code
+.claude/
+
+# Debug
+*.log
+
+# Tauri build artifacts
+src-tauri/target/
+*.dmg
+*.app
+
+# Playwright
+test-results/
+playwright-report/

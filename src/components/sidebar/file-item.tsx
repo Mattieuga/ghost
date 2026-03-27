@@ -201,8 +201,8 @@ export function FileItem({
               setIsRenaming(false);
             }
           }}
-          className={`w-full bg-transparent text-[13px] text-[#e4e4e7] outline-none caret-[#f57c00] border rounded-[4px] px-2 py-1 transition-colors ${
-            renameError ? "border-red-500 shake-error" : "border-[#3f3f46]"
+          className={`w-full bg-transparent text-[13px] text-card-foreground outline-none caret-ghost-amber border rounded-[4px] px-2 py-1 transition-colors ${
+            renameError ? "border-red-500 shake-error" : "border-ring"
           }`}
         />
       </div>
@@ -224,15 +224,15 @@ export function FileItem({
           {isActive && rootGuideX != null && (
             <div
               className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
-              style={{ left: `${rootGuideX - 6}px`, backgroundColor: "#f57c00" }}
+              style={{ left: `${rootGuideX - 6}px`, backgroundColor: "var(--ghost-amber)" }}
             />
           )}
           <button
             onClick={onSelect}
             className={`w-full text-left py-1 pr-2 text-[13px] truncate transition-colors cursor-pointer select-none
               ${isActive
-                ? "text-[#e4e4e7] font-medium"
-                : "text-[#71717a] hover:text-[#a1a1aa]"
+                ? "text-card-foreground font-medium"
+                : "text-sidebar-foreground hover:text-sidebar-primary"
               }`}
             style={{ paddingLeft: `${indent - 6}px` }}
           >

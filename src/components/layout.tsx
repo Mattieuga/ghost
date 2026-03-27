@@ -497,7 +497,7 @@ export function GhostLayout() {
             {folders.map((folder) => {
               const hasActive = folderHasActiveFile(folder);
               const isOpen = rootFolderOpen[folder] !== false; // default to open
-              const dotColor = hasActive ? "#f57c00" : "#52525b";
+              const dotColor = hasActive ? "var(--ghost-amber)" : "var(--muted-foreground)";
               return (
                 <span
                   key={folder}
@@ -530,10 +530,10 @@ export function GhostLayout() {
 
         {/* Search bar (UI only) */}
         <div className="px-3 pt-0 pb-4">
-          <div className="flex items-center gap-2 h-8 px-3 rounded-[6px] bg-[#18181b] text-[13px] cursor-pointer">
-            <Search className="size-3.5 text-[#3f3f46]" />
-            <span className="flex-1 text-[#3f3f46]">Search...</span>
-            <kbd className="text-[11px] font-medium text-[#3f3f46]">&#8984;K</kbd>
+          <div className="flex items-center gap-2 h-8 px-3 rounded-[6px] bg-muted text-[13px] cursor-pointer">
+            <Search className="size-3.5 text-ring" />
+            <span className="flex-1 text-ring">Search...</span>
+            <kbd className="text-[11px] font-medium text-ring">&#8984;K</kbd>
           </div>
         </div>
 
@@ -552,12 +552,12 @@ export function GhostLayout() {
             ) : (
               <div>
                 <div className="flex items-center justify-between px-4 pb-2 pt-1">
-                  <span className="text-[10px] font-medium uppercase text-[#3f3f46]" style={{ letterSpacing: "1.2px" }}>
+                  <span className="text-[10px] font-medium uppercase text-ring" style={{ letterSpacing: "1.2px" }}>
                     Workspace
                   </span>
                   <button
                     onClick={addFolder}
-                    className="text-[#3f3f46] hover:text-[#71717a] transition-colors cursor-pointer text-[16px] leading-none"
+                    className="text-ring hover:text-sidebar-foreground transition-colors cursor-pointer text-[16px] leading-none"
                     title="Add folder (⌘O)"
                   >
                     +
@@ -615,13 +615,13 @@ export function GhostLayout() {
         <div className="shrink-0 border-t border-sidebar-border px-4 py-3 flex items-center justify-between">
           <button
             onClick={() => setShowSettings(true)}
-            className="text-[13px] text-[#3f3f46] hover:text-[#71717a] transition-colors cursor-pointer"
+            className="text-[13px] text-ring hover:text-sidebar-foreground transition-colors cursor-pointer"
           >
             Settings
           </button>
           <button
             onClick={toggleSidebar}
-            className="text-[#3f3f46] hover:text-[#71717a] transition-colors cursor-pointer"
+            className="text-ring hover:text-sidebar-foreground transition-colors cursor-pointer"
             title={sidebarCollapsed ? "Expand sidebar (⌘\\)" : "Collapse sidebar (⌘\\)"}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -667,10 +667,10 @@ export function GhostLayout() {
               />
             ) : breadcrumb ? (
               <>
-                <span className="text-[#52525b] pointer-events-none select-none">{breadcrumb.folderName}</span>
-                <span className="text-[#3f3f46] mx-1 pointer-events-none select-none">/</span>
+                <span className="text-muted-foreground pointer-events-none select-none">{breadcrumb.folderName}</span>
+                <span className="text-ring mx-1 pointer-events-none select-none">/</span>
                 <span
-                  className="text-[#a1a1aa] font-medium cursor-pointer hover:text-[#71717a] transition-colors"
+                  className="text-sidebar-primary font-medium cursor-pointer hover:text-sidebar-foreground transition-colors"
                   onClick={startHeaderRename}
                 >
                   {breadcrumb.fileName}
@@ -679,7 +679,7 @@ export function GhostLayout() {
             ) : null}
           </div>
           {activeFile && (
-            <span className="text-[12px] text-[#3f3f46] pointer-events-none select-none">
+            <span className="text-[12px] text-ring pointer-events-none select-none">
               {wordCount} words
             </span>
           )}

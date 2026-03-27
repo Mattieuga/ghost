@@ -476,9 +476,9 @@ function DroppableFolder({
                 }}
               />
             ) : (
-              <span className="text-[16px] leading-none text-muted-foreground">{open ? "▾" : "▸"}</span>
+              <span data-tree-label className="text-[16px] leading-none text-muted-foreground">{open ? "▾" : "▸"}</span>
             )}
-            <span className={`text-[13px] font-medium truncate ${isRoot ? "text-card-foreground" : "text-sidebar-primary"}`}>{displayFolderName}</span>
+            <span data-tree-label className={`text-[13px] font-medium truncate ${isRoot ? "text-card-foreground" : "text-sidebar-primary"}`}>{displayFolderName}</span>
           </button>
         </ContextMenuTrigger>
         {renderContextMenu()}

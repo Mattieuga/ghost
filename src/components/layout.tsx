@@ -58,7 +58,6 @@ export function GhostLayout() {
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const isResizing = useRef(false);
-  const [rootFolderOpen, setRootFolderOpen] = useState<Record<string, boolean>>({});
   const [pendingMove, setPendingMove] = useState<{ filePath: string; targetDir: string } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchMode, setSearchMode] = useState<"find" | "replace">("find");
@@ -470,8 +469,7 @@ export function GhostLayout() {
           console.error("Failed to resize window:", err);
         }
       }
-    }
-    if (!willExpand) {
+    } else {
       sidebarCollapsedAt.current = Date.now();
     }
     setSidebarCollapsed((c) => !c);
@@ -500,11 +498,6 @@ export function GhostLayout() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [sidebarWidth, sidebarCollapsed]);
-
-  // Which folders have the active file
-  const folderHasActiveFile = useCallback((folderPath: string) => {
-    return activeFile ? activeFile.startsWith(folderPath + "/") : false;
-  }, [activeFile]);
 
   const confirmForceMove = useCallback(() => {
     if (!pendingMove) return;
@@ -537,42 +530,20 @@ export function GhostLayout() {
 
   return (
     <div className="flex h-svh w-full overflow-hidden relative">
-      {/* Collapsed dots — only visible when sidebar is collapsed and not hovered */}
-      {sidebarCollapsed && !sidebarHovered && (
-        <div
-          className="absolute left-0 top-0 bottom-0 w-10 z-20"
-          onMouseEnter={handleSidebarMouseEnter}
-        >
-          {/* Drag region for traffic lights */}
-          <div className="h-12" data-tauri-drag-region />
-          {/* Project dots — positioned to match sidebar's first dot location */}
-          {/* Title bar 48px + search 48px + WORKSPACE label ~28px = ~124px, minus the 48px title bar above = 76px */}
-          <div className="flex flex-col items-start gap-[22px]" style={{ paddingLeft: "19px", paddingTop: "76px" }}>
-            {folders.map((folder) => {
-              const hasActive = folderHasActiveFile(folder);
-              const isOpen = rootFolderOpen[folder] !== false; // default to open
-              const dotColor = hasActive ? "var(--ghost-amber)" : "var(--muted-foreground)";
-              return (
-                <span
-                  key={folder}
-                  className="inline-block size-[7px] shrink-0 rounded-full transition-colors cursor-pointer"
-                  style={{
-                    backgroundColor: isOpen ? dotColor : "transparent",
-                    border: `1.5px solid ${dotColor}`,
-                  }}
-                />
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Sidebar — expanded or overlay (always rendered when collapsed for animation) */}
+      {/* Sidebar — always rendered, same DOM across all states */}
       <div
-        className={`flex flex-col bg-sidebar overflow-hidden transition-transform duration-150 ease-out
-          ${sidebarCollapsed ? "absolute left-0 top-0 bottom-0 z-30 shadow-2xl shadow-black/50 w-[240px]" : "relative border-r border-sidebar-border"}
-          ${sidebarCollapsed && !sidebarHovered ? "-translate-x-full" : "translate-x-0"}`}
-        style={!sidebarCollapsed ? { width: `${sidebarWidth}px`, minWidth: `${SIDEBAR_MIN}px`, flexShrink: 0 } : undefined}
+        data-sidebar-collapsed={sidebarCollapsed || undefined}
+        data-sidebar-hovered={sidebarHovered || undefined}
+        className={`flex flex-col overflow-hidden transition-[width] duration-200 ease-out
+          ${sidebarCollapsed
+            ? "absolute left-0 top-0 bottom-0 z-30"
+            : "relative bg-sidebar border-r border-sidebar-border"
+          }
+          ${sidebarCollapsed && sidebarHovered ? "bg-background/70 backdrop-blur-sm" : ""}`}
+        style={{
+          width: sidebarCollapsed ? (sidebarHovered ? 260 : 40) : sidebarWidth,
+          ...(sidebarCollapsed ? {} : { minWidth: SIDEBAR_MIN, flexShrink: 0 }),
+        }}
         onMouseEnter={handleSidebarMouseEnter}
         onMouseLeave={handleSidebarMouseLeave}
       >
@@ -582,6 +553,7 @@ export function GhostLayout() {
           data-tauri-drag-region
         >
           <button
+            data-sidebar-chrome
             onClick={() => setShowSettings(true)}
             className="text-ring hover:text-sidebar-foreground transition-colors cursor-pointer"
             title="Settings (⌘,)"
@@ -591,7 +563,7 @@ export function GhostLayout() {
         </div>
 
         {/* Search bar (UI only) */}
-        <div className="px-3 pt-0 pb-4">
+        <div data-sidebar-chrome className="px-3 pt-0 pb-4">
           <div className="flex items-center gap-2 h-8 px-3 rounded-[6px] bg-muted text-[13px] cursor-pointer">
             <Search className="size-3.5 text-ring" />
             <span className="flex-1 text-ring">Search...</span>
@@ -599,7 +571,7 @@ export function GhostLayout() {
           </div>
         </div>
 
-        {/* Folder tree */}
+        {/* Folder tree — ALWAYS rendered, same component, same DOM */}
         <ContextMenu>
         <ContextMenuTrigger asChild>
         <div className="flex-1 overflow-y-auto overscroll-contain px-1">
@@ -613,7 +585,7 @@ export function GhostLayout() {
               <EmptyState onAddFolder={addFolder} />
             ) : (
               <div>
-                <div className="flex items-center justify-between px-4 pb-2 pt-1">
+                <div data-sidebar-chrome className="flex items-center justify-between px-4 pb-2 pt-1">
                   <span className="text-[10px] font-medium uppercase text-ring" style={{ letterSpacing: "1.2px" }}>
                     Workspace
                   </span>
@@ -649,7 +621,6 @@ export function GhostLayout() {
                     onNewFolderCreated={(path) => setNewlyCreatedFolder(path)}
                     onNewFolderRenamed={() => setNewlyCreatedFolder(null)}
                     activeDropFolder={activeDropFolder}
-                    onRootOpenChange={(path, isOpen) => setRootFolderOpen(prev => ({ ...prev, [path]: isOpen }))}
                     onAddProject={addFolder}
                   />
                 ))}
@@ -673,7 +644,7 @@ export function GhostLayout() {
         </ContextMenuContent>
         </ContextMenu>
 
-        {/* Resize handle */}
+        {/* Resize handle — only when expanded */}
         {!sidebarCollapsed && (
           <div
             className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-10 border-r border-sidebar-border"

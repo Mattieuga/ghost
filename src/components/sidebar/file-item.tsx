@@ -228,6 +228,7 @@ export function FileItem({
             />
           )}
           <button
+            data-tree-label
             onClick={onSelect}
             className={`w-full text-left py-1 pr-2 text-[13px] truncate transition-colors cursor-pointer select-none
               ${isActive

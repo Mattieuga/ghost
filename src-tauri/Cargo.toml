@@ -27,4 +27,4 @@ notify-debouncer-mini = "0.5"
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = "0.3"
-objc2-app-kit = { version = "0.3", features = ["NSView", "NSMenu", "NSMenuItem", "NSEvent", "NSResponder", "NSPasteboard"] }
+objc2-app-kit = { version = "0.3", features = ["NSView", "NSMenu", "NSMenuItem", "NSEvent", "NSResponder", "NSPasteboard", "NSImage", "NSApplication", "NSRunningApplication"] }

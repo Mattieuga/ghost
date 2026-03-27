@@ -126,6 +126,22 @@ pub fn run() {
                 }
             });
 
+            // Use dev icon for dock when in debug mode
+            #[cfg(all(debug_assertions, target_os = "macos"))]
+            {
+                use objc2::{AnyThread, MainThreadMarker};
+                use objc2_app_kit::{NSApplication, NSImage};
+                use objc2_foundation::NSData;
+
+                let icon_bytes = include_bytes!("../../icon-dev.png");
+                let mtm = MainThreadMarker::new().expect("must be on main thread");
+                let data = NSData::with_bytes(icon_bytes);
+                if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
+                    let ns_app = NSApplication::sharedApplication(mtm);
+                    unsafe { ns_app.setApplicationIconImage(Some(&image)); }
+                }
+            }
+
             // Install native context menu hook on macOS
             #[cfg(target_os = "macos")]
             {

@@ -37,7 +37,7 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { Search } from "lucide-react";
+import { Search, SlidersHorizontal } from "lucide-react";
 import { SearchBar } from "@/components/editor/search-bar";
 
 export function GhostLayout() {
@@ -70,6 +70,7 @@ export function GhostLayout() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sidebarHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sidebarCollapsedAt = useRef<number>(0);
   const headerInputRef = useRef<HTMLInputElement>(null);
   const activeFileRef = useRef<string | null>(null);
   activeFileRef.current = activeFile;
@@ -407,6 +408,8 @@ export function GhostLayout() {
   // Sidebar hover handlers for collapsed mode
   const handleSidebarMouseEnter = useCallback(() => {
     if (!sidebarCollapsed) return;
+    // Ignore hover shortly after collapsing to prevent immediate re-open
+    if (Date.now() - sidebarCollapsedAt.current < 500) return;
     if (sidebarHoverTimeout.current) {
       clearTimeout(sidebarHoverTimeout.current);
       sidebarHoverTimeout.current = null;
@@ -467,6 +470,9 @@ export function GhostLayout() {
           console.error("Failed to resize window:", err);
         }
       }
+    }
+    if (!willExpand) {
+      sidebarCollapsedAt.current = Date.now();
     }
     setSidebarCollapsed((c) => !c);
     setSidebarHovered(false);
@@ -570,11 +576,19 @@ export function GhostLayout() {
         onMouseEnter={handleSidebarMouseEnter}
         onMouseLeave={handleSidebarMouseLeave}
       >
-        {/* Sidebar title bar — drag region for traffic lights */}
+        {/* Sidebar title bar — drag region for traffic lights + settings */}
         <div
-          className="h-12 shrink-0"
+          className="h-12 shrink-0 flex items-center justify-end px-3"
           data-tauri-drag-region
-        />
+        >
+          <button
+            onClick={() => setShowSettings(true)}
+            className="text-ring hover:text-sidebar-foreground transition-colors cursor-pointer"
+            title="Settings (⌘,)"
+          >
+            <SlidersHorizontal className="size-[15px]" strokeWidth={2.25} />
+          </button>
+        </div>
 
         {/* Search bar (UI only) */}
         <div className="px-3 pt-0 pb-4">
@@ -659,29 +673,6 @@ export function GhostLayout() {
         </ContextMenuContent>
         </ContextMenu>
 
-        {/* Footer — Settings + Collapse */}
-        <div className="shrink-0 border-t border-sidebar-border px-4 py-3 flex items-center justify-between">
-          <button
-            onClick={() => setShowSettings(true)}
-            className="text-[13px] text-ring hover:text-sidebar-foreground transition-colors cursor-pointer"
-          >
-            Settings
-          </button>
-          <button
-            onClick={toggleSidebar}
-            className="text-ring hover:text-sidebar-foreground transition-colors cursor-pointer"
-            title={sidebarCollapsed ? "Expand sidebar (⌘\\)" : "Collapse sidebar (⌘\\)"}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              {sidebarCollapsed ? (
-                <path d="M6 3L11 8L6 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              ) : (
-                <path d="M10 3L5 8L10 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              )}
-            </svg>
-          </button>
-        </div>
-
         {/* Resize handle */}
         {!sidebarCollapsed && (
           <div
@@ -690,6 +681,33 @@ export function GhostLayout() {
           />
         )}
       </div>
+
+      {/* Floating sidebar collapse toggle */}
+      <button
+        onClick={toggleSidebar}
+        onMouseEnter={(e) => {
+          e.stopPropagation();
+          // Cancel any pending sidebar hover when mouse is on the chevron
+          if (sidebarHoverTimeout.current) {
+            clearTimeout(sidebarHoverTimeout.current);
+            sidebarHoverTimeout.current = null;
+          }
+        }}
+        className="absolute bottom-3 left-4 z-40 text-ring hover:text-sidebar-foreground transition-colors cursor-pointer"
+        title={sidebarCollapsed ? "Expand sidebar (⌘\\)" : "Collapse sidebar (⌘\\)"}
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className="transition-transform duration-150 ease-out"
+          style={{ transform: sidebarCollapsed ? "scaleX(-1)" : "scaleX(1)" }}
+        >
+          <path d="M10 3L5 8L10 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
 
       {/* Main content — full height, no top bar */}
       <div className="relative flex-1 overflow-hidden bg-background">

@@ -38,6 +38,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Search } from "lucide-react";
+import { SearchBar } from "@/components/editor/search-bar";
 
 export function GhostLayout() {
   const { folders, loading, addFolder, addFolderByPath, removeFolder } = useTrackedFolders();
@@ -59,6 +60,15 @@ export function GhostLayout() {
   const isResizing = useRef(false);
   const [rootFolderOpen, setRootFolderOpen] = useState<Record<string, boolean>>({});
   const [pendingMove, setPendingMove] = useState<{ filePath: string; targetDir: string } | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchMode, setSearchMode] = useState<"find" | "replace">("find");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [replaceTerm, setReplaceTerm] = useState("");
+  const [searchResultCount, setSearchResultCount] = useState(0);
+  const [searchResultIndex, setSearchResultIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sidebarHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headerInputRef = useRef<HTMLInputElement>(null);
   const activeFileRef = useRef<string | null>(null);
@@ -80,17 +90,45 @@ export function GhostLayout() {
     [settings.showAllFiles]
   );
 
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchTerm("");
+    setDebouncedSearchTerm("");
+    setReplaceTerm("");
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+  }, []);
+
   const handleFileSelect = useCallback(async (path: string) => {
     try {
       const content = await invoke<string>("read_file", { path });
       setActiveFile(path);
       setFileContent(content);
+      closeSearch();
       // Count words
       const words = content.trim().split(/\s+/).filter(Boolean).length;
       setWordCount(words);
     } catch (err) {
       console.error("Failed to read file:", err);
     }
+  }, [closeSearch]);
+
+  const handleSearchTermChange = useCallback((value: string) => {
+    setSearchTerm(value);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearchTerm(value);
+    }, 150);
+  }, []);
+
+  const openSearch = useCallback((mode: "find" | "replace") => {
+    if (!activeFileRef.current) return;
+    setSearchOpen(true);
+    setSearchMode(mode);
+  }, []);
+
+  const handleSearchResults = useCallback((count: number, index: number) => {
+    setSearchResultCount(count);
+    setSearchResultIndex(index);
   }, []);
 
 
@@ -201,17 +239,17 @@ export function GhostLayout() {
   }, [folders, addFolder, handleFileSelect, handleFsChange]);
 
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).__ghostAddFolder = addFolder;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).__ghostNewFile = createNewFile;
+    window.__ghostAddFolder = addFolder;
+    window.__ghostNewFile = createNewFile;
+    window.__ghostFind = () => openSearch("find");
+    window.__ghostFindAndReplace = () => openSearch("replace");
     return () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (window as any).__ghostAddFolder;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (window as any).__ghostNewFile;
+      delete window.__ghostAddFolder;
+      delete window.__ghostNewFile;
+      delete window.__ghostFind;
+      delete window.__ghostFindAndReplace;
     };
-  }, [addFolder, createNewFile]);
+  }, [addFolder, createNewFile, openSearch]);
 
   // Handle files opened from Finder (file associations)
   const openExternalFile = useCallback(async (filePath: string) => {
@@ -305,6 +343,16 @@ export function GhostLayout() {
         }
       }
 
+      if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        openSearch("find");
+      }
+
+      if (mod && e.altKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        openSearch("replace");
+      }
+
       if (mod && e.key === "o") {
         e.preventDefault();
         addFolder();
@@ -323,7 +371,7 @@ export function GhostLayout() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [folders, addFolder, handleFileSelect]);
+  }, [folders, addFolder, handleFileSelect, openSearch]);
 
   // Breadcrumb from active file
   const breadcrumb = useMemo(() => {
@@ -652,36 +700,59 @@ export function GhostLayout() {
           }`}
           data-tauri-drag-region
         >
-          <div className="flex items-center gap-1 text-[13px] pointer-events-auto">
-            {isRenamingHeader ? (
-              <Input
-                ref={headerInputRef}
-                value={headerRenameName}
-                onChange={(e) => setHeaderRenameName(e.target.value)}
-                onBlur={handleHeaderRename}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleHeaderRename();
-                  if (e.key === "Escape") setIsRenamingHeader(false);
-                }}
-                className="h-6 text-[13px] px-1 w-48 bg-transparent"
+          {searchOpen ? (
+            <div className="flex items-center flex-1 min-w-0 pointer-events-auto">
+              <SearchBar
+                mode={searchMode}
+                searchTerm={searchTerm}
+                replaceTerm={replaceTerm}
+                onSearchTermChange={handleSearchTermChange}
+                onReplaceTermChange={setReplaceTerm}
+                resultCount={searchResultCount}
+                resultIndex={searchResultIndex}
+                onNext={() => window.__ghostSearch?.next()}
+                onPrevious={() => window.__ghostSearch?.previous()}
+                onReplace={() => window.__ghostSearch?.replace()}
+                onReplaceAll={() => window.__ghostSearch?.replaceAll()}
+                onClose={closeSearch}
+                onToggleMode={() => setSearchMode(m => m === "find" ? "replace" : "find")}
+                searchInputRef={searchInputRef}
               />
-            ) : breadcrumb ? (
-              <>
-                <span className="text-muted-foreground pointer-events-none select-none">{breadcrumb.folderName}</span>
-                <span className="text-ring mx-1 pointer-events-none select-none">/</span>
-                <span
-                  className="text-sidebar-primary font-medium cursor-pointer hover:text-sidebar-foreground transition-colors"
-                  onClick={startHeaderRename}
-                >
-                  {breadcrumb.fileName}
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-1 text-[13px] pointer-events-auto">
+                {isRenamingHeader ? (
+                  <Input
+                    ref={headerInputRef}
+                    value={headerRenameName}
+                    onChange={(e) => setHeaderRenameName(e.target.value)}
+                    onBlur={handleHeaderRename}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleHeaderRename();
+                      if (e.key === "Escape") setIsRenamingHeader(false);
+                    }}
+                    className="h-6 text-[13px] px-1 w-48 bg-transparent"
+                  />
+                ) : breadcrumb ? (
+                  <>
+                    <span className="text-muted-foreground pointer-events-none select-none">{breadcrumb.folderName}</span>
+                    <span className="text-ring mx-1 pointer-events-none select-none">/</span>
+                    <span
+                      className="text-sidebar-primary font-medium cursor-pointer hover:text-sidebar-foreground transition-colors"
+                      onClick={startHeaderRename}
+                    >
+                      {breadcrumb.fileName}
+                    </span>
+                  </>
+                ) : null}
+              </div>
+              {activeFile && (
+                <span className="text-[12px] text-ring pointer-events-none select-none">
+                  {wordCount} words
                 </span>
-              </>
-            ) : null}
-          </div>
-          {activeFile && (
-            <span className="text-[12px] text-ring pointer-events-none select-none">
-              {wordCount} words
-            </span>
+              )}
+            </>
           )}
         </div>
 
@@ -692,6 +763,9 @@ export function GhostLayout() {
               key={activeFile}
               content={fileContent}
               onContentChange={handleContentChange}
+              searchTerm={searchOpen ? debouncedSearchTerm : ""}
+              replaceTerm={searchOpen ? replaceTerm : ""}
+              onSearchResults={handleSearchResults}
             />
           ) : (
             <div className="flex h-full items-center justify-center">

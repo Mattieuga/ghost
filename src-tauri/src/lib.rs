@@ -77,6 +77,13 @@ pub fn run() {
                 .copy()
                 .paste()
                 .select_all()
+                .separator()
+                .item(&MenuItemBuilder::with_id("find", "Find")
+                    .accelerator("CmdOrCtrl+F")
+                    .build(app)?)
+                .item(&MenuItemBuilder::with_id("find_replace", "Find and Replace")
+                    .accelerator("CmdOrCtrl+Alt+F")
+                    .build(app)?)
                 .build()?;
 
             let view_menu = SubmenuBuilder::new(app, "View")
@@ -103,6 +110,16 @@ pub fn run() {
                     "new_file" => {
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.eval("window.__ghostNewFile && window.__ghostNewFile()");
+                        }
+                    }
+                    "find" => {
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.eval("window.__ghostFind && window.__ghostFind()");
+                        }
+                    }
+                    "find_replace" => {
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.eval("window.__ghostFindAndReplace && window.__ghostFindAndReplace()");
                         }
                     }
                     _ => {}

@@ -4,6 +4,7 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Link from "@tiptap/extension-link";
 import { Markdown } from "tiptap-markdown";
+import { SearchAndReplace } from "./search-and-replace";
 import { useEffect, useRef, useCallback } from "react";
 import { DOMSerializer } from "@tiptap/pm/model";
 import "./editor-styles.css";
@@ -11,13 +12,20 @@ import "./editor-styles.css";
 interface MarkdownEditorProps {
   content: string;
   onContentChange: (markdown: string) => void;
+  searchTerm?: string;
+  replaceTerm?: string;
+  onSearchResults?: (count: number, currentIndex: number) => void;
 }
 
 export function MarkdownEditor({
   content,
   onContentChange,
+  searchTerm = "",
+  replaceTerm = "",
+  onSearchResults,
 }: MarkdownEditorProps) {
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSearchResults = useRef({ count: 0, index: 0 });
 
   const debouncedSave = useCallback(
     (markdown: string) => {
@@ -50,11 +58,21 @@ export function MarkdownEditor({
         transformPastedText: true,
         transformCopiedText: false,
       }),
+      SearchAndReplace,
     ],
     content,
     onUpdate: ({ editor }) => {
       const markdown = editor.storage.markdown.getMarkdown();
       debouncedSave(markdown);
+    },
+    onTransaction: ({ editor }) => {
+      if (!onSearchResults) return;
+      const { results, resultIndex } = editor.storage.searchAndReplace;
+      const count = results.length;
+      if (count !== lastSearchResults.current.count || resultIndex !== lastSearchResults.current.index) {
+        lastSearchResults.current = { count, index: resultIndex };
+        onSearchResults(count, resultIndex);
+      }
     },
     editorProps: {
       attributes: {
@@ -93,6 +111,18 @@ export function MarkdownEditor({
     },
   });
 
+  // Sync search term from parent into editor extension
+  useEffect(() => {
+    if (!editor) return;
+    editor.commands.setSearchTerm(searchTerm);
+  }, [editor, searchTerm]);
+
+  // Sync replace term from parent into editor extension
+  useEffect(() => {
+    if (!editor) return;
+    editor.commands.setReplaceTerm(replaceTerm);
+  }, [editor, replaceTerm]);
+
   // Set content only on initial mount (key={activeFile} handles file switches)
   // Do NOT depend on [editor] — Tiptap can recreate the editor reference
   // during re-renders, which would reset user's in-progress edits
@@ -113,10 +143,20 @@ export function MarkdownEditor({
     };
   }, []);
 
+  // Expose search commands for top bar and native menu
+  useEffect(() => {
+    window.__ghostSearch = {
+      next: () => editor?.commands.nextSearchResult(),
+      previous: () => editor?.commands.previousSearchResult(),
+      replace: () => editor?.commands.replace(),
+      replaceAll: () => editor?.commands.replaceAll(),
+    };
+    return () => { delete window.__ghostSearch; };
+  }, [editor]);
+
   // Expose copy-as function for native context menu
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).__ghostCopyAs = async (format: string) => {
+    window.__ghostCopyAs = async (format: string) => {
       if (!editor) return;
       const { from, to } = editor.state.selection;
       if (from === to) return;
@@ -145,8 +185,7 @@ export function MarkdownEditor({
         await writeHtml(div.innerHTML);
       }
     };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return () => { delete (window as any).__ghostCopyAs; };
+    return () => { delete window.__ghostCopyAs; };
   }, [editor]);
 
   return (

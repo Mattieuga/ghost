@@ -398,6 +398,7 @@ function DroppableFolder({
     <div className="relative">
       <div
         className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
+        data-tree-guide={isRoot ? "root" : "sub"}
         style={{
           left: `${togglePadding + (isRoot ? 3 : 7)}px`,
           backgroundColor: isRoot && hasActiveFile ? "var(--ghost-amber)" : "var(--border)",

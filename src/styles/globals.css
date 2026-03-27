@@ -152,14 +152,70 @@
   pointer-events: none;
 }
 
+[data-sidebar-collapsed="true"] [data-file-active] {
+  background: transparent !important;
+  transition: background 150ms ease-out;
+}
+
+[data-sidebar-collapsed="true"][data-sidebar-hovered="true"] [data-file-active] {
+  background: rgb(255 255 255 / 0.06) !important;
+}
+
+[data-sidebar-collapsed="true"] [data-tree-guide="sub"] {
+  opacity: 0 !important;
+  transition: opacity 100ms ease-in;
+}
+
+[data-sidebar-collapsed="true"][data-sidebar-hovered="true"] [data-tree-guide="sub"] {
+  opacity: 1 !important;
+  transition: opacity 150ms ease-out;
+}
+
 [data-sidebar-collapsed="true"] [data-tree-label] {
   opacity: 0;
   transform: translateY(4px);
-  transition: opacity 300ms cubic-bezier(0.34, 1.56, 0.64, 1),
-              transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: opacity 100ms ease-in,
+              transform 100ms ease-in;
+}
+
+[data-sidebar-collapsed="true"][data-sidebar-hovered="true"] [data-tree-area] {
+  min-width: 240px;
+  scrollbar-width: none;
+}
+
+[data-sidebar-collapsed="true"][data-sidebar-hovered="true"] [data-tree-area]::-webkit-scrollbar {
+  display: none;
+}
+
+[data-sidebar-collapsed="true"] > [data-sidebar-chrome],
+[data-sidebar-collapsed="true"] > [data-tree-area] {
+  position: relative;
+  z-index: 1;
+}
+
+[data-sidebar-collapsed="true"]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to right, var(--background) 0%, var(--background) 50%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 100px, black 140px, black calc(100% - 48px), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 100px, black 140px, black calc(100% - 48px), transparent);
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+  pointer-events: none;
+}
+
+[data-sidebar-collapsed="true"][data-sidebar-hovered="true"]::after {
+  opacity: 1;
 }
 
 [data-sidebar-collapsed="true"][data-sidebar-hovered="true"] [data-tree-label] {
   opacity: 1;
   transform: translateY(0);
+  transition: opacity 250ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition-delay: calc(var(--tree-index, 0) * 5ms);
 }

@@ -219,11 +219,13 @@ export function FileItem({
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
+            data-file-active={isActive || undefined}
             className={`mx-1.5 rounded-[5px] relative ${isActive ? "bg-white/[0.06]" : "data-[state=open]:bg-white/[0.06]"}`}
           >
           {isActive && rootGuideX != null && (
             <div
               className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
+              data-tree-guide="active"
               style={{ left: `${rootGuideX - 6}px`, backgroundColor: "var(--ghost-amber)" }}
             />
           )}

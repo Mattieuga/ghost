@@ -70,6 +70,7 @@ export function GhostLayout() {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sidebarHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sidebarCollapsedAt = useRef<number>(0);
+  const sidebarContextMenuOpen = useRef(false);
   const headerInputRef = useRef<HTMLInputElement>(null);
   const activeFileRef = useRef<string | null>(null);
   activeFileRef.current = activeFile;
@@ -425,7 +426,9 @@ export function GhostLayout() {
       sidebarHoverTimeout.current = null;
     }
     sidebarHoverTimeout.current = setTimeout(() => {
-      setSidebarHovered(false);
+      if (!sidebarContextMenuOpen.current) {
+        setSidebarHovered(false);
+      }
     }, 200);
   }, [sidebarCollapsed]);
 
@@ -485,6 +488,38 @@ export function GhostLayout() {
     }).catch(() => {});
   }, [sidebarCollapsed]);
 
+  // Track context menu open state to prevent sidebar hiding
+  useEffect(() => {
+    const sidebar = document.querySelector("[data-sidebar-collapsed]");
+    if (!sidebar) return;
+    const handleContextMenu = () => {
+      if (sidebarCollapsed) sidebarContextMenuOpen.current = true;
+    };
+    const handlePointerDown = () => {
+      if (sidebarContextMenuOpen.current) {
+        sidebarContextMenuOpen.current = false;
+        // Re-check if mouse is still over sidebar
+        setSidebarHovered(false);
+      }
+    };
+    sidebar.addEventListener("contextmenu", handleContextMenu);
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      sidebar.removeEventListener("contextmenu", handleContextMenu);
+      window.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [sidebarCollapsed]);
+
+  // Set stagger indexes on tree labels for sequential fade-in
+  useEffect(() => {
+    if (sidebarHovered && sidebarCollapsed) {
+      const labels = document.querySelectorAll("[data-tree-label]");
+      labels.forEach((el, i) => {
+        (el as HTMLElement).style.setProperty("--tree-index", String(i));
+      });
+    }
+  }, [sidebarHovered, sidebarCollapsed]);
+
   // Shrink sidebar when window is too small for sidebar + editor min
   useEffect(() => {
     const handleResize = () => {
@@ -534,12 +569,11 @@ export function GhostLayout() {
       <div
         data-sidebar-collapsed={sidebarCollapsed || undefined}
         data-sidebar-hovered={sidebarHovered || undefined}
-        className={`flex flex-col overflow-hidden transition-[width] duration-200 ease-out
+        className={`flex flex-col
           ${sidebarCollapsed
-            ? "absolute left-0 top-0 bottom-0 z-30"
-            : "relative bg-sidebar border-r border-sidebar-border"
-          }
-          ${sidebarCollapsed && sidebarHovered ? "bg-background/70 backdrop-blur-sm" : ""}`}
+            ? `absolute left-0 top-0 bottom-0 z-30 ${sidebarHovered ? "overflow-hidden" : "overflow-visible"}`
+            : "relative bg-sidebar border-r border-sidebar-border overflow-hidden"
+          }`}
         style={{
           width: sidebarCollapsed ? (sidebarHovered ? 260 : 40) : sidebarWidth,
           ...(sidebarCollapsed ? {} : { minWidth: SIDEBAR_MIN, flexShrink: 0 }),
@@ -574,7 +608,7 @@ export function GhostLayout() {
         {/* Folder tree — ALWAYS rendered, same component, same DOM */}
         <ContextMenu>
         <ContextMenuTrigger asChild>
-        <div className="flex-1 overflow-y-auto overscroll-contain px-1">
+        <div data-tree-area className="flex-1 overscroll-contain px-1 pb-12 overflow-y-auto">
           <DndContext
             sensors={sensors}
             onDragStart={handleDragStart}
@@ -664,7 +698,7 @@ export function GhostLayout() {
             sidebarHoverTimeout.current = null;
           }
         }}
-        className="absolute bottom-3 left-4 z-40 text-ring hover:text-sidebar-foreground transition-colors cursor-pointer"
+        className="absolute bottom-3 left-4 z-40 text-ring hover:text-sidebar-foreground transition-colors cursor-pointer size-8 flex items-center justify-center rounded-full bg-background/80 backdrop-blur-sm"
         title={sidebarCollapsed ? "Expand sidebar (⌘\\)" : "Collapse sidebar (⌘\\)"}
       >
         <svg

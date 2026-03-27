@@ -71,19 +71,19 @@ unsafe extern "C" fn will_open_menu(
     let menu = menu as *mut AnyObject;
     if menu.is_null() { return; }
 
-    // Find "Copy" item index
+    // Find "Copy" item index — match by keyboard equivalent "c" to work across locales
     let count: isize = msg_send![menu, numberOfItems];
     let mut copy_index: isize = -1;
     let mut copy_image: *mut AnyObject = std::ptr::null_mut();
     for i in 0..count {
         let item: *mut AnyObject = msg_send![menu, itemAtIndex: i];
         if item.is_null() { continue; }
-        let title: *mut AnyObject = msg_send![item, title];
-        if title.is_null() { continue; }
-        let title_str: *const std::os::raw::c_char = msg_send![title, UTF8String];
-        if title_str.is_null() { continue; }
-        let title_rust = std::ffi::CStr::from_ptr(title_str).to_string_lossy();
-        if title_rust == "Copy" {
+        let key_equiv: *mut AnyObject = msg_send![item, keyEquivalent];
+        if key_equiv.is_null() { continue; }
+        let key_str: *const std::os::raw::c_char = msg_send![key_equiv, UTF8String];
+        if key_str.is_null() { continue; }
+        let key = std::ffi::CStr::from_ptr(key_str).to_string_lossy();
+        if key == "c" {
             copy_index = i;
             copy_image = msg_send![item, image];
             break;

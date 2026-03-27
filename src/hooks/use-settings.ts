@@ -15,7 +15,6 @@ const STORE_KEY = "settings";
 
 export function useSettings() {
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
-  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     load("settings.json", { defaults: {}, autoSave: true }).then(
@@ -24,7 +23,6 @@ export function useSettings() {
         if (saved) {
           setSettings({ ...DEFAULTS, ...saved });
         }
-        setLoaded(true);
       }
     );
   }, []);
@@ -32,7 +30,6 @@ export function useSettings() {
   const updateSettings = useCallback(async (updates: Partial<Settings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...updates };
-      // Persist
       load("settings.json", { defaults: {}, autoSave: true }).then(
         async (store) => {
           await store.set(STORE_KEY, next);
@@ -42,5 +39,5 @@ export function useSettings() {
     });
   }, []);
 
-  return { settings, loaded, updateSettings };
+  return { settings, updateSettings };
 }

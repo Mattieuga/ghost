@@ -16,15 +16,16 @@ date: 2026-03-26
 
 ## P2 — Important (address soon)
 
-- [ ] 7. Enable CSP in tauri.conf.json (currently `null`)
-- [ ] 8. Path validation on all FS commands (no traversal protection)
-- [ ] 9. Fix locale-dependent "Copy" matching in context_menu.rs (breaks on non-English macOS)
-- [ ] 10. Duplicate force-move logic in layout.tsx (identical code in 2 places)
-- [ ] 11. Duplicate "Copy Folder" / "Copy File Path" menu items (do the same thing)
-- [ ] 12. Hardcoded hex values (~30 instances) should use CSS variables
-- [ ] 13. Unbounded `while(true)` retry loops (4 locations) need iteration limits
-- [ ] 14. Merge duplicate `.ghost-editor` CSS rules
-- [ ] 15. Remove unused `loaded` from useSettings
+- [x] 7. Enable CSP in tauri.conf.json (currently `null`)
+- [x] 8. Path validation on all FS commands — validate_name rejects path separators and `..`
+- [x] 9. Fix locale-dependent "Copy" matching in context_menu.rs — match by keyEquivalent "c" not title
+- [x] 10. Duplicate force-move logic in layout.tsx — extracted confirmForceMove function
+- [ ] 11. Duplicate "Copy Folder" / "Copy File Path" menu items (skipped — needs different fix)
+- [ ] 12. Hardcoded hex values (~30 instances) should use CSS variables (deferred)
+- [x] 13. Unbounded `while(true)` retry loops — all 5 locations now cap at 100 iterations
+- [x] 14. Merge duplicate `.ghost-editor` CSS rules — consolidated caret-color, removed redundant :focus
+- [x] 15. Remove unused `loaded` from useSettings
+- [x] 16. Duplicate guide-line rendering — extracted into shared `guideLine` variable
 - [ ] 16. Duplicate guide-line rendering in folder-tree.tsx (copy-pasted in rename vs normal)
 
 ## P3 — Future Improvements

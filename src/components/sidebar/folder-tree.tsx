@@ -80,7 +80,7 @@ export function FolderTree({
     async (dir: string) => {
       let name = "Untitled.md";
       let counter = 1;
-      while (true) {
+      while (counter < 100) {
         try {
           const newPath = await invoke<string>("create_file", { dir, name });
           onNewFileCreated?.(newPath);
@@ -99,7 +99,7 @@ export function FolderTree({
     async (parentDir: string) => {
       let name = "New Folder";
       let counter = 1;
-      while (true) {
+      while (counter < 100) {
         try {
           const newPath = await invoke<string>("create_directory", { parent: parentDir, name });
           refresh();
@@ -394,6 +394,20 @@ function DroppableFolder({
     );
   };
 
+  const guideLine = open ? (
+    <div className="relative">
+      <div
+        className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
+        style={{
+          left: `${togglePadding + (isRoot ? 3 : 7)}px`,
+          backgroundColor: isRoot && hasActiveFile ? "#f57c00" : "#1c1c20",
+          opacity: isRoot && hasActiveFile ? 0.45 : 1,
+        }}
+      />
+      {children}
+    </div>
+  ) : null;
+
   if (isRenaming) {
     return (
       <div
@@ -432,19 +446,7 @@ function DroppableFolder({
             }`}
           />
         </div>
-        {open && (
-          <div className="relative">
-            <div
-              className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
-              style={{
-                left: `${togglePadding + (isRoot ? 3 : 7)}px`,
-                backgroundColor: isRoot && hasActiveFile ? "#f57c00" : "#1c1c20",
-                opacity: isRoot && hasActiveFile ? 0.45 : 1,
-              }}
-            />
-            {children}
-          </div>
-        )}
+        {guideLine}
       </div>
     );
   }
@@ -481,19 +483,7 @@ function DroppableFolder({
         </ContextMenuTrigger>
         {renderContextMenu()}
       </ContextMenu>
-      {open && (
-        <div className="relative">
-          <div
-            className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
-            style={{
-              left: `${togglePadding + (isRoot ? 3 : 7)}px`,
-              backgroundColor: isRoot && hasActiveFile ? "#f57c00" : "#1c1c20",
-              opacity: isRoot && hasActiveFile ? 0.45 : 1,
-            }}
-          />
-          {children}
-        </div>
-      )}
+      {guideLine}
 
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent onKeyDown={(e) => { if (e.key === "Enter") { handleDelete(); setShowDeleteDialog(false); } }}>

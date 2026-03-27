@@ -6,12 +6,9 @@
   min-height: 100%;
   outline: none;
   color: #e4e4e7; /* zinc-200 — same as headings */
+  caret-color: #f57c00;
   font-size: 16px;
   line-height: 28px;
-}
-
-.ghost-editor:focus {
-  outline: none;
 }
 
 /* Headings */
@@ -211,7 +208,3 @@
   outline: none;
 }
 
-/* Caret color */
-.ghost-editor {
-  caret-color: #f57c00;
-}

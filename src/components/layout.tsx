@@ -261,7 +261,7 @@ export function GhostLayout() {
           : folders[0];
         let name = "New Folder";
         let counter = 1;
-        while (true) {
+        while (counter < 100) {
           try {
             const path = await invoke<string>("create_directory", {
               parent: targetDir,
@@ -288,7 +288,7 @@ export function GhostLayout() {
           : folders[0];
         let name = "Untitled.md";
         let counter = 1;
-        while (true) {
+        while (counter < 100) {
           try {
             const path = await invoke<string>("create_file", {
               dir: targetDir,
@@ -451,6 +451,17 @@ export function GhostLayout() {
   const folderHasActiveFile = useCallback((folderPath: string) => {
     return activeFile ? activeFile.startsWith(folderPath + "/") : false;
   }, [activeFile]);
+
+  const confirmForceMove = useCallback(() => {
+    if (!pendingMove) return;
+    invoke<string>("move_file", { filePath: pendingMove.filePath, targetDir: pendingMove.targetDir, force: true })
+      .then((newPath) => {
+        if (activeFile === pendingMove.filePath) setActiveFile(newPath);
+        handleFsChange();
+      })
+      .catch((err) => console.error("Failed to override:", err));
+    setPendingMove(null);
+  }, [pendingMove, activeFile, handleFsChange]);
 
   const handleHeaderRename = useCallback(async () => {
     if (!activeFile || !headerRenameName || headerRenameName === activeFileName) {
@@ -694,17 +705,7 @@ export function GhostLayout() {
 
       {/* Override confirmation for drag move */}
       <Dialog open={!!pendingMove} onOpenChange={(open) => { if (!open) setPendingMove(null); }}>
-        <DialogContent onKeyDown={(e) => {
-          if (e.key === "Enter" && pendingMove) {
-            invoke<string>("move_file", { filePath: pendingMove.filePath, targetDir: pendingMove.targetDir, force: true })
-              .then((newPath) => {
-                if (activeFile === pendingMove.filePath) setActiveFile(newPath);
-                handleFsChange();
-              })
-              .catch((err) => console.error("Failed to override:", err));
-            setPendingMove(null);
-          }
-        }}>
+        <DialogContent onKeyDown={(e) => { if (e.key === "Enter") confirmForceMove(); }}>
           <DialogHeader>
             <DialogTitle>File already exists</DialogTitle>
             <DialogDescription>
@@ -715,16 +716,7 @@ export function GhostLayout() {
             <Button variant="outline" onClick={() => setPendingMove(null)}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={() => {
-              if (!pendingMove) return;
-              invoke<string>("move_file", { filePath: pendingMove.filePath, targetDir: pendingMove.targetDir, force: true })
-                .then((newPath) => {
-                  if (activeFile === pendingMove.filePath) setActiveFile(newPath);
-                  handleFsChange();
-                })
-                .catch((err) => console.error("Failed to override:", err));
-              setPendingMove(null);
-            }}>
+            <Button variant="destructive" onClick={confirmForceMove}>
               Replace
             </Button>
           </DialogFooter>

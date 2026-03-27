@@ -78,6 +78,10 @@ export function SearchBar({
           }
         }}
         placeholder="Find..."
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
         className="flex-1 min-w-[60px] h-6 bg-muted/40 rounded px-2 text-[13px] text-foreground placeholder:text-ring outline-none border border-transparent focus:border-ring/30"
       />
 
@@ -103,6 +107,10 @@ export function SearchBar({
               }
             }}
             placeholder="Replace..."
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
             className="flex-1 min-w-[60px] h-6 bg-muted/40 rounded px-2 text-[13px] text-foreground placeholder:text-ring outline-none border border-transparent focus:border-ring/30"
           />
           <button

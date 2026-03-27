@@ -29,6 +29,9 @@ importers:
       '@tauri-apps/plugin-store':
         specifier: ^2
         version: 2.4.2
+      '@tiptap/core':
+        specifier: ^2
+        version: 2.27.2(@tiptap/pm@2.27.2)
       '@tiptap/extension-link':
         specifier: ^2
         version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)

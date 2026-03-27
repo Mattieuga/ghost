@@ -207,3 +207,15 @@
 .tiptap:focus {
   outline: none;
 }
+
+/* Search and replace highlights */
+.search-result {
+  background-color: oklch(0.8 0.15 75);
+  border-radius: 2px;
+}
+
+.search-result-current {
+  background-color: var(--ghost-amber);
+  color: #000;
+  border-radius: 2px;
+}

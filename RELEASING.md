@@ -71,6 +71,7 @@ Unless told otherwise, bump by a minor version (e.g. `0.1.0` → `0.2.0`).
 
 ## Notes
 
+- The app is not code-signed or notarized. Users need to run `xattr -cr /Applications/Ghost.app` after installing. Include this in release notes.
 - Currently only builds for macOS Apple Silicon (aarch64)
 - The `icon-dev.png` dock icon only appears in debug builds, not in releases
 - File associations for `.md`/`.markdown` are configured in `tauri.conf.json`

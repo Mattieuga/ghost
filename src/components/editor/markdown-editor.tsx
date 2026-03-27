@@ -25,6 +25,7 @@ export function MarkdownEditor({
   onSearchResults,
 }: MarkdownEditorProps) {
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSearchResults = useRef({ count: 0, index: 0 });
 
   const debouncedSave = useCallback(
     (markdown: string) => {
@@ -65,8 +66,13 @@ export function MarkdownEditor({
       debouncedSave(markdown);
     },
     onTransaction: ({ editor }) => {
+      if (!onSearchResults) return;
       const { results, resultIndex } = editor.storage.searchAndReplace;
-      onSearchResults?.(results.length, resultIndex);
+      const count = results.length;
+      if (count !== lastSearchResults.current.count || resultIndex !== lastSearchResults.current.index) {
+        lastSearchResults.current = { count, index: resultIndex };
+        onSearchResults(count, resultIndex);
+      }
     },
     editorProps: {
       attributes: {
@@ -139,21 +145,18 @@ export function MarkdownEditor({
 
   // Expose search commands for top bar and native menu
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).__ghostSearch = {
+    window.__ghostSearch = {
       next: () => editor?.commands.nextSearchResult(),
       previous: () => editor?.commands.previousSearchResult(),
       replace: () => editor?.commands.replace(),
       replaceAll: () => editor?.commands.replaceAll(),
     };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return () => { delete (window as any).__ghostSearch; };
+    return () => { delete window.__ghostSearch; };
   }, [editor]);
 
   // Expose copy-as function for native context menu
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).__ghostCopyAs = async (format: string) => {
+    window.__ghostCopyAs = async (format: string) => {
       if (!editor) return;
       const { from, to } = editor.state.selection;
       if (from === to) return;
@@ -182,8 +185,7 @@ export function MarkdownEditor({
         await writeHtml(div.innerHTML);
       }
     };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return () => { delete (window as any).__ghostCopyAs; };
+    return () => { delete window.__ghostCopyAs; };
   }, [editor]);
 
   return (

@@ -3,6 +3,14 @@ use std::fs;
 use std::path::Path;
 use pulldown_cmark::{Parser, Options, html};
 
+/// Reject names containing path separators or traversal components
+fn validate_name(name: &str) -> Result<(), String> {
+    if name.contains('/') || name.contains('\\') || name.contains("..") || name.is_empty() {
+        return Err("Invalid name: must not contain path separators or be empty".to_string());
+    }
+    Ok(())
+}
+
 #[derive(Debug, Serialize)]
 pub struct FileEntry {
     pub name: String,
@@ -95,6 +103,7 @@ pub async fn write_file(path: String, content: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn create_file(dir: String, name: String) -> Result<String, String> {
+    validate_name(&name)?;
     let file_path = Path::new(&dir).join(&name);
     if file_path.exists() {
         return Err(format!("File already exists: {}", file_path.display()));
@@ -105,6 +114,7 @@ pub async fn create_file(dir: String, name: String) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn create_directory(parent: String, name: String) -> Result<String, String> {
+    validate_name(&name)?;
     let dir_path = Path::new(&parent).join(&name);
     if dir_path.exists() {
         return Err(format!("Directory already exists: {}", dir_path.display()));
@@ -136,6 +146,7 @@ pub async fn move_file(file_path: String, target_dir: String, force: Option<bool
 
 #[tauri::command]
 pub async fn rename_file(old_path: String, new_name: String) -> Result<String, String> {
+    validate_name(&new_name)?;
     let old = Path::new(&old_path);
     let parent = old.parent().ok_or("Cannot determine parent directory")?;
     let new_path = parent.join(&new_name);

@@ -30,11 +30,11 @@ interface FolderTreeProps {
   path: string;
   extensions: string[];
   activeFile: string | null;
-  selectedItem: string | null;
+
   refreshTrigger: number;
   activeDropFolder: string | null;
   onFileSelect: (path: string) => void;
-  onFolderSelect: (path: string) => void;
+
   onRemoveFolder: (path: string) => void;
   onFileRenamed: (oldPath: string, newPath: string) => void;
   onFileDeleted: (path: string) => void;
@@ -52,10 +52,10 @@ export function FolderTree({
   path,
   extensions,
   activeFile,
-  selectedItem,
+
   refreshTrigger,
   onFileSelect,
-  onFolderSelect,
+
   onRemoveFolder,
   onFileRenamed,
   onFileDeleted,
@@ -80,7 +80,7 @@ export function FolderTree({
     async (dir: string) => {
       let name = "Untitled.md";
       let counter = 1;
-      while (true) {
+      while (counter < 100) {
         try {
           const newPath = await invoke<string>("create_file", { dir, name });
           onNewFileCreated?.(newPath);
@@ -99,7 +99,7 @@ export function FolderTree({
     async (parentDir: string) => {
       let name = "New Folder";
       let counter = 1;
-      while (true) {
+      while (counter < 100) {
         try {
           const newPath = await invoke<string>("create_directory", { parent: parentDir, name });
           refresh();
@@ -130,7 +130,7 @@ export function FolderTree({
       id={path}
       folderName={folderName}
       activeDropFolder={activeDropFolder}
-      onFolderSelect={onFolderSelect}
+
       onRemoveFolder={onRemoveFolder}
       onCreateFile={handleCreateFile}
       onCreateFolder={handleCreateFolder}
@@ -145,10 +145,10 @@ export function FolderTree({
       <FileTree
         entries={entries}
         activeFile={activeFile}
-        selectedItem={selectedItem}
+
         activeDropFolder={activeDropFolder}
         onFileSelect={onFileSelect}
-        onFolderSelect={onFolderSelect}
+  
         onFileRenamed={onFileRenamed}
         onFileDeleted={onFileDeleted}
         onCreateFile={handleCreateFile}
@@ -170,7 +170,7 @@ function DroppableFolder({
   id,
   folderName,
   activeDropFolder,
-  onFolderSelect,
+
   onRemoveFolder,
   onCreateFile,
   onCreateFolder,
@@ -188,7 +188,7 @@ function DroppableFolder({
   id: string;
   folderName: string;
   activeDropFolder: string | null;
-  onFolderSelect: (path: string) => void;
+
   onRemoveFolder?: (path: string) => void;
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
@@ -222,7 +222,7 @@ function DroppableFolder({
   });
 
   const togglePadding = INDENT_BASE + depth * INDENT_STEP;
-  const dotColor = isRoot && hasActiveFile ? "#f57c00" : "#52525b";
+  const dotColor = isRoot && hasActiveFile ? "var(--ghost-amber)" : "var(--muted-foreground)";
 
   useEffect(() => {
     if (isRenaming && renameInputRef.current) {
@@ -394,6 +394,20 @@ function DroppableFolder({
     );
   };
 
+  const guideLine = open ? (
+    <div className="relative">
+      <div
+        className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
+        style={{
+          left: `${togglePadding + (isRoot ? 3 : 7)}px`,
+          backgroundColor: isRoot && hasActiveFile ? "var(--ghost-amber)" : "var(--border)",
+          opacity: isRoot && hasActiveFile ? 0.45 : 1,
+        }}
+      />
+      {children}
+    </div>
+  ) : null;
+
   if (isRenaming) {
     return (
       <div
@@ -413,7 +427,7 @@ function DroppableFolder({
               }}
             />
           ) : (
-            <span className="text-[16px] leading-none text-[#52525b]">{open ? "▾" : "▸"}</span>
+            <span className="text-[16px] leading-none text-muted-foreground">{open ? "▾" : "▸"}</span>
           )}
           <input
             ref={renameInputRef}
@@ -427,24 +441,12 @@ function DroppableFolder({
                 setIsRenaming(false);
               }
             }}
-            className={`flex-1 bg-transparent text-[13px] text-[#e4e4e7] font-medium outline-none caret-[#f57c00] border rounded-[4px] px-2 py-0.5 transition-colors ${
-              renameError ? "border-red-500 shake-error" : "border-[#3f3f46]"
+            className={`flex-1 bg-transparent text-[13px] text-card-foreground font-medium outline-none caret-ghost-amber border rounded-[4px] px-2 py-0.5 transition-colors ${
+              renameError ? "border-red-500 shake-error" : "border-ring"
             }`}
           />
         </div>
-        {open && (
-          <div className="relative">
-            <div
-              className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
-              style={{
-                left: `${togglePadding + (isRoot ? 3 : 7)}px`,
-                backgroundColor: isRoot && hasActiveFile ? "#f57c00" : "#1c1c20",
-                opacity: isRoot && hasActiveFile ? 0.45 : 1,
-              }}
-            />
-            {children}
-          </div>
-        )}
+        {guideLine}
       </div>
     );
   }
@@ -452,7 +454,7 @@ function DroppableFolder({
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-md transition-colors ${isHighlighted ? "bg-[#18181b]/60 ring-1 ring-[#1c1c20]" : ""}`}
+      className={`rounded-md transition-colors ${isHighlighted ? "bg-muted/60 ring-1 ring-border" : ""}`}
     >
       <ContextMenu>
         <ContextMenuTrigger asChild>
@@ -461,9 +463,8 @@ function DroppableFolder({
               const next = !open;
               setOpen(next);
               onOpenChange?.(next);
-              onFolderSelect(id);
             }}
-            className="w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-[#e4e4e7] transition-colors cursor-pointer select-none rounded-[5px] data-[state=open]:bg-white/[0.06]"
+            className="w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-card-foreground transition-colors cursor-pointer select-none rounded-[5px] data-[state=open]:bg-white/[0.06]"
             style={{ paddingLeft: `${togglePadding}px` }}
           >
             {isRoot ? (
@@ -475,26 +476,14 @@ function DroppableFolder({
                 }}
               />
             ) : (
-              <span className="text-[16px] leading-none text-[#52525b]">{open ? "▾" : "▸"}</span>
+              <span className="text-[16px] leading-none text-muted-foreground">{open ? "▾" : "▸"}</span>
             )}
-            <span className={`text-[13px] font-medium truncate ${isRoot ? "text-[#e4e4e7]" : "text-[#a1a1aa]"}`}>{displayFolderName}</span>
+            <span className={`text-[13px] font-medium truncate ${isRoot ? "text-card-foreground" : "text-sidebar-primary"}`}>{displayFolderName}</span>
           </button>
         </ContextMenuTrigger>
         {renderContextMenu()}
       </ContextMenu>
-      {open && (
-        <div className="relative">
-          <div
-            className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
-            style={{
-              left: `${togglePadding + (isRoot ? 3 : 7)}px`,
-              backgroundColor: isRoot && hasActiveFile ? "#f57c00" : "#1c1c20",
-              opacity: isRoot && hasActiveFile ? 0.45 : 1,
-            }}
-          />
-          {children}
-        </div>
-      )}
+      {guideLine}
 
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent onKeyDown={(e) => { if (e.key === "Enter") { handleDelete(); setShowDeleteDialog(false); } }}>
@@ -521,10 +510,10 @@ function DroppableFolder({
 function FileTree({
   entries,
   activeFile,
-  selectedItem,
+
   activeDropFolder,
   onFileSelect,
-  onFolderSelect,
+
   onFileRenamed,
   onFileDeleted,
   onCreateFile,
@@ -540,10 +529,10 @@ function FileTree({
 }: {
   entries: FileEntry[];
   activeFile: string | null;
-  selectedItem: string | null;
+
   activeDropFolder: string | null;
   onFileSelect: (path: string) => void;
-  onFolderSelect: (path: string) => void;
+
   onFileRenamed: (oldPath: string, newPath: string) => void;
   onFileDeleted: (path: string) => void;
   onCreateFile: (dir: string) => void;
@@ -566,7 +555,7 @@ function FileTree({
             id={entry.path}
             folderName={entry.name}
             activeDropFolder={activeDropFolder}
-            onFolderSelect={onFolderSelect}
+      
             onCreateFile={onCreateFile}
             onCreateFolder={onCreateFolder}
             onRefresh={onRefresh}
@@ -578,10 +567,10 @@ function FileTree({
             <FileTree
               entries={entry.children ?? []}
               activeFile={activeFile}
-              selectedItem={selectedItem}
+      
               activeDropFolder={activeDropFolder}
               onFileSelect={onFileSelect}
-              onFolderSelect={onFolderSelect}
+        
               onFileRenamed={onFileRenamed}
               onFileDeleted={onFileDeleted}
               onCreateFile={onCreateFile}

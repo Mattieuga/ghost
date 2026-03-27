@@ -45,7 +45,6 @@ export function GhostLayout() {
   const { setTheme } = useTheme();
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
-  const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [isRenamingHeader, setIsRenamingHeader] = useState(false);
@@ -86,7 +85,6 @@ export function GhostLayout() {
       const content = await invoke<string>("read_file", { path });
       setActiveFile(path);
       setFileContent(content);
-      setSelectedItem(path);
       // Count words
       const words = content.trim().split(/\s+/).filter(Boolean).length;
       setWordCount(words);
@@ -95,9 +93,6 @@ export function GhostLayout() {
     }
   }, []);
 
-  const handleFolderSelect = useCallback((path: string) => {
-    setSelectedItem(path);
-  }, []);
 
   const handleContentChange = useCallback(
     async (markdown: string) => {
@@ -123,10 +118,9 @@ export function GhostLayout() {
   const handleFileRenamed = useCallback(
     (oldPath: string, newPath: string) => {
       if (activeFile === oldPath) setActiveFile(newPath);
-      if (selectedItem === oldPath) setSelectedItem(newPath);
       handleFsChange();
     },
-    [activeFile, selectedItem, handleFsChange]
+    [activeFile, handleFsChange]
   );
 
   const handleFileDeleted = useCallback(
@@ -135,10 +129,9 @@ export function GhostLayout() {
         setActiveFile(null);
         setFileContent("");
       }
-      if (selectedItem === path) setSelectedItem(null);
       handleFsChange();
     },
-    [activeFile, selectedItem, handleFsChange]
+    [activeFile, handleFsChange]
   );
 
   // dnd-kit handlers
@@ -184,12 +177,41 @@ export function GhostLayout() {
   );
 
   // Expose functions for Rust menu events
+  const createNewFile = useCallback(async () => {
+    if (folders.length === 0) { addFolder(); return; }
+    const currentFile = activeFileRef.current;
+    const targetDir = currentFile
+      ? currentFile.substring(0, currentFile.lastIndexOf("/"))
+      : folders[0];
+    let name = "Untitled.md";
+    let counter = 1;
+    while (true) {
+      try {
+        const path = await invoke<string>("create_file", { dir: targetDir, name });
+        setNewlyCreatedFile(path);
+        handleFsChange();
+        handleFileSelect(path);
+        break;
+      } catch {
+        counter++;
+        name = `Untitled ${counter}.md`;
+        if (counter > 100) break;
+      }
+    }
+  }, [folders, addFolder, handleFileSelect, handleFsChange]);
+
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__ghostAddFolder = addFolder;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return () => { delete (window as any).__ghostAddFolder; };
-  }, [addFolder]);
+    (window as any).__ghostNewFile = createNewFile;
+    return () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (window as any).__ghostAddFolder;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (window as any).__ghostNewFile;
+    };
+  }, [addFolder, createNewFile]);
 
   // Handle files opened from Finder (file associations)
   const openExternalFile = useCallback(async (filePath: string) => {
@@ -239,7 +261,7 @@ export function GhostLayout() {
           : folders[0];
         let name = "New Folder";
         let counter = 1;
-        while (true) {
+        while (counter < 100) {
           try {
             const path = await invoke<string>("create_directory", {
               parent: targetDir,
@@ -266,7 +288,7 @@ export function GhostLayout() {
           : folders[0];
         let name = "Untitled.md";
         let counter = 1;
-        while (true) {
+        while (counter < 100) {
           try {
             const path = await invoke<string>("create_file", {
               dir: targetDir,
@@ -430,6 +452,17 @@ export function GhostLayout() {
     return activeFile ? activeFile.startsWith(folderPath + "/") : false;
   }, [activeFile]);
 
+  const confirmForceMove = useCallback(() => {
+    if (!pendingMove) return;
+    invoke<string>("move_file", { filePath: pendingMove.filePath, targetDir: pendingMove.targetDir, force: true })
+      .then((newPath) => {
+        if (activeFile === pendingMove.filePath) setActiveFile(newPath);
+        handleFsChange();
+      })
+      .catch((err) => console.error("Failed to override:", err));
+    setPendingMove(null);
+  }, [pendingMove, activeFile, handleFsChange]);
+
   const handleHeaderRename = useCallback(async () => {
     if (!activeFile || !headerRenameName || headerRenameName === activeFileName) {
       setIsRenamingHeader(false);
@@ -441,7 +474,6 @@ export function GhostLayout() {
         newName: headerRenameName,
       });
       setActiveFile(newPath);
-      setSelectedItem(newPath);
       handleFsChange();
     } catch (err) {
       console.error("Failed to rename:", err);
@@ -465,7 +497,7 @@ export function GhostLayout() {
             {folders.map((folder) => {
               const hasActive = folderHasActiveFile(folder);
               const isOpen = rootFolderOpen[folder] !== false; // default to open
-              const dotColor = hasActive ? "#f57c00" : "#52525b";
+              const dotColor = hasActive ? "var(--ghost-amber)" : "var(--muted-foreground)";
               return (
                 <span
                   key={folder}
@@ -498,10 +530,10 @@ export function GhostLayout() {
 
         {/* Search bar (UI only) */}
         <div className="px-3 pt-0 pb-4">
-          <div className="flex items-center gap-2 h-8 px-3 rounded-[6px] bg-[#18181b] text-[13px] cursor-pointer">
-            <Search className="size-3.5 text-[#3f3f46]" />
-            <span className="flex-1 text-[#3f3f46]">Search...</span>
-            <kbd className="text-[11px] font-medium text-[#3f3f46]">&#8984;K</kbd>
+          <div className="flex items-center gap-2 h-8 px-3 rounded-[6px] bg-muted text-[13px] cursor-pointer">
+            <Search className="size-3.5 text-ring" />
+            <span className="flex-1 text-ring">Search...</span>
+            <kbd className="text-[11px] font-medium text-ring">&#8984;K</kbd>
           </div>
         </div>
 
@@ -520,12 +552,12 @@ export function GhostLayout() {
             ) : (
               <div>
                 <div className="flex items-center justify-between px-4 pb-2 pt-1">
-                  <span className="text-[10px] font-medium uppercase text-[#3f3f46]" style={{ letterSpacing: "1.2px" }}>
+                  <span className="text-[10px] font-medium uppercase text-ring" style={{ letterSpacing: "1.2px" }}>
                     Workspace
                   </span>
                   <button
                     onClick={addFolder}
-                    className="text-[#3f3f46] hover:text-[#71717a] transition-colors cursor-pointer text-[16px] leading-none"
+                    className="text-ring hover:text-sidebar-foreground transition-colors cursor-pointer text-[16px] leading-none"
                     title="Add folder (⌘O)"
                   >
                     +
@@ -537,10 +569,8 @@ export function GhostLayout() {
                     path={folder}
                     extensions={extensions}
                     activeFile={activeFile}
-                    selectedItem={selectedItem}
                     refreshTrigger={refreshTrigger}
                     onFileSelect={handleFileSelect}
-                    onFolderSelect={handleFolderSelect}
                     onRemoveFolder={(path) => {
                       removeFolder(path);
                       if (activeFile?.startsWith(path)) {
@@ -585,13 +615,13 @@ export function GhostLayout() {
         <div className="shrink-0 border-t border-sidebar-border px-4 py-3 flex items-center justify-between">
           <button
             onClick={() => setShowSettings(true)}
-            className="text-[13px] text-[#3f3f46] hover:text-[#71717a] transition-colors cursor-pointer"
+            className="text-[13px] text-ring hover:text-sidebar-foreground transition-colors cursor-pointer"
           >
             Settings
           </button>
           <button
             onClick={toggleSidebar}
-            className="text-[#3f3f46] hover:text-[#71717a] transition-colors cursor-pointer"
+            className="text-ring hover:text-sidebar-foreground transition-colors cursor-pointer"
             title={sidebarCollapsed ? "Expand sidebar (⌘\\)" : "Collapse sidebar (⌘\\)"}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -637,10 +667,10 @@ export function GhostLayout() {
               />
             ) : breadcrumb ? (
               <>
-                <span className="text-[#52525b] pointer-events-none select-none">{breadcrumb.folderName}</span>
-                <span className="text-[#3f3f46] mx-1 pointer-events-none select-none">/</span>
+                <span className="text-muted-foreground pointer-events-none select-none">{breadcrumb.folderName}</span>
+                <span className="text-ring mx-1 pointer-events-none select-none">/</span>
                 <span
-                  className="text-[#a1a1aa] font-medium cursor-pointer hover:text-[#71717a] transition-colors"
+                  className="text-sidebar-primary font-medium cursor-pointer hover:text-sidebar-foreground transition-colors"
                   onClick={startHeaderRename}
                 >
                   {breadcrumb.fileName}
@@ -649,7 +679,7 @@ export function GhostLayout() {
             ) : null}
           </div>
           {activeFile && (
-            <span className="text-[12px] text-[#3f3f46] pointer-events-none select-none">
+            <span className="text-[12px] text-ring pointer-events-none select-none">
               {wordCount} words
             </span>
           )}
@@ -675,17 +705,7 @@ export function GhostLayout() {
 
       {/* Override confirmation for drag move */}
       <Dialog open={!!pendingMove} onOpenChange={(open) => { if (!open) setPendingMove(null); }}>
-        <DialogContent onKeyDown={(e) => {
-          if (e.key === "Enter" && pendingMove) {
-            invoke<string>("move_file", { filePath: pendingMove.filePath, targetDir: pendingMove.targetDir, force: true })
-              .then((newPath) => {
-                if (activeFile === pendingMove.filePath) setActiveFile(newPath);
-                handleFsChange();
-              })
-              .catch((err) => console.error("Failed to override:", err));
-            setPendingMove(null);
-          }
-        }}>
+        <DialogContent onKeyDown={(e) => { if (e.key === "Enter") confirmForceMove(); }}>
           <DialogHeader>
             <DialogTitle>File already exists</DialogTitle>
             <DialogDescription>
@@ -696,16 +716,7 @@ export function GhostLayout() {
             <Button variant="outline" onClick={() => setPendingMove(null)}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={() => {
-              if (!pendingMove) return;
-              invoke<string>("move_file", { filePath: pendingMove.filePath, targetDir: pendingMove.targetDir, force: true })
-                .then((newPath) => {
-                  if (activeFile === pendingMove.filePath) setActiveFile(newPath);
-                  handleFsChange();
-                })
-                .catch((err) => console.error("Failed to override:", err));
-              setPendingMove(null);
-            }}>
+            <Button variant="destructive" onClick={confirmForceMove}>
               Replace
             </Button>
           </DialogFooter>

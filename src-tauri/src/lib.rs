@@ -13,8 +13,10 @@ struct PendingOpenFiles(Mutex<Vec<String>>);
 
 #[tauri::command]
 fn get_pending_open_files(state: tauri::State<PendingOpenFiles>) -> Vec<String> {
-    let mut pending = state.0.lock().unwrap();
-    pending.drain(..).collect()
+    match state.0.lock() {
+        Ok(mut pending) => pending.drain(..).collect(),
+        Err(_) => Vec::new(),
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -110,19 +112,10 @@ pub fn run() {
             // Install native context menu hook on macOS
             #[cfg(target_os = "macos")]
             {
-                eprintln!("[ghost] Attempting to install context menu hook...");
-                match app.get_webview_window("main") {
-                    Some(window) => {
-                        eprintln!("[ghost] Got main window, calling with_webview...");
-                        match window.with_webview(|webview| {
-                            eprintln!("[ghost] Inside with_webview callback, inner ptr: {:?}", webview.inner());
-                            unsafe { context_menu::install_context_menu_hook(webview.inner()); }
-                        }) {
-                            Ok(_) => eprintln!("[ghost] with_webview succeeded"),
-                            Err(e) => eprintln!("[ghost] with_webview failed: {:?}", e),
-                        }
-                    }
-                    None => eprintln!("[ghost] ERROR: could not get main window"),
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.with_webview(|webview| {
+                        unsafe { context_menu::install_context_menu_hook(webview.inner()); }
+                    });
                 }
             }
 
@@ -136,18 +129,11 @@ pub fn run() {
                     if url.scheme() == "file" {
                         if let Ok(path) = url.to_file_path() {
                             let path_str = path.to_string_lossy().to_string();
-
-                            // Try to emit to frontend — if it fails (not ready yet),
-                            // store in pending for the frontend to pick up on mount
-                            if app_handle.emit("file-open", &path_str).is_err() {
-                                if let Some(state) = app_handle.try_state::<PendingOpenFiles>() {
-                                    state.0.lock().unwrap().push(path_str);
-                                }
-                            } else {
-                                // Also store in pending as backup — emit may succeed
-                                // but the listener might not be registered yet
-                                if let Some(state) = app_handle.try_state::<PendingOpenFiles>() {
-                                    state.0.lock().unwrap().push(path_str);
+                            let _ = app_handle.emit("file-open", &path_str);
+                            // Always store in pending — frontend may not be ready yet
+                            if let Some(state) = app_handle.try_state::<PendingOpenFiles>() {
+                                if let Ok(mut pending) = state.0.lock() {
+                                    pending.push(path_str);
                                 }
                             }
                         }

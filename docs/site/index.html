@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ghost — A minimalist markdown editor for Mac</title>
+  <meta name="description" content="A simple, beautiful markdown editor for Mac. Free and open source.">
+  <link rel="icon" type="image/png" href="../../icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #09090b;
+      color: #a1a1aa;
+      font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .hero {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 80px 24px 48px;
+      max-width: 720px;
+      text-align: center;
+    }
+
+    .icon {
+      width: 96px;
+      height: 96px;
+      border-radius: 20px;
+      margin-bottom: 32px;
+    }
+
+    h1 {
+      font-size: 48px;
+      font-weight: 700;
+      color: #fafafa;
+      letter-spacing: -0.5px;
+      margin-bottom: 16px;
+    }
+
+    .subtitle {
+      font-size: 20px;
+      line-height: 1.5;
+      color: #71717a;
+      margin-bottom: 8px;
+    }
+
+    .subtitle-secondary {
+      font-size: 20px;
+      color: #52525b;
+      margin-bottom: 40px;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 500;
+      font-family: inherit;
+      text-decoration: none;
+      transition: all 0.15s ease;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: #fafafa;
+      color: #09090b;
+      border: 1px solid #fafafa;
+    }
+
+    .btn-primary:hover {
+      background: #e4e4e7;
+      border-color: #e4e4e7;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: #a1a1aa;
+      border: 1px solid #27272a;
+    }
+
+    .btn-secondary:hover {
+      border-color: #3f3f46;
+      color: #e4e4e7;
+    }
+
+    .btn svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .screenshot-wrapper {
+      width: 100%;
+      max-width: 920px;
+      padding: 0 24px;
+      margin: 48px 0 64px;
+    }
+
+    .screenshot {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid #1c1c20;
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+    }
+
+    .footer {
+      padding: 32px 24px 48px;
+      color: #3f3f46;
+      font-size: 15px;
+      letter-spacing: 0.3px;
+    }
+
+    .footer span {
+      margin: 0 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <img src="../../icon.png" alt="Ghost" class="icon">
+    <h1>Ghost</h1>
+    <p class="subtitle">A simple, beautiful markdown editor for Mac.</p>
+    <p class="subtitle-secondary">Free and open source.</p>
+    <div class="buttons">
+      <a href="https://github.com/Mattieuga/ghost/releases" class="btn btn-primary">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download for Mac
+      </a>
+      <a href="https://github.com/Mattieuga/ghost" class="btn btn-secondary">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+  </div>
+
+  <div class="screenshot-wrapper">
+    <img src="screenshot.png" alt="Ghost editor screenshot" class="screenshot">
+  </div>
+
+  <div class="footer">
+    Free forever <span>&middot;</span> macOS only <span>&middot;</span> Open source
+  </div>
+</body>
+</html>

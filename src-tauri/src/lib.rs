@@ -41,6 +41,8 @@ pub fn run() {
             commands::fs::reveal_in_finder,
             commands::fs::markdown_to_html,
             commands::fs::markdown_to_plain_text,
+            commands::fs::get_file_metadata,
+            commands::search::search_file_contents,
             watcher::watch_directories,
             get_pending_open_files,
         ])

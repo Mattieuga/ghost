@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::fs;
 use std::path::Path;
+use std::time::UNIX_EPOCH;
 use pulldown_cmark::{Parser, Options, html};
 
 /// Reject names containing path separators or traversal components
@@ -232,6 +233,24 @@ pub async fn reveal_in_finder(path: String) -> Result<(), String> {
             .map_err(|e| format!("Failed to reveal in Finder: {}", e))?;
     }
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+pub struct FileMetadata {
+    pub size_bytes: u64,
+    pub modified: String,
+}
+
+#[tauri::command]
+pub async fn get_file_metadata(path: String) -> Result<FileMetadata, String> {
+    let metadata = fs::metadata(&path).map_err(|e| format!("Failed to read metadata: {}", e))?;
+    let size_bytes = metadata.len();
+    let modified = metadata.modified()
+        .map_err(|e| format!("Failed to get modified time: {}", e))?;
+    let millis = modified.duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+    // ISO 8601 approximation from epoch millis
+    let modified_str = millis.to_string();
+    Ok(FileMetadata { size_bytes, modified: modified_str })
 }
 
 #[tauri::command]

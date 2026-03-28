@@ -12,6 +12,7 @@ interface GhostWindow {
   __ghostFindAndReplace?: () => void;
   __ghostCopyAs?: (format: string) => Promise<void>;
   __ghostSearch?: GhostSearchCommands;
+  __ghostCommandPalette?: () => void;
 }
 
 declare global {

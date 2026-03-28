@@ -39,6 +39,9 @@ import {
 } from "@/components/ui/context-menu";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { SearchBar } from "@/components/editor/search-bar";
+import { CommandPalette } from "@/components/command-palette/command-palette";
+import { useRecentFiles } from "@/hooks/use-recent-files";
+import { useFlatFileList } from "@/hooks/use-flat-file-list";
 
 export function GhostLayout() {
   const { folders, loading, addFolder, addFolderByPath, removeFolder } = useTrackedFolders();
@@ -72,8 +75,10 @@ export function GhostLayout() {
   const sidebarCollapsedAt = useRef<number>(0);
   const sidebarContextMenuOpen = useRef(false);
   const headerInputRef = useRef<HTMLInputElement>(null);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const activeFileRef = useRef<string | null>(null);
   activeFileRef.current = activeFile;
+  const { recentFiles, addRecentFile } = useRecentFiles();
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -91,6 +96,8 @@ export function GhostLayout() {
     [settings.showAllFiles]
   );
 
+  const allFiles = useFlatFileList(folders, extensions, refreshTrigger);
+
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
     setSearchTerm("");
@@ -105,13 +112,14 @@ export function GhostLayout() {
       setActiveFile(path);
       setFileContent(content);
       closeSearch();
+      addRecentFile(path);
       // Count words
       const words = content.trim().split(/\s+/).filter(Boolean).length;
       setWordCount(words);
     } catch (err) {
       console.error("Failed to read file:", err);
     }
-  }, [closeSearch]);
+  }, [closeSearch, addRecentFile]);
 
   const handleSearchTermChange = useCallback((value: string) => {
     setSearchTerm(value);
@@ -244,11 +252,13 @@ export function GhostLayout() {
     window.__ghostNewFile = createNewFile;
     window.__ghostFind = () => openSearch("find");
     window.__ghostFindAndReplace = () => openSearch("replace");
+    window.__ghostCommandPalette = () => setCommandPaletteOpen((p) => !p);
     return () => {
       delete window.__ghostAddFolder;
       delete window.__ghostNewFile;
       delete window.__ghostFind;
       delete window.__ghostFindAndReplace;
+      delete window.__ghostCommandPalette;
     };
   }, [addFolder, createNewFile, openSearch]);
 
@@ -368,11 +378,22 @@ export function GhostLayout() {
         e.preventDefault();
         setShowSettings(true);
       }
+
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => {
+          if (!prev) {
+            // Close in-editor search when opening palette
+            closeSearch();
+          }
+          return !prev;
+        });
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [folders, addFolder, handleFileSelect, openSearch]);
+  }, [folders, addFolder, handleFileSelect, openSearch, closeSearch]);
 
   // Breadcrumb from active file
   const breadcrumb = useMemo(() => {
@@ -599,9 +620,12 @@ export function GhostLayout() {
           </button>
         </div>
 
-        {/* Search bar (UI only) */}
+        {/* Search bar — opens command palette */}
         <div data-sidebar-chrome data-sidebar-search className="px-3 pt-0 pb-4">
-          <div className="flex items-center gap-2 h-8 px-3 rounded-[6px] bg-muted text-[13px] cursor-pointer">
+          <div
+            className="flex items-center gap-2 h-8 px-3 rounded-[6px] bg-muted text-[13px] cursor-pointer hover:bg-muted/80 transition-colors"
+            onClick={() => setCommandPaletteOpen(true)}
+          >
             <Search className="size-3.5 text-ring" />
             <span className="flex-1 text-ring">Search...</span>
             <kbd className="text-[11px] font-medium text-ring">&#8984;K</kbd>
@@ -828,6 +852,16 @@ export function GhostLayout() {
         onOpenChange={setShowSettings}
         settings={settings}
         onUpdateSettings={updateSettings}
+      />
+
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        allFiles={allFiles}
+        recentFiles={recentFiles}
+        onFileSelect={handleFileSelect}
+        folders={folders}
+        extensions={extensions}
       />
     </div>
   );

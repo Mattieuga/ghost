@@ -581,6 +581,9 @@ export function GhostLayout() {
         onMouseEnter={handleSidebarMouseEnter}
         onMouseLeave={handleSidebarMouseLeave}
       >
+        {/* Backdrop blur overlay for collapsed hover */}
+        <div data-sidebar-backdrop />
+
         {/* Sidebar title bar — drag region for traffic lights + settings */}
         <div
           className="h-12 shrink-0 flex items-center justify-end px-3"

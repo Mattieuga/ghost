@@ -600,7 +600,7 @@ export function GhostLayout() {
         </div>
 
         {/* Search bar (UI only) */}
-        <div data-sidebar-chrome className="px-3 pt-0 pb-4">
+        <div data-sidebar-chrome data-sidebar-search className="px-3 pt-0 pb-4">
           <div className="flex items-center gap-2 h-8 px-3 rounded-[6px] bg-muted text-[13px] cursor-pointer">
             <Search className="size-3.5 text-ring" />
             <span className="flex-1 text-ring">Search...</span>

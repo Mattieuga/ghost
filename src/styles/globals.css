@@ -156,12 +156,14 @@
   padding-top: 0;
 }
 
-[data-sidebar-collapsed="true"] [data-file-active] {
+[data-sidebar-collapsed="true"] [data-file-active],
+[data-sidebar-collapsed="true"] [data-folder-active] {
   background: transparent !important;
   transition: background 150ms ease-out;
 }
 
-[data-sidebar-collapsed="true"][data-sidebar-hovered="true"] [data-file-active] {
+[data-sidebar-collapsed="true"][data-sidebar-hovered="true"] [data-file-active],
+[data-sidebar-collapsed="true"][data-sidebar-hovered="true"] [data-folder-active] {
   background: rgb(255 255 255 / 0.06) !important;
 }
 

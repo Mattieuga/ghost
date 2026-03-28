@@ -170,7 +170,7 @@ function DroppableFolder({
   id,
   folderName,
   activeDropFolder,
-
+  activeFile,
   onRemoveFolder,
   onCreateFile,
   onCreateFolder,
@@ -183,12 +183,14 @@ function DroppableFolder({
   onAutoRenameDone,
   onOpenChange,
   onAddProject,
+  rootGuideX,
   children,
 }: {
   id: string;
   folderName: string;
   activeDropFolder: string | null;
-
+  activeFile?: string | null;
+  rootGuideX?: number | null;
   onRemoveFolder?: (path: string) => void;
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
@@ -216,6 +218,8 @@ function DroppableFolder({
   }, [folderName]);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const isHighlighted = activeDropFolder === id;
+  // For non-root folders: highlight when closed and containing the active file
+  const containsActiveFile = !isRoot && !open && !!activeFile && activeFile.startsWith(id + "/");
   const { setNodeRef } = useDroppable({
     id: `folder:${id}`,
     data: { folderPath: id },
@@ -465,9 +469,16 @@ function DroppableFolder({
               setOpen(next);
               onOpenChange?.(next);
             }}
-            className="w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-card-foreground transition-colors cursor-pointer select-none rounded-[5px] data-[state=open]:bg-white/[0.06]"
+            data-folder-active={containsActiveFile || undefined}
+            className={`relative w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-card-foreground transition-colors cursor-pointer select-none rounded-[5px] ${containsActiveFile ? "bg-white/[0.06]" : "data-[state=open]:bg-white/[0.06]"}`}
             style={{ paddingLeft: `${togglePadding}px` }}
           >
+            {containsActiveFile && rootGuideX != null && (
+              <div
+                className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
+                style={{ left: `${rootGuideX}px`, backgroundColor: "var(--ghost-amber)" }}
+              />
+            )}
             {isRoot ? (
               <span
                 className="inline-block size-[7px] shrink-0 rounded-full transition-colors"
@@ -479,7 +490,7 @@ function DroppableFolder({
             ) : (
               <span data-tree-label className="text-[16px] leading-none text-muted-foreground">{open ? "▾" : "▸"}</span>
             )}
-            <span data-tree-label className={`text-[13px] font-medium truncate ${isRoot ? "text-card-foreground" : "text-sidebar-primary"}`}>{displayFolderName}</span>
+            <span data-tree-label className={`text-[13px] font-medium truncate ${containsActiveFile ? "text-card-foreground" : isRoot ? "text-card-foreground" : "text-sidebar-primary"}`}>{displayFolderName}</span>
           </button>
         </ContextMenuTrigger>
         {renderContextMenu()}
@@ -556,7 +567,7 @@ function FileTree({
             id={entry.path}
             folderName={entry.name}
             activeDropFolder={activeDropFolder}
-      
+            activeFile={activeFile}
             onCreateFile={onCreateFile}
             onCreateFolder={onCreateFolder}
             onRefresh={onRefresh}
@@ -564,6 +575,7 @@ function FileTree({
             depth={depth + 1}
             autoRename={entry.path === newlyCreatedFolder}
             onAutoRenameDone={onNewFolderRenamed}
+            rootGuideX={rootGuideX}
           >
             <FileTree
               entries={entry.children ?? []}

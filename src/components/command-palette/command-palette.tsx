@@ -68,18 +68,9 @@ export function CommandPalette({
 
   const mode = getMode(query);
 
-  // Reset state when opening
+  // Focus input when opening
   useEffect(() => {
     if (open) {
-      setQuery("");
-      setSelectedIndex(0);
-      setContentResults([]);
-      setContentTotal(0);
-      setContentLoading(false);
-      setPreviewOpen(false);
-      setPreviewHtml("");
-      setPreviewMeta(null);
-      // Focus input after animation frame
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [open]);
@@ -231,19 +222,35 @@ export function CommandPalette({
     if (el) el.scrollIntoView({ block: "nearest" });
   }, [selectedIndex]);
 
+  const resetState = useCallback(() => {
+    setQuery("");
+    setSelectedIndex(0);
+    setContentResults([]);
+    setContentTotal(0);
+    setContentLoading(false);
+    setPreviewOpen(false);
+    setPreviewHtml("");
+    setPreviewMeta(null);
+  }, []);
+
+  const handleClose = useCallback(() => {
+    resetState();
+    onClose();
+  }, [resetState, onClose]);
+
   const handleSelect = useCallback(
     (path: string) => {
       onFileSelect(path);
-      onClose();
+      handleClose();
     },
-    [onFileSelect, onClose]
+    [onFileSelect, handleClose]
   );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        handleClose();
         return;
       }
 
@@ -276,7 +283,7 @@ export function CommandPalette({
         return;
       }
     },
-    [items, selectedIndex, handleSelect, onClose]
+    [items, selectedIndex, handleSelect, handleClose]
   );
 
   if (!open) return null;
@@ -324,7 +331,7 @@ export function CommandPalette({
       {/* Backdrop */}
       <div
         className="fixed inset-0 z-50 bg-black/60 animate-in fade-in-0 duration-150"
-        onClick={onClose}
+        onClick={handleClose}
       />
 
       {/* Palette container */}
@@ -411,7 +418,7 @@ export function CommandPalette({
                       onMouseEnter={() => setSelectedIndex(i)}
                     >
                       <span
-                        className={`text-[14px] truncate ${
+                        className={`text-[14px] shrink-0 max-w-[60%] truncate ${
                           selectedIndex === i
                             ? "text-foreground font-medium"
                             : "text-popover-foreground"
@@ -419,7 +426,7 @@ export function CommandPalette({
                       >
                         {entry.name}
                       </span>
-                      <span className="ml-auto text-[12px] text-ring truncate shrink-0">
+                      <span className="ml-auto text-[12px] text-ring truncate min-w-0">
                         {entry.folderDisplay}
                       </span>
                     </div>

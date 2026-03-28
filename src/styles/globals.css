@@ -152,14 +152,8 @@
   pointer-events: none;
 }
 
-[data-sidebar-collapsed="true"] [data-sidebar-search] {
-  height: 0;
-  padding: 0;
-  overflow: hidden;
-}
-
 [data-sidebar-collapsed="true"] [data-tree-area] {
-  padding-top: 48px;
+  padding-top: 0;
 }
 
 [data-sidebar-collapsed="true"] [data-file-active] {

@@ -607,9 +607,17 @@ export function GhostLayout() {
 
         {/* Sidebar title bar — drag region for traffic lights + settings */}
         <div
-          className="h-12 shrink-0 flex items-center justify-end px-3"
+          className="h-12 shrink-0 flex items-center justify-end gap-3 px-3"
           data-tauri-drag-region
         >
+          <button
+            data-sidebar-chrome
+            onClick={() => setCommandPaletteOpen(true)}
+            className="text-ring hover:text-sidebar-foreground transition-colors cursor-pointer"
+            title="Search (⌘K)"
+          >
+            <Search className="size-[15px]" strokeWidth={2.25} />
+          </button>
           <button
             data-sidebar-chrome
             onClick={() => setShowSettings(true)}
@@ -618,18 +626,6 @@ export function GhostLayout() {
           >
             <SlidersHorizontal className="size-[15px]" strokeWidth={2.25} />
           </button>
-        </div>
-
-        {/* Search bar — opens command palette */}
-        <div data-sidebar-chrome data-sidebar-search className="px-3 pt-0 pb-4">
-          <div
-            className="flex items-center gap-2 h-8 px-3 rounded-[6px] bg-muted text-[13px] cursor-pointer hover:bg-muted/80 transition-colors"
-            onClick={() => setCommandPaletteOpen(true)}
-          >
-            <Search className="size-3.5 text-ring" />
-            <span className="flex-1 text-ring">Search...</span>
-            <kbd className="text-[11px] font-medium text-ring">&#8984;K</kbd>
-          </div>
         </div>
 
         {/* Folder tree — ALWAYS rendered, same component, same DOM */}

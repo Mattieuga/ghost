@@ -76,6 +76,7 @@ export function GhostLayout() {
   const sidebarContextMenuOpen = useRef(false);
   const headerInputRef = useRef<HTMLInputElement>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [externalDragOver, setExternalDragOver] = useState(false);
   const activeFileRef = useRef<string | null>(null);
   activeFileRef.current = activeFile;
   const { recentFiles, addRecentFile } = useRecentFiles();
@@ -294,6 +295,43 @@ export function GhostLayout() {
     });
     return () => { unlisten.then((fn) => fn()); };
   }, [openExternalFile]);
+
+  // Listen for external file/folder drag-drop from Finder
+  useEffect(() => {
+    const unlistenEnter = listen<{ paths: string[]; position: { x: number; y: number } }>("tauri://drag-enter", () => {
+      setExternalDragOver(true);
+    });
+    const unlistenLeave = listen("tauri://drag-leave", () => {
+      setExternalDragOver(false);
+    });
+    const unlistenDrop = listen<{ paths: string[]; position: { x: number; y: number } }>("tauri://drag-drop", async (event) => {
+      setExternalDragOver(false);
+      const paths = event.payload.paths;
+      if (!paths || paths.length === 0) return;
+
+      for (const droppedPath of paths) {
+        try {
+          const isDir = await invoke<boolean>("is_directory", { path: droppedPath });
+          if (isDir) {
+            // Add folder as a tracked project
+            addFolderByPath(droppedPath);
+            handleFsChange();
+          } else {
+            // Open the file and track its parent folder
+            openExternalFile(droppedPath);
+          }
+        } catch (err) {
+          console.error("Failed to handle dropped path:", err);
+        }
+      }
+    });
+
+    return () => {
+      unlistenEnter.then((fn) => fn());
+      unlistenLeave.then((fn) => fn());
+      unlistenDrop.then((fn) => fn());
+    };
+  }, [addFolderByPath, openExternalFile, handleFsChange]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -701,6 +739,20 @@ export function GhostLayout() {
         </ContextMenuContent>
         </ContextMenu>
 
+        {/* External file/folder drop zone */}
+        {externalDragOver && (
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-sidebar/90 border-2 border-dashed border-ring rounded-lg m-1">
+            <div className="flex flex-col items-center gap-2 pointer-events-none">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-muted-foreground" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span className="text-[12px] font-medium text-muted-foreground">Drop to open</span>
+            </div>
+          </div>
+        )}
+
         {/* Resize handle — only when expanded */}
         {!sidebarCollapsed && (
           <div
@@ -767,7 +819,7 @@ export function GhostLayout() {
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-1 text-[13px] pointer-events-auto">
+              <div className="flex items-center min-w-0 flex-1 text-[13px] pointer-events-auto">
                 {isRenamingHeader ? (
                   <Input
                     ref={headerInputRef}
@@ -781,20 +833,21 @@ export function GhostLayout() {
                     className="h-6 text-[13px] px-1 w-48 bg-transparent"
                   />
                 ) : breadcrumb ? (
-                  <>
-                    <span className="text-muted-foreground pointer-events-none select-none">{breadcrumb.folderName}</span>
-                    <span className="text-ring mx-1 pointer-events-none select-none">/</span>
+                  <div className="flex items-center min-w-0 overflow-hidden">
+                    <span className="text-muted-foreground pointer-events-none select-none truncate" style={{ flexShrink: 10 }}>{breadcrumb.folderName}</span>
+                    <span className="text-ring mx-1 pointer-events-none select-none shrink-0">/</span>
                     <span
-                      className="text-sidebar-primary font-medium cursor-pointer hover:text-sidebar-foreground transition-colors"
+                      className="text-sidebar-primary font-medium cursor-pointer hover:text-sidebar-foreground transition-colors truncate"
+                      style={{ flexShrink: 1 }}
                       onClick={startHeaderRename}
                     >
                       {breadcrumb.fileName}
                     </span>
-                  </>
+                  </div>
                 ) : null}
               </div>
               {activeFile && (
-                <span className="text-[12px] text-ring pointer-events-none select-none">
+                <span className="text-[12px] text-ring pointer-events-none select-none whitespace-nowrap shrink-0 ml-3">
                   {wordCount} words
                 </span>
               )}

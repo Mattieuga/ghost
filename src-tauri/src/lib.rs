@@ -29,6 +29,7 @@ pub fn run() {
         .manage(watcher::WatcherState::new())
         .manage(PendingOpenFiles(Mutex::new(Vec::new())))
         .invoke_handler(tauri::generate_handler![
+            commands::fs::is_directory,
             commands::fs::read_directory,
             commands::fs::read_file,
             commands::fs::write_file,

@@ -22,5 +22,5 @@ export function useFileWatcher(
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [paths.join(","), onFileChange]);
+  }, [JSON.stringify(paths), onFileChange]);
 }

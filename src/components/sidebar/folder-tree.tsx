@@ -1,4 +1,3 @@
-import { useDirectory } from "@/hooks/use-directory";
 import { FileItem } from "./file-item";
 import type { FileEntry } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
@@ -28,10 +27,10 @@ const FILE_EXTRA = 12;
 
 interface FolderTreeProps {
   path: string;
-  extensions: string[];
+  entries: FileEntry[];
+  error: string | null;
+  onRefreshFolder: () => void;
   activeFile: string | null;
-
-  refreshTrigger: number;
   activeDropFolder: string | null;
   onFileSelect: (path: string) => void;
 
@@ -50,10 +49,10 @@ interface FolderTreeProps {
 
 export function FolderTree({
   path,
-  extensions,
+  entries,
+  error,
+  onRefreshFolder,
   activeFile,
-
-  refreshTrigger,
   onFileSelect,
 
   onRemoveFolder,
@@ -69,7 +68,7 @@ export function FolderTree({
   onRootOpenChange,
   onAddProject,
 }: FolderTreeProps) {
-  const { entries, error, refresh } = useDirectory(path, extensions, refreshTrigger);
+  const refresh = onRefreshFolder;
 
   const folderName = useMemo(() => {
     const parts = path.split("/");

@@ -30,10 +30,15 @@ pub async fn read_directory(path: String, extensions: Vec<String>) -> Result<Vec
         return Err(format!("Path is not a directory: {}", path));
     }
 
-    read_dir_recursive(dir_path, &extensions).map_err(|e| e.to_string())
+    read_dir_recursive(dir_path, &extensions, 0).map_err(|e| e.to_string())
 }
 
-fn read_dir_recursive(dir: &Path, extensions: &[String]) -> Result<Vec<FileEntry>, std::io::Error> {
+const MAX_DIR_DEPTH: usize = 32;
+
+fn read_dir_recursive(dir: &Path, extensions: &[String], depth: usize) -> Result<Vec<FileEntry>, std::io::Error> {
+    if depth >= MAX_DIR_DEPTH {
+        return Ok(Vec::new());
+    }
     let mut entries = Vec::new();
 
     let mut dir_entries: Vec<_> = fs::read_dir(dir)?
@@ -62,7 +67,7 @@ fn read_dir_recursive(dir: &Path, extensions: &[String]) -> Result<Vec<FileEntry
         let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
 
         if is_dir {
-            let children = read_dir_recursive(&path, extensions)?;
+            let children = read_dir_recursive(&path, extensions, depth + 1)?;
             // Always show directories (even empty ones)
             entries.push(FileEntry {
                 name,
@@ -243,7 +248,7 @@ pub async fn reveal_in_finder(path: String) -> Result<(), String> {
 #[derive(Debug, Serialize)]
 pub struct FileMetadata {
     pub size_bytes: u64,
-    pub modified: String,
+    pub modified_ms: u64, // epoch milliseconds
 }
 
 #[tauri::command]
@@ -252,10 +257,8 @@ pub async fn get_file_metadata(path: String) -> Result<FileMetadata, String> {
     let size_bytes = metadata.len();
     let modified = metadata.modified()
         .map_err(|e| format!("Failed to get modified time: {}", e))?;
-    let millis = modified.duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
-    // ISO 8601 approximation from epoch millis
-    let modified_str = millis.to_string();
-    Ok(FileMetadata { size_bytes, modified: modified_str })
+    let modified_ms = modified.duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+    Ok(FileMetadata { size_bytes, modified_ms })
 }
 
 #[tauri::command]

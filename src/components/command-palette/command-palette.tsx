@@ -58,7 +58,7 @@ export function CommandPalette({
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewMeta, setPreviewMeta] = useState<{
     size: number;
-    modified: string;
+    modified: number;
   } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -81,14 +81,19 @@ export function CommandPalette({
     return fuzzySearch(allFiles, query, (f) => f.name, 20);
   }, [query, allFiles, mode]);
 
+  // Shared file lookup map
+  const fileMap = useMemo(
+    () => new Map(allFiles.map((f) => [f.path, f])),
+    [allFiles]
+  );
+
   // Recent files as FlatFileEntry items
   const recentEntries = useMemo(() => {
     if (mode !== "recent") return [];
-    const fileMap = new Map(allFiles.map((f) => [f.path, f]));
     return recentFiles
       .map((path) => fileMap.get(path))
       .filter((f): f is FlatFileEntry => f !== undefined);
-  }, [recentFiles, allFiles, mode]);
+  }, [recentFiles, fileMap, mode]);
 
   // Build flat items list for navigation
   const items = useMemo(() => {
@@ -180,7 +185,7 @@ export function CommandPalette({
       try {
         const [content, meta] = await Promise.all([
           invoke<string>("read_file", { path }),
-          invoke<{ size_bytes: number; modified: string }>("get_file_metadata", {
+          invoke<{ size_bytes: number; modified_ms: number }>("get_file_metadata", {
             path,
           }).catch(() => null),
         ]);
@@ -194,11 +199,15 @@ export function CommandPalette({
           });
           if (!cancelled) setPreviewHtml(html);
         } catch {
-          if (!cancelled) setPreviewHtml(`<pre>${content.slice(0, 2000)}</pre>`);
+          const escaped = content.slice(0, 2000)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+          if (!cancelled) setPreviewHtml(`<pre>${escaped}</pre>`);
         }
 
         if (meta && !cancelled) {
-          setPreviewMeta({ size: meta.size_bytes, modified: meta.modified });
+          setPreviewMeta({ size: meta.size_bytes, modified: meta.modified_ms });
         }
       } catch {
         if (!cancelled) {
@@ -288,8 +297,6 @@ export function CommandPalette({
 
   if (!open) return null;
 
-  const fileMap = new Map(allFiles.map((f) => [f.path, f]));
-
   // Helper: get display name from path
   const getFileName = (path: string) => {
     const entry = fileMap.get(path);
@@ -310,10 +317,10 @@ export function CommandPalette({
     return `${(bytes / 1024).toFixed(1)} KB`;
   };
 
-  // Format relative date from epoch millis string
-  const formatDate = (epochMs: string) => {
+  // Format relative date from epoch millis
+  const formatDate = (epochMs: number) => {
     try {
-      const date = new Date(Number(epochMs));
+      const date = new Date(epochMs);
       const now = new Date();
       const diffMs = now.getTime() - date.getTime();
       const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -464,8 +471,9 @@ export function CommandPalette({
                   mode === "files" ? fileResults.length + i : i;
                 const fileName = getFileName(match.path);
                 const lineText = match.line_text.trim();
-                const start = match.match_start - (match.line_text.length - lineText.length);
-                const end = match.match_end - (match.line_text.length - lineText.length);
+                const leadingWS = match.line_text.length - match.line_text.trimStart().length;
+                const start = match.match_start - leadingWS;
+                const end = match.match_end - leadingWS;
 
                 return (
                   <div

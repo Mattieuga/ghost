@@ -28,13 +28,5 @@ export function useRecentFiles() {
     });
   }, [persist]);
 
-  const removeRecentFile = useCallback((path: string) => {
-    setRecentFiles((prev) => {
-      const next = prev.filter((p) => p !== path);
-      persist(next);
-      return next;
-    });
-  }, [persist]);
-
-  return { recentFiles, addRecentFile, removeRecentFile };
+  return { recentFiles, addRecentFile };
 }

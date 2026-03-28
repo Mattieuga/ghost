@@ -41,7 +41,7 @@ import { Search, SlidersHorizontal } from "lucide-react";
 import { SearchBar } from "@/components/editor/search-bar";
 import { CommandPalette } from "@/components/command-palette/command-palette";
 import { useRecentFiles } from "@/hooks/use-recent-files";
-import { useFlatFileList } from "@/hooks/use-flat-file-list";
+import { useFileTree } from "@/hooks/use-file-tree";
 
 export function GhostLayout() {
   const { folders, loading, addFolder, addFolderByPath, removeFolder } = useTrackedFolders();
@@ -97,7 +97,7 @@ export function GhostLayout() {
     [settings.showAllFiles]
   );
 
-  const allFiles = useFlatFileList(folders, extensions, refreshTrigger);
+  const { flatFiles: allFiles, getEntries, getError } = useFileTree(folders, extensions, refreshTrigger);
 
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
@@ -363,33 +363,9 @@ export function GhostLayout() {
           }
         }
       } else if (mod && !e.shiftKey && e.key.toLowerCase() === "n") {
-        // Cmd+N — new file
+        // Cmd+N — new file (reuse createNewFile callback)
         e.preventDefault();
-        if (folders.length === 0) {
-          addFolder();
-          return;
-        }
-        const currentFile = activeFileRef.current;
-        const targetDir = currentFile
-          ? currentFile.substring(0, currentFile.lastIndexOf("/"))
-          : folders[0];
-        let name = "Untitled.md";
-        let counter = 1;
-        while (counter < 100) {
-          try {
-            const path = await invoke<string>("create_file", {
-              dir: targetDir,
-              name,
-            });
-            setNewlyCreatedFile(path);
-            handleFsChange();
-            handleFileSelect(path);
-            break;
-          } catch {
-            counter++;
-            name = `Untitled ${counter}.md`;
-          }
-        }
+        createNewFile();
       }
 
       if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
@@ -431,7 +407,7 @@ export function GhostLayout() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [folders, addFolder, handleFileSelect, openSearch, closeSearch]);
+  }, [folders, addFolder, createNewFile, handleFileSelect, openSearch, closeSearch]);
 
   // Breadcrumb from active file
   const breadcrumb = useMemo(() => {
@@ -696,9 +672,10 @@ export function GhostLayout() {
                   <FolderTree
                     key={folder}
                     path={folder}
-                    extensions={extensions}
+                    entries={getEntries(folder)}
+                    error={getError(folder)}
+                    onRefreshFolder={handleFsChange}
                     activeFile={activeFile}
-                    refreshTrigger={refreshTrigger}
                     onFileSelect={handleFileSelect}
                     onRemoveFolder={(path) => {
                       removeFolder(path);
@@ -903,15 +880,17 @@ export function GhostLayout() {
         onUpdateSettings={updateSettings}
       />
 
-      <CommandPalette
-        open={commandPaletteOpen}
-        onClose={() => setCommandPaletteOpen(false)}
-        allFiles={allFiles}
-        recentFiles={recentFiles}
-        onFileSelect={handleFileSelect}
-        folders={folders}
-        extensions={extensions}
-      />
+      {commandPaletteOpen && (
+        <CommandPalette
+          open={commandPaletteOpen}
+          onClose={() => setCommandPaletteOpen(false)}
+          allFiles={allFiles}
+          recentFiles={recentFiles}
+          onFileSelect={handleFileSelect}
+          folders={folders}
+          extensions={extensions}
+        />
+      )}
     </div>
   );
 }

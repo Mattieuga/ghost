@@ -40,6 +40,7 @@ import {
 import { Search, SlidersHorizontal } from "lucide-react";
 import { SearchBar } from "@/components/editor/search-bar";
 import { CommandPalette } from "@/components/command-palette/command-palette";
+import { SidebarGuide } from "@/components/sidebar/sidebar-guide";
 import { useRecentFiles } from "@/hooks/use-recent-files";
 import { useFileTree } from "@/hooks/use-file-tree";
 
@@ -77,6 +78,7 @@ export function GhostLayout() {
   const headerInputRef = useRef<HTMLInputElement>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [externalDragOver, setExternalDragOver] = useState(false);
+  const treeAreaRef = useRef<HTMLDivElement>(null);
   const activeFileRef = useRef<string | null>(null);
   activeFileRef.current = activeFile;
   const { recentFiles, addRecentFile } = useRecentFiles();
@@ -645,7 +647,7 @@ export function GhostLayout() {
         {/* Folder tree — ALWAYS rendered, same component, same DOM */}
         <ContextMenu>
         <ContextMenuTrigger asChild>
-        <div data-tree-area className="flex-1 overscroll-contain px-1 pb-12 overflow-y-auto">
+        <div ref={treeAreaRef} data-tree-area className="flex-1 overscroll-contain px-1 pb-12 overflow-y-auto relative">
           <DndContext
             sensors={sensors}
             onDragStart={handleDragStart}
@@ -706,6 +708,7 @@ export function GhostLayout() {
               ) : null}
             </DragOverlay>
           </DndContext>
+          <SidebarGuide treeAreaRef={treeAreaRef} />
         </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>

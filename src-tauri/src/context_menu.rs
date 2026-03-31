@@ -1,7 +1,7 @@
 #[cfg(target_os = "macos")]
 use objc2::runtime::{AnyClass, AnyObject, Sel};
 #[cfg(target_os = "macos")]
-use objc2::{class, msg_send, sel};
+use objc2::{msg_send, sel};
 #[cfg(target_os = "macos")]
 use objc2::ffi::class_addMethod;
 #[cfg(target_os = "macos")]
@@ -66,41 +66,17 @@ unsafe extern "C" fn will_open_menu(
     menu: *mut AnyObject,
     _event: *mut AnyObject,
 ) {
-
-    // Use raw ObjC messaging only — avoid objc2 high-level APIs that may panic
     let menu = menu as *mut AnyObject;
     if menu.is_null() { return; }
 
-    // Find "Copy" item index — match by keyboard equivalent "c" to work across locales
-    let count: isize = msg_send![menu, numberOfItems];
-    let mut copy_index: isize = -1;
-    let mut copy_image: *mut AnyObject = std::ptr::null_mut();
-    for i in 0..count {
-        let item: *mut AnyObject = msg_send![menu, itemAtIndex: i];
-        if item.is_null() { continue; }
-        let key_equiv: *mut AnyObject = msg_send![item, keyEquivalent];
-        if key_equiv.is_null() { continue; }
-        let key_str: *const std::os::raw::c_char = msg_send![key_equiv, UTF8String];
-        if key_str.is_null() { continue; }
-        let key = std::ffi::CStr::from_ptr(key_str).to_string_lossy();
-        if key == "c" {
-            copy_index = i;
-            copy_image = msg_send![item, image];
-            break;
-        }
-    }
-
-
-    // Create submenu using raw alloc/init
+    // Build the "Copy As..." submenu item
     let submenu_title = NSString::from_str("Copy As\u{2026}");
     let empty_key = NSString::from_str("");
-
     let ns_menu_class = objc2::class!(NSMenu);
+    let ns_menu_item_class = objc2::class!(NSMenuItem);
+
     let submenu: *mut AnyObject = msg_send![ns_menu_class, alloc];
     let submenu: *mut AnyObject = msg_send![submenu, initWithTitle: &*submenu_title];
-
-    // Helper to create menu items
-    let ns_menu_item_class = objc2::class!(NSMenuItem);
 
     let plain_title = NSString::from_str("Plain Text");
     let plain_item: *mut AnyObject = msg_send![ns_menu_item_class, alloc];
@@ -117,15 +93,54 @@ unsafe extern "C" fn will_open_menu(
     let rich_item: *mut AnyObject = msg_send![rich_item, initWithTitle: &*rich_title, action: sel!(ghostCopyAsRichText:), keyEquivalent: &*empty_key];
     let _: () = msg_send![submenu, addItem: rich_item];
 
-    // Create parent item
     let parent_item: *mut AnyObject = msg_send![ns_menu_item_class, alloc];
     let parent_item: *mut AnyObject = msg_send![parent_item, initWithTitle: &*submenu_title, action: std::ptr::null::<c_void>(), keyEquivalent: &*empty_key];
     let _: () = msg_send![parent_item, setSubmenu: submenu];
-    if !copy_image.is_null() {
-        let _: () = msg_send![parent_item, setImage: copy_image];
+
+    // Set fallback icon via system symbol (overridden if Copy's icon is found)
+    let symbol_name = NSString::from_str("doc.on.doc");
+    let ns_image_class = objc2::class!(NSImage);
+    let symbol_image: *mut AnyObject = msg_send![ns_image_class, imageWithSystemSymbolName: &*symbol_name, accessibilityDescription: std::ptr::null::<AnyObject>()];
+    if !symbol_image.is_null() {
+        let _: () = msg_send![parent_item, setImage: symbol_image];
+    }
+    let count: isize = msg_send![menu, numberOfItems];
+
+    // Check if "Copy As..." already exists (avoid duplicates)
+    for i in 0..count {
+        let item: *mut AnyObject = msg_send![menu, itemAtIndex: i];
+        if item.is_null() { continue; }
+        let has_submenu: bool = msg_send![item, hasSubmenu];
+        if !has_submenu { continue; }
+        let title: *mut AnyObject = msg_send![item, title];
+        if title.is_null() { continue; }
+        let title_str: *const std::os::raw::c_char = msg_send![title, UTF8String];
+        if title_str.is_null() { continue; }
+        let t = std::ffi::CStr::from_ptr(title_str).to_string_lossy();
+        if t.contains("Copy As") { return; }
     }
 
-    // Insert after Copy
+    // Find "Copy" by title (WKWebView context menu items have no keyEquivalent)
+    let mut copy_index: isize = -1;
+    for i in 0..count {
+        let item: *mut AnyObject = msg_send![menu, itemAtIndex: i];
+        if item.is_null() { continue; }
+        let title: *mut AnyObject = msg_send![item, title];
+        if title.is_null() { continue; }
+        let title_str: *const std::os::raw::c_char = msg_send![title, UTF8String];
+        if title_str.is_null() { continue; }
+        let t = std::ffi::CStr::from_ptr(title_str).to_string_lossy();
+        if t == "Copy" {
+            copy_index = i;
+            // Grab Copy's icon
+            let img: *mut AnyObject = msg_send![item, image];
+            if !img.is_null() {
+                let _: () = msg_send![parent_item, setImage: img];
+            }
+            break;
+        }
+    }
+
     let insert_index = if copy_index >= 0 { copy_index + 1 } else { count };
     let _: () = msg_send![menu, insertItem: parent_item, atIndex: insert_index];
 }

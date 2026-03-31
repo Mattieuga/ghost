@@ -34,7 +34,6 @@ interface FileItemProps {
   onNewFolderSibling?: () => void;
   autoRename?: boolean;
   onAutoRenameDone?: () => void;
-  rootGuideX?: number | null;
   onAddProject?: () => void;
 }
 
@@ -49,7 +48,6 @@ export function FileItem({
   onNewFolderSibling,
   autoRename,
   onAutoRenameDone,
-  rootGuideX,
   onAddProject,
 }: FileItemProps) {
   const [isRenaming, setIsRenaming] = useState(false);
@@ -222,13 +220,7 @@ export function FileItem({
             data-file-active={isActive || undefined}
             className={`mx-1.5 rounded-[5px] relative ${isActive ? "bg-white/[0.06]" : "data-[state=open]:bg-white/[0.06]"}`}
           >
-          {isActive && rootGuideX != null && (
-            <div
-              className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
-              data-tree-guide="active"
-              style={{ left: `${rootGuideX - 6}px`, backgroundColor: "var(--ghost-amber)" }}
-            />
-          )}
+          {/* Guide line rendered by SidebarGuide overlay */}
           <button
             data-tree-label
             onClick={onSelect}

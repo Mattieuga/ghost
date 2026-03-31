@@ -122,7 +122,6 @@ export function FolderTree({
   }
 
   const hasActiveFile = activeFile ? activeFile.startsWith(path + "/") : false;
-  const rootGuideX = INDENT_BASE + 3;
 
   return (
     <DroppableFolder
@@ -159,7 +158,6 @@ export function FolderTree({
         onNewFolderRenamed={onNewFolderRenamed}
         onAddProject={onAddProject}
         depth={0}
-        rootGuideX={hasActiveFile ? rootGuideX : null}
       />
     </DroppableFolder>
   );
@@ -182,14 +180,12 @@ function DroppableFolder({
   onAutoRenameDone,
   onOpenChange,
   onAddProject,
-  rootGuideX,
   children,
 }: {
   id: string;
   folderName: string;
   activeDropFolder: string | null;
   activeFile?: string | null;
-  rootGuideX?: number | null;
   onRemoveFolder?: (path: string) => void;
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
@@ -404,8 +400,7 @@ function DroppableFolder({
         data-tree-guide={isRoot ? "root" : "sub"}
         style={{
           left: `${togglePadding + (isRoot ? 3 : 7)}px`,
-          backgroundColor: isRoot && hasActiveFile ? "var(--ghost-amber)" : "var(--border)",
-          opacity: isRoot && hasActiveFile ? 0.45 : 1,
+          backgroundColor: "var(--border)",
         }}
       />
       {children}
@@ -458,6 +453,7 @@ function DroppableFolder({
   return (
     <div
       ref={setNodeRef}
+      data-root-folder={isRoot ? id : undefined}
       className={`rounded-md transition-colors ${isHighlighted ? "bg-muted/60 ring-1 ring-border" : ""}`}
     >
       <ContextMenu>
@@ -472,14 +468,10 @@ function DroppableFolder({
             className={`relative w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-card-foreground transition-colors cursor-pointer select-none rounded-[5px] ${containsActiveFile ? "bg-white/[0.06]" : "data-[state=open]:bg-white/[0.06]"}`}
             style={{ paddingLeft: `${togglePadding}px` }}
           >
-            {containsActiveFile && rootGuideX != null && (
-              <div
-                className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
-                style={{ left: `${rootGuideX}px`, backgroundColor: "var(--ghost-amber)" }}
-              />
-            )}
+            {/* Guide line rendered by SidebarGuide overlay */}
             {isRoot ? (
               <span
+                data-root-dot
                 className="inline-block size-[7px] shrink-0 rounded-full transition-colors"
                 style={{
                   backgroundColor: open ? dotColor : "transparent",
@@ -536,7 +528,6 @@ function FileTree({
   onNewFolderRenamed,
   onAddProject,
   depth,
-  rootGuideX,
 }: {
   entries: FileEntry[];
   activeFile: string | null;
@@ -555,7 +546,6 @@ function FileTree({
   newlyCreatedFolder: string | null;
   onNewFolderRenamed: () => void;
   depth: number;
-  rootGuideX: number | null;
 }) {
   return (
     <>
@@ -574,7 +564,7 @@ function FileTree({
             depth={depth + 1}
             autoRename={entry.path === newlyCreatedFolder}
             onAutoRenameDone={onNewFolderRenamed}
-            rootGuideX={rootGuideX}
+
           >
             <FileTree
               entries={entry.children ?? []}
@@ -594,7 +584,7 @@ function FileTree({
               onNewFolderRenamed={onNewFolderRenamed}
               onAddProject={onAddProject}
               depth={depth + 1}
-              rootGuideX={rootGuideX}
+  
             />
           </DroppableFolder>
         ) : (
@@ -610,7 +600,7 @@ function FileTree({
             indent={INDENT_BASE + (depth + 1) * INDENT_STEP + FILE_EXTRA}
             autoRename={entry.path === newlyCreatedFile}
             onAutoRenameDone={onNewFileRenamed}
-            rootGuideX={rootGuideX}
+
             onAddProject={onAddProject}
           />
         )

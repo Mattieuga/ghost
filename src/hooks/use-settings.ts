@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { load } from "@tauri-apps/plugin-store";
 
 export interface Settings {
@@ -21,6 +21,7 @@ const STORE_KEY = "settings";
 
 export function useSettings() {
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     load("settings.json", { defaults: {}, autoSave: true }).then(
@@ -33,14 +34,16 @@ export function useSettings() {
     );
   }, []);
 
-  const updateSettings = useCallback(async (updates: Partial<Settings>) => {
+  const updateSettings = useCallback((updates: Partial<Settings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...updates };
-      load("settings.json", { defaults: {}, autoSave: true }).then(
-        async (store) => {
-          await store.set(STORE_KEY, next);
-        }
-      );
+      // Debounce persistence — UI updates immediately, store writes once after 300ms
+      if (persistTimer.current) clearTimeout(persistTimer.current);
+      persistTimer.current = setTimeout(() => {
+        load("settings.json", { defaults: {}, autoSave: true }).then(
+          (store) => store.set(STORE_KEY, next)
+        );
+      }, 300);
       return next;
     });
   }, []);

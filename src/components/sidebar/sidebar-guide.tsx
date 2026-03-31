@@ -80,7 +80,7 @@ export function SidebarGuide({ treeAreaRef }: { treeAreaRef: React.RefObject<HTM
       rafRef.current = requestAnimationFrame(update);
     });
     observer.observe(treeArea, {
-      attributes: true,
+      attributeFilter: ["data-file-active", "data-folder-active"],
       childList: true,
       subtree: true,
     });

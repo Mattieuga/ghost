@@ -1,5 +1,6 @@
 import { Separator } from "@/components/ui/separator";
 import type { Settings } from "@/hooks/use-settings";
+import { SettingRow } from "@/components/settings/setting-row";
 
 interface EditorTabProps {
   settings: Settings;
@@ -20,7 +21,7 @@ export function EditorTab({ settings, onUpdateSettings }: EditorTabProps) {
             onChange={(e) =>
               onUpdateSettings({ fontSize: Number(e.target.value) })
             }
-            className="w-24 accent-[#f57c00]"
+            className="w-24 accent-ghost-amber"
           />
           <span className="text-sm text-muted-foreground w-10 text-right tabular-nums">
             {settings.fontSize}px
@@ -41,7 +42,7 @@ export function EditorTab({ settings, onUpdateSettings }: EditorTabProps) {
             onChange={(e) =>
               onUpdateSettings({ lineHeight: Number(e.target.value) })
             }
-            className="w-24 accent-[#f57c00]"
+            className="w-24 accent-ghost-amber"
           />
           <span className="text-sm text-muted-foreground w-10 text-right tabular-nums">
             {settings.lineHeight.toFixed(2)}
@@ -62,33 +63,13 @@ export function EditorTab({ settings, onUpdateSettings }: EditorTabProps) {
             onChange={(e) =>
               onUpdateSettings({ editorWidth: Number(e.target.value) })
             }
-            className="w-24 accent-[#f57c00]"
+            className="w-24 accent-ghost-amber"
           />
           <span className="text-sm text-muted-foreground w-10 text-right tabular-nums">
             {settings.editorWidth}px
           </span>
         </div>
       </SettingRow>
-    </div>
-  );
-}
-
-function SettingRow({
-  label,
-  description,
-  children,
-}: {
-  label: string;
-  description: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <div>
-        <p className="text-sm font-medium">{label}</p>
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </div>
-      {children}
     </div>
   );
 }

@@ -648,7 +648,8 @@ export function GhostLayout() {
         {/* Folder tree — ALWAYS rendered, same component, same DOM */}
         <ContextMenu>
         <ContextMenuTrigger asChild>
-        <div ref={treeAreaRef} data-tree-area className="flex-1 overscroll-contain px-1 pb-12 overflow-y-auto relative">
+        <div className="flex-1 relative overflow-hidden">
+        <div ref={treeAreaRef} data-tree-area className="h-full overscroll-contain px-1 pb-12 overflow-y-auto">
           <DndContext
             sensors={sensors}
             onDragStart={handleDragStart}
@@ -709,7 +710,8 @@ export function GhostLayout() {
               ) : null}
             </DragOverlay>
           </DndContext>
-          <SidebarGuide treeAreaRef={treeAreaRef} />
+        </div>
+        <SidebarGuide treeAreaRef={treeAreaRef} />
         </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>

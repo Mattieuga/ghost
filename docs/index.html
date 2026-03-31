@@ -6,6 +6,7 @@
   <title>Ghost — A minimalist markdown editor for Mac</title>
   <meta name="description" content="A simple, beautiful markdown editor for Mac. Free and open source.">
   <link rel="icon" type="image/png" href="icon.png">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline'; img-src 'self'">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -443,7 +444,6 @@
     const GRID = 60;
     const cols = Math.ceil(window.innerWidth / GRID);
     const rows = Math.ceil(window.innerHeight / GRID);
-    // Pick ~12 random intersections
     const count = 18;
     const used = new Set();
     for (let i = 0; i < count; i++) {

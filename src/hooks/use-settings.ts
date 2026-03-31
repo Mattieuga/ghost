@@ -4,11 +4,17 @@ import { load } from "@tauri-apps/plugin-store";
 export interface Settings {
   showAllFiles: boolean;
   theme: "system" | "dark" | "light";
+  fontSize: number;
+  lineHeight: number;
+  editorWidth: number;
 }
 
 const DEFAULTS: Settings = {
   showAllFiles: false,
   theme: "system",
+  fontSize: 16,
+  lineHeight: 1.75,
+  editorWidth: 730,
 };
 
 const STORE_KEY = "settings";

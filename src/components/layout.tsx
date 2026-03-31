@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { FolderTree } from "@/components/sidebar/folder-tree";
 import { EmptyState } from "@/components/sidebar/empty-state";
 import { MarkdownEditor } from "@/components/editor/markdown-editor";
-import { SettingsDialog } from "@/components/dialogs/settings";
+import { SettingsPage } from "@/components/settings/settings-page";
 import { useTrackedFolders } from "@/hooks/use-tracked-folders";
 import { useFileWatcher } from "@/hooks/use-file-watcher";
 import { useSettings } from "@/hooks/use-settings";
@@ -112,6 +112,7 @@ export function GhostLayout() {
       const content = await invoke<string>("read_file", { path });
       setActiveFile(path);
       setFileContent(content);
+      setShowSettings(false);
       closeSearch();
       addRecentFile(path);
       // Count words
@@ -390,7 +391,7 @@ export function GhostLayout() {
 
       if (mod && e.key === ",") {
         e.preventDefault();
-        setShowSettings(true);
+        setShowSettings((prev) => !prev);
       }
 
       if (mod && e.key.toLowerCase() === "k") {
@@ -767,7 +768,14 @@ export function GhostLayout() {
       </button>
 
       {/* Main content — full height, no top bar */}
-      <div className="relative flex-1 overflow-hidden bg-background">
+      <div
+        className="relative flex-1 overflow-hidden bg-background"
+        style={{
+          '--editor-font-size': `${settings.fontSize}px`,
+          '--editor-line-height': `${settings.lineHeight}`,
+          '--editor-max-width': `${settings.editorWidth}px`,
+        } as React.CSSProperties}
+      >
         {/* Floating header overlay — semi-transparent, content scrolls behind */}
         <div
           className={`absolute top-0 left-0 right-0 z-10 flex h-12 items-center justify-between bg-background/80 backdrop-blur-sm ${
@@ -873,12 +881,13 @@ export function GhostLayout() {
         </DialogContent>
       </Dialog>
 
-      <SettingsDialog
-        open={showSettings}
-        onOpenChange={setShowSettings}
-        settings={settings}
-        onUpdateSettings={updateSettings}
-      />
+      {showSettings && (
+        <SettingsPage
+          settings={settings}
+          onUpdateSettings={updateSettings}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
 
       {commandPaletteOpen && (
         <CommandPalette

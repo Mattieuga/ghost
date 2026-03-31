@@ -21,6 +21,233 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* ── TRON background canvas ── */
+    .tron-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    /* ── Deep parallax grid — larger cells, shifts on scroll ── */
+    .tron-deep-grid {
+      position: fixed;
+      inset: -300px;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+      will-change: transform;
+      transform: translate(30px, 30px);
+    }
+
+    .tron-deep-grid::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(
+          90deg,
+          transparent,
+          transparent 237px,
+          rgba(245, 124, 0, 0.06) 237px,
+          rgba(245, 124, 0, 0.15) 239px,
+          rgba(245, 124, 0, 0.06) 241px,
+          transparent 243px
+        ),
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 237px,
+          rgba(245, 124, 0, 0.06) 237px,
+          rgba(245, 124, 0, 0.15) 239px,
+          rgba(245, 124, 0, 0.06) 241px,
+          transparent 243px
+        );
+    }
+
+    /* Vignette — fades all grid layers toward edges */
+    .tron-vignette {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background: radial-gradient(ellipse 55% 45% at 50% 40%, transparent 0%, #09090b 100%);
+    }
+
+    /* ── Intersection node pulses ── */
+    .tron-nodes {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .node {
+      position: absolute;
+      width: 5px;
+      height: 5px;
+      margin-left: -2px;
+      margin-top: -2px;
+      border-radius: 50%;
+      background: rgba(245, 124, 0, 0.8);
+      box-shadow: 0 0 8px 2px rgba(245, 124, 0, 0.4), 0 0 20px 4px rgba(245, 124, 0, 0.15);
+      animation: node-pulse ease-in-out infinite;
+      opacity: 0;
+    }
+
+    @keyframes node-pulse {
+      0%, 100% { opacity: 0; transform: scale(0.5); }
+      50%      { opacity: 1; transform: scale(1.2); }
+    }
+
+    /* Vertical grid lines — faint static structure */
+    .tron-bg::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        90deg,
+        transparent,
+        transparent 59px,
+        rgba(245, 124, 0, 0.06) 59px,
+        rgba(245, 124, 0, 0.06) 60px
+      );
+    }
+
+    /* Horizontal grid lines */
+    .tron-bg::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 59px,
+        rgba(113, 113, 122, 0.07) 59px,
+        rgba(113, 113, 122, 0.07) 60px
+      );
+    }
+
+    /* ── Streaking lines — ghosts in the machine ── */
+    .tron-streaks {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    /* Each streak is a thin line that flies across the viewport */
+    .streak {
+      position: absolute;
+      border-radius: 2px;
+    }
+
+    /* Vertical streaks */
+    .streak--v { width: 1px; animation-timing-function: linear; animation-iteration-count: infinite; }
+    .streak--v.down { animation-name: streak-down; }
+    .streak--v.up   { animation-name: streak-up;   }
+
+    /* Horizontal streaks */
+    .streak--h { height: 1px; animation-timing-function: linear; animation-iteration-count: infinite; }
+    .streak--h.right { animation-name: streak-right; }
+    .streak--h.left  { animation-name: streak-left;  }
+
+    @keyframes streak-down {
+      0%   { transform: translateY(-100%); opacity: 0; }
+      5%   { opacity: 1; }
+      90%  { opacity: 1; }
+      100% { transform: translateY(calc(100vh + 100%)); opacity: 0; }
+    }
+
+    @keyframes streak-up {
+      0%   { transform: translateY(calc(100vh + 100%)); opacity: 0; }
+      5%   { opacity: 1; }
+      90%  { opacity: 1; }
+      100% { transform: translateY(-100%); opacity: 0; }
+    }
+
+    @keyframes streak-right {
+      0%   { transform: translateX(-100%); opacity: 0; }
+      5%   { opacity: 1; }
+      90%  { opacity: 1; }
+      100% { transform: translateX(calc(100vw + 100%)); opacity: 0; }
+    }
+
+    @keyframes streak-left {
+      0%   { transform: translateX(calc(100vw + 100%)); opacity: 0; }
+      5%   { opacity: 1; }
+      90%  { opacity: 1; }
+      100% { transform: translateX(-100%); opacity: 0; }
+    }
+
+    /* Vertical streaks — snapped to grid lines at 59, 119, 179… */
+    .streak--v1  { left: 59px;   height: 120px; background: linear-gradient(180deg, transparent, #52525b, transparent); animation-duration: 7s;  animation-delay: -3s;   }
+    .streak--v2  { left: 239px;  height: 160px; background: linear-gradient(180deg, transparent, #3f3f46, transparent); animation-duration: 9s;  animation-delay: -7s;   }
+    .streak--v3  { left: 479px;  height: 90px;  background: linear-gradient(180deg, transparent, rgba(245,124,0,0.6), transparent); animation-duration: 5s;  animation-delay: -2s;   }
+    .streak--v4  { left: 719px;  height: 140px; background: linear-gradient(180deg, transparent, #52525b, transparent); animation-duration: 11s; animation-delay: -9s;   }
+    .streak--v5  { left: 959px;  height: 100px; background: linear-gradient(180deg, transparent, #3f3f46, transparent); animation-duration: 8s;  animation-delay: -5s;   }
+    .streak--v6  { left: 359px;  height: 70px;  background: linear-gradient(180deg, transparent, rgba(245,124,0,0.45), transparent); animation-duration: 6s;  animation-delay: -1s;   }
+    .streak--v7  { left: 599px;  height: 130px; background: linear-gradient(180deg, transparent, #3f3f46, transparent); animation-duration: 10s; animation-delay: -6s;   }
+    .streak--v8  { left: 179px;  height: 60px;  background: linear-gradient(180deg, transparent, rgba(245,124,0,0.35), transparent); animation-duration: 7.5s; animation-delay: -4s;   }
+    .streak--v9  { left: 839px;  height: 150px; background: linear-gradient(180deg, transparent, #52525b, transparent); animation-duration: 12s; animation-delay: -10s;  }
+    .streak--v10 { left: 1139px; height: 80px;  background: linear-gradient(180deg, transparent, #3f3f46, transparent); animation-duration: 6.5s; animation-delay: -3.5s; }
+
+    /* Horizontal streaks — snapped to grid lines at 59, 119, 179… */
+    .streak--h1  { top: 115px;  width: 220px; background: linear-gradient(90deg, transparent, #3f3f46, transparent); animation-duration: 8s;  animation-delay: -6s;   }
+    .streak--h2  { top: 295px;  width: 280px; background: linear-gradient(90deg, transparent, rgba(245,124,0,0.5), transparent); animation-duration: 6s;  animation-delay: -2s;   }
+    .streak--h3  { top: 475px;  width: 180px; background: linear-gradient(90deg, transparent, #52525b, transparent); animation-duration: 10s; animation-delay: -8s;   }
+    .streak--h4  { top: 655px;  width: 240px; background: linear-gradient(90deg, transparent, #3f3f46, transparent); animation-duration: 9s;  animation-delay: -4s;   }
+    .streak--h5  { top: 775px;  width: 150px; background: linear-gradient(90deg, transparent, rgba(245,124,0,0.4), transparent); animation-duration: 7s;  animation-delay: -5.5s; }
+    .streak--h6  { top: 415px;  width: 200px; background: linear-gradient(90deg, transparent, #3f3f46, transparent); animation-duration: 11s; animation-delay: -1s;   }
+
+    /* Mouse-reactive grid — brighter grid revealed by cursor */
+    .tron-mouse-grid {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        repeating-linear-gradient(
+          90deg,
+          transparent,
+          transparent 59px,
+          rgba(250, 250, 250, 0.25) 59px,
+          rgba(250, 250, 250, 0.25) 60px
+        ),
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 59px,
+          rgba(250, 250, 250, 0.25) 59px,
+          rgba(250, 250, 250, 0.25) 60px
+        );
+      -webkit-mask-image: radial-gradient(circle 300px at var(--mx, -500px) var(--my, -500px), rgba(0,0,0,0.9) 0%, transparent 100%);
+      mask-image: radial-gradient(circle 300px at var(--mx, -500px) var(--my, -500px), rgba(0,0,0,0.9) 0%, transparent 100%);
+    }
+
+    /* Ambient glow behind the hero — subtle amber haze */
+    .tron-glow {
+      position: fixed;
+      top: -10%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(ellipse, rgba(245, 124, 0, 0.04) 0%, transparent 70%);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* All content above the background */
+    .hero, .screenshot-wrapper, .footer {
+      position: relative;
+      z-index: 1;
     }
 
     .hero {
@@ -132,9 +359,46 @@
     .footer span {
       margin: 0 8px;
     }
+
+    /* Reduce motion for accessibility */
+    @media (prefers-reduced-motion: reduce) {
+      .streak { animation: none !important; opacity: 0.3; }
+    }
   </style>
 </head>
 <body>
+  <!-- Deep parallax grid (behind everything) -->
+  <div class="tron-deep-grid" id="deepGrid"></div>
+
+  <!-- TRON grid + mouse spotlight + ambient glow -->
+  <div class="tron-bg"></div>
+  <div class="tron-nodes" id="tronNodes"></div>
+  <div class="tron-mouse-grid" id="mouseGrid"></div>
+  <div class="tron-glow"></div>
+
+  <!-- Streaking lines — ghosts in the machine -->
+  <div class="tron-streaks">
+    <div class="streak streak--v down  streak--v1"></div>
+    <div class="streak streak--v up    streak--v2"></div>
+    <div class="streak streak--v down  streak--v3"></div>
+    <div class="streak streak--v up    streak--v4"></div>
+    <div class="streak streak--v down  streak--v5"></div>
+    <div class="streak streak--v up    streak--v6"></div>
+    <div class="streak streak--v down  streak--v7"></div>
+    <div class="streak streak--v up    streak--v8"></div>
+    <div class="streak streak--v down  streak--v9"></div>
+    <div class="streak streak--v up    streak--v10"></div>
+    <div class="streak streak--h right streak--h1"></div>
+    <div class="streak streak--h left  streak--h2"></div>
+    <div class="streak streak--h right streak--h3"></div>
+    <div class="streak streak--h left  streak--h4"></div>
+    <div class="streak streak--h right streak--h5"></div>
+    <div class="streak streak--h left  streak--h6"></div>
+  </div>
+
+  <!-- Vignette overlay — darkens edges -->
+  <div class="tron-vignette"></div>
+
   <div class="hero">
     <img src="icon.png" alt="Ghost" class="icon">
     <h1>Ghost</h1>
@@ -159,5 +423,46 @@
   <div class="footer">
     Free forever <span>&middot;</span> macOS only <span>&middot;</span> Open source
   </div>
+  <script>
+    // Mouse spotlight
+    const grid = document.getElementById('mouseGrid');
+    document.addEventListener('mousemove', (e) => {
+      grid.style.setProperty('--mx', e.clientX + 'px');
+      grid.style.setProperty('--my', e.clientY + 'px');
+    });
+
+    // Parallax deep grid on scroll
+    const deepGrid = document.getElementById('deepGrid');
+    window.addEventListener('scroll', () => {
+      const y = window.scrollY;
+      deepGrid.style.transform = `translate(30px, ${30 + y * -0.5}px)`;
+    }, { passive: true });
+
+    // Generate pulsing intersection nodes
+    const nodesContainer = document.getElementById('tronNodes');
+    const GRID = 60;
+    const cols = Math.ceil(window.innerWidth / GRID);
+    const rows = Math.ceil(window.innerHeight / GRID);
+    // Pick ~12 random intersections
+    const count = 18;
+    const used = new Set();
+    for (let i = 0; i < count; i++) {
+      let key;
+      do {
+        const c = Math.floor(Math.random() * (cols - 1)) + 1;
+        const r = Math.floor(Math.random() * (rows - 1)) + 1;
+        key = `${c},${r}`;
+      } while (used.has(key));
+      used.add(key);
+      const [c, r] = key.split(',').map(Number);
+      const dot = document.createElement('div');
+      dot.className = 'node';
+      dot.style.left = (c * GRID - 1) + 'px';
+      dot.style.top = (r * GRID - 1) + 'px';
+      dot.style.animationDuration = (3 + Math.random() * 4) + 's';
+      dot.style.animationDelay = (-Math.random() * 6) + 's';
+      nodesContainer.appendChild(dot);
+    }
+  </script>
 </body>
 </html>

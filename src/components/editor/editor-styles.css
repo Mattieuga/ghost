@@ -1,14 +1,14 @@
 .ghost-editor {
   padding: 3.5rem 45px 2.5rem 45px;
-  max-width: 730px;
+  max-width: var(--editor-max-width, 730px);
   min-width: 300px;
   margin: 0 auto;
   min-height: 100%;
   outline: none;
   color: var(--card-foreground);
   caret-color: var(--ghost-amber);
-  font-size: 16px;
-  line-height: 28px;
+  font-size: var(--editor-font-size, 16px);
+  line-height: var(--editor-line-height, 1.75);
 }
 
 /* Headings */
@@ -57,8 +57,8 @@
 /* Paragraphs */
 .ghost-editor p {
   margin-bottom: 1rem;
-  line-height: 28px;
-  font-size: 16px;
+  line-height: var(--editor-line-height, 1.75);
+  font-size: var(--editor-font-size, 16px);
 }
 
 /* Bold — brighter */
@@ -141,8 +141,8 @@
 
 .ghost-editor li {
   margin-bottom: 0.125rem;
-  line-height: 26px;
-  font-size: 16px;
+  line-height: var(--editor-line-height, 1.75);
+  font-size: var(--editor-font-size, 16px);
 }
 
 .ghost-editor li p {

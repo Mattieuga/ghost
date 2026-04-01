@@ -45,7 +45,7 @@ import { useRecentFiles } from "@/hooks/use-recent-files";
 import { useFileTree } from "@/hooks/use-file-tree";
 
 export function GhostLayout() {
-  const { folders, loading, addFolder, addFolderByPath, removeFolder } = useTrackedFolders();
+  const { folders, loading, addFolder, addFolderByPath, removeFolder, reorderFolders } = useTrackedFolders();
   const { settings, updateSettings } = useSettings();
   const { setTheme } = useTheme();
   const [activeFile, setActiveFile] = useState<string | null>(null);
@@ -301,8 +301,11 @@ export function GhostLayout() {
 
   // Listen for external file/folder drag-drop from Finder
   useEffect(() => {
-    const unlistenEnter = listen<{ paths: string[]; position: { x: number; y: number } }>("tauri://drag-enter", () => {
-      setExternalDragOver(true);
+    const unlistenEnter = listen<{ paths: string[]; position: { x: number; y: number } }>("tauri://drag-enter", (event) => {
+      // Only show overlay for external drags (with file paths)
+      if (event.payload.paths?.length > 0) {
+        setExternalDragOver(true);
+      }
     });
     const unlistenLeave = listen("tauri://drag-leave", () => {
       setExternalDragOver(false);
@@ -312,16 +315,37 @@ export function GhostLayout() {
       const paths = event.payload.paths;
       if (!paths || paths.length === 0) return;
 
+      // Check if the drop landed over the editor area
+      const { x, y } = event.payload.position;
+      const editorEl = document.querySelector(".ghost-editor");
+      const isOverEditor = (() => {
+        if (!editorEl || !activeFileRef.current) return false;
+        const rect = editorEl.getBoundingClientRect();
+        return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+      })();
+
+      const imageExts = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"]);
+
       for (const droppedPath of paths) {
         try {
           const isDir = await invoke<boolean>("is_directory", { path: droppedPath });
           if (isDir) {
-            // Add folder as a tracked project
             addFolderByPath(droppedPath);
             handleFsChange();
           } else {
-            // Open the file and track its parent folder
-            openExternalFile(droppedPath);
+            // If image dropped over editor, insert it inline
+            const ext = droppedPath.substring(droppedPath.lastIndexOf(".")).toLowerCase();
+            if (isOverEditor && imageExts.has(ext)) {
+              // Read the file and save as .images/ relative to the active file
+              const data = await invoke<number[]>("read_file_bytes", { path: droppedPath });
+              const filename = droppedPath.substring(droppedPath.lastIndexOf("/") + 1).replace(/\s+/g, "-");
+              const dir = activeFileRef.current!.substring(0, activeFileRef.current!.lastIndexOf("/"));
+              const relativePath = await invoke<string>("save_image", { dir, filename, data });
+              // Insert into editor via a custom event
+              window.dispatchEvent(new CustomEvent("ghost-insert-image", { detail: { src: relativePath } }));
+            } else {
+              openExternalFile(droppedPath);
+            }
           }
         } catch (err) {
           console.error("Failed to handle dropped path:", err);
@@ -602,7 +626,10 @@ export function GhostLayout() {
   }, [activeFile, headerRenameName, activeFileName, handleFsChange]);
 
   return (
-    <div className="flex h-svh w-full overflow-hidden relative">
+    <div
+      className="flex h-svh w-full overflow-hidden relative"
+      data-sidebar-state={sidebarCollapsed ? (sidebarHovered ? "collapsed-hovered" : "collapsed") : "expanded"}
+    >
       {/* Sidebar — always rendered, same DOM across all states */}
       <div
         data-sidebar-collapsed={sidebarCollapsed || undefined}
@@ -671,10 +698,13 @@ export function GhostLayout() {
                     +
                   </button>
                 </div>
-                {folders.map((folder) => (
+                {folders.map((folder, folderIndex) => (
                   <FolderTree
                     key={folder}
                     path={folder}
+                    folderIndex={folderIndex}
+                    folderCount={folders.length}
+                    onReorderProject={reorderFolders}
                     entries={getEntries(folder)}
                     error={getError(folder)}
                     onRefreshFolder={handleFsChange}
@@ -754,7 +784,7 @@ export function GhostLayout() {
             sidebarHoverTimeout.current = null;
           }
         }}
-        className="absolute bottom-3 left-4 z-40 text-ring hover:text-sidebar-foreground transition-colors cursor-pointer size-8 flex items-center justify-center rounded-full bg-background/80 backdrop-blur-sm"
+        className="absolute bottom-3 left-2 z-40 text-ring hover:text-sidebar-foreground transition-colors cursor-pointer size-8 flex items-center justify-center rounded-full bg-background/80 backdrop-blur-sm"
         title={sidebarCollapsed ? "Expand sidebar (⌘\\)" : "Collapse sidebar (⌘\\)"}
       >
         <svg
@@ -777,6 +807,8 @@ export function GhostLayout() {
           '--editor-font-size': `${settings.fontSize}px`,
           '--editor-line-height': `${settings.lineHeight}`,
           '--editor-max-width': `${settings.editorWidth}px`,
+          '--editor-paragraph-spacing': `${settings.paragraphSpacing}rem`,
+          '--editor-heading-spacing': `${settings.headingSpacing}rem`,
         } as React.CSSProperties}
       >
         {/* Floating header overlay — semi-transparent, content scrolls behind */}
@@ -853,6 +885,7 @@ export function GhostLayout() {
               searchTerm={searchOpen ? debouncedSearchTerm : ""}
               replaceTerm={searchOpen ? replaceTerm : ""}
               onSearchResults={handleSearchResults}
+              activeFile={activeFile}
             />
           ) : (
             <div className="flex h-full items-center justify-center">

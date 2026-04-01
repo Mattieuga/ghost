@@ -113,7 +113,7 @@ export function SidebarGuide({ treeAreaRef }: { treeAreaRef: React.RefObject<HTM
 
   return (
     <div
-      className="absolute left-0 top-0 pointer-events-none z-[5]"
+      className="absolute left-0 top-0 pointer-events-none z-[1]"
       style={{ width: "40px", height: "1px" }}
     >
       {/* Full project guide line (dim amber from dot to folder bottom) */}

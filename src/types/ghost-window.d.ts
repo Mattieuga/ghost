@@ -6,6 +6,7 @@ interface GhostSearchCommands {
 }
 
 interface GhostWindow {
+  __ghostActiveFile?: string;
   __ghostAddFolder?: () => void;
   __ghostNewFile?: () => void;
   __ghostFind?: () => void;

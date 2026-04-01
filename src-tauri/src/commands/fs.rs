@@ -108,6 +108,11 @@ pub async fn read_file(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub async fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
+    fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))
+}
+
+#[tauri::command]
 pub async fn write_file(path: String, content: String) -> Result<(), String> {
     fs::write(&path, &content).map_err(|e| format!("Failed to write file: {}", e))
 }
@@ -241,6 +246,47 @@ pub async fn reveal_in_finder(path: String) -> Result<(), String> {
             .arg(&path)
             .spawn()
             .map_err(|e| format!("Failed to reveal in Finder: {}", e))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn save_image(dir: String, filename: String, data: Vec<u8>) -> Result<String, String> {
+    validate_name(&filename)?;
+    let images_dir = Path::new(&dir).join(".images");
+    fs::create_dir_all(&images_dir)
+        .map_err(|e| format!("Failed to create .images directory: {}", e))?;
+
+    // Deduplicate: if filename exists, add a numeric suffix
+    let mut final_name = filename.clone();
+    let path = Path::new(&filename);
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let ext = path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    let mut counter = 1u32;
+    while images_dir.join(&final_name).exists() {
+        final_name = format!("{}-{}{}", stem, counter, ext);
+        counter += 1;
+    }
+
+    let file_path = images_dir.join(&final_name);
+    fs::write(&file_path, &data)
+        .map_err(|e| format!("Failed to write image: {}", e))?;
+
+    Ok(format!(".images/{}", final_name))
+}
+
+#[tauri::command]
+pub async fn open_url(url: String) -> Result<(), String> {
+    // Only allow http/https URLs to prevent arbitrary application launch
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err("Only http:// and https:// URLs are allowed".to_string());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("Failed to open URL: {}", e))?;
     }
     Ok(())
 }

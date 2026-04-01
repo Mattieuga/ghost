@@ -25,6 +25,76 @@ const INDENT_BASE = 16;
 const INDENT_STEP = 14;
 const FILE_EXTRA = 12;
 
+function startProjectDrag(
+  e: PointerEvent,
+  folderIndex: number,
+  label: string,
+  onReorder: (from: number, to: number) => void,
+) {
+  const rootEl = (e.target as HTMLElement).closest("[data-root-folder]") as HTMLElement | null;
+  if (!rootEl) return;
+
+  const allRoots = Array.from(document.querySelectorAll("[data-root-folder]")) as HTMLElement[];
+  let currentIndex = folderIndex;
+
+  const ghost = document.createElement("div");
+  ghost.className = "project-drag-ghost";
+  ghost.textContent = label;
+  ghost.style.left = `${e.clientX + 10}px`;
+  ghost.style.top = `${e.clientY - 10}px`;
+  document.body.appendChild(ghost);
+
+  const indicator = document.createElement("div");
+  indicator.className = "project-drop-indicator";
+  document.body.appendChild(indicator);
+
+  rootEl.style.opacity = "0.4";
+  document.body.style.cursor = "grabbing";
+  document.body.style.userSelect = "none";
+
+  const onMove = (ev: PointerEvent) => {
+    ghost.style.left = `${ev.clientX + 10}px`;
+    ghost.style.top = `${ev.clientY - 10}px`;
+
+    for (let i = 0; i < allRoots.length; i++) {
+      const rect = allRoots[i].getBoundingClientRect();
+      if (ev.clientY < rect.top + rect.height / 2) {
+        currentIndex = i;
+        indicator.style.top = `${rect.top}px`;
+        indicator.style.left = `${rect.left + 16}px`;
+        indicator.style.width = `${rect.width - 32}px`;
+        indicator.style.display = "block";
+        return;
+      }
+      currentIndex = i + 1;
+      if (i === allRoots.length - 1) {
+        indicator.style.top = `${rect.bottom}px`;
+        indicator.style.left = `${rect.left + 16}px`;
+        indicator.style.width = `${rect.width - 32}px`;
+        indicator.style.display = "block";
+      }
+    }
+  };
+
+  const onUp = () => {
+    ghost.remove();
+    indicator.remove();
+    rootEl.style.opacity = "";
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+
+    if (currentIndex !== folderIndex && currentIndex !== folderIndex + 1) {
+      const toIndex = currentIndex > folderIndex ? currentIndex - 1 : currentIndex;
+      onReorder(folderIndex, toIndex);
+    }
+  };
+
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", onUp);
+}
+
 interface FolderTreeProps {
   path: string;
   entries: FileEntry[];
@@ -45,6 +115,9 @@ interface FolderTreeProps {
   onNewFolderRenamed: () => void;
   onRootOpenChange?: (path: string, isOpen: boolean) => void;
   onAddProject?: () => void;
+  folderIndex?: number;
+  folderCount?: number;
+  onReorderProject?: (fromIndex: number, toIndex: number) => void;
 }
 
 export function FolderTree({
@@ -67,6 +140,9 @@ export function FolderTree({
   onNewFolderRenamed,
   onRootOpenChange,
   onAddProject,
+  folderIndex,
+  folderCount,
+  onReorderProject,
 }: FolderTreeProps) {
   const refresh = onRefreshFolder;
 
@@ -139,6 +215,9 @@ export function FolderTree({
       hasActiveFile={hasActiveFile}
       onOpenChange={(isOpen) => onRootOpenChange?.(path, isOpen)}
       onAddProject={onAddProject}
+      folderIndex={folderIndex}
+      folderCount={folderCount}
+      onReorderProject={onReorderProject}
     >
       <FileTree
         entries={entries}
@@ -180,6 +259,9 @@ function DroppableFolder({
   onAutoRenameDone,
   onOpenChange,
   onAddProject,
+  folderIndex,
+  folderCount,
+  onReorderProject,
   children,
 }: {
   id: string;
@@ -198,6 +280,9 @@ function DroppableFolder({
   onAutoRenameDone?: () => void;
   onOpenChange?: (isOpen: boolean) => void;
   onAddProject?: () => void;
+  folderIndex?: number;
+  folderCount?: number;
+  onReorderProject?: (fromIndex: number, toIndex: number) => void;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -336,10 +421,6 @@ function DroppableFolder({
           <ContextMenuItem onSelect={startRename}>
             Rename...
           </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onSelect={() => setShowDeleteDialog(true)} className="text-destructive">
-            Delete Folder
-          </ContextMenuItem>
         </ContextMenuContent>
       );
     }
@@ -472,7 +553,13 @@ function DroppableFolder({
             {isRoot ? (
               <span
                 data-root-dot
-                className="inline-block size-[7px] shrink-0 rounded-full transition-colors"
+                className="inline-block size-[7px] shrink-0 rounded-full transition-colors cursor-grab active:cursor-grabbing"
+                onPointerDown={(e) => {
+                  if (folderIndex === undefined || !onReorderProject || (folderCount ?? 0) < 2) return;
+                  startProjectDrag(e.nativeEvent, folderIndex, displayFolderName, onReorderProject);
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
                 style={{
                   backgroundColor: open ? dotColor : "transparent",
                   border: `1.5px solid ${dotColor}`,

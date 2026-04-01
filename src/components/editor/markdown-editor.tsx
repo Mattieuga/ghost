@@ -3,10 +3,15 @@ import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Link from "@tiptap/extension-link";
+import Focus from "@tiptap/extension-focus";
+import { ResizableImage } from "./image-extension";
 import { Markdown } from "tiptap-markdown";
 import { SearchAndReplace } from "./search-and-replace";
+import { CollapsibleHeadings } from "./collapsible-headings";
 import { useEffect, useRef, useCallback } from "react";
 import { DOMSerializer } from "@tiptap/pm/model";
+import { invoke } from "@tauri-apps/api/core";
+import { LinkBubbleMenu } from "./link-bubble-menu";
 import "./editor-styles.css";
 
 interface MarkdownEditorProps {
@@ -15,6 +20,7 @@ interface MarkdownEditorProps {
   searchTerm?: string;
   replaceTerm?: string;
   onSearchResults?: (count: number, currentIndex: number) => void;
+  activeFile?: string;
 }
 
 export function MarkdownEditor({
@@ -23,9 +29,16 @@ export function MarkdownEditor({
   searchTerm = "",
   replaceTerm = "",
   onSearchResults,
+  activeFile,
 }: MarkdownEditorProps) {
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSearchResults = useRef({ count: 0, index: 0 });
+
+  // Expose active file path for image save handler
+  useEffect(() => {
+    window.__ghostActiveFile = activeFile ?? undefined;
+    return () => { delete window.__ghostActiveFile; };
+  }, [activeFile]);
 
   const debouncedSave = useCallback(
     (markdown: string) => {
@@ -50,15 +63,25 @@ export function MarkdownEditor({
         openOnClick: false,
         autolink: true,
         linkOnPaste: true,
+        isAllowedUri: (url, ctx) =>
+          url.startsWith("#") || ctx.defaultValidate(url),
+      }),
+      ResizableImage.configure({
+        allowBase64: true,
+      }),
+      Focus.configure({
+        className: "has-focus",
+        mode: "deepest",
       }),
       Markdown.configure({
-        html: false,
+        html: true,
         tightLists: true,
         bulletListMarker: "-",
         transformPastedText: true,
         transformCopiedText: false,
       }),
       SearchAndReplace,
+      CollapsibleHeadings,
     ],
     content,
     onUpdate: ({ editor }) => {
@@ -77,6 +100,61 @@ export function MarkdownEditor({
     editorProps: {
       attributes: {
         class: "ghost-editor",
+      },
+      handleDOMEvents: {
+        click: (view, event) => {
+          const target = event.target as HTMLElement;
+
+          // Try DOM-based detection first
+          const domLink = target.closest?.("a");
+          let href = domLink?.getAttribute("href") ?? null;
+
+          // Fallback: check ProseMirror link marks at the click position
+          if (!href) {
+            const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+            if (!coords) return false;
+            const $pos = view.state.doc.resolve(coords.pos);
+            const linkMark =
+              $pos.nodeBefore?.marks.find((m) => m.type.name === "link") ??
+              $pos.nodeAfter?.marks.find((m) => m.type.name === "link");
+            if (!linkMark) return false;
+            href = linkMark.attrs.href;
+          }
+
+          if (!href) return false;
+          event.preventDefault();
+
+          // Local anchor link — scroll to matching heading
+          if (href.startsWith("#")) {
+            const anchor = href.slice(1).toLowerCase();
+            const { doc } = view.state;
+            let targetPos: number | null = null;
+            doc.descendants((node, pos) => {
+              if (targetPos !== null) return false;
+              if (node.type.name === "heading") {
+                const slug = node.textContent
+                  .toLowerCase()
+                  .replace(/[^\w\s-]/g, "")
+                  .replace(/\s+/g, "-");
+                if (slug === anchor || slug.startsWith(anchor + "-")) {
+                  targetPos = pos;
+                  return false;
+                }
+              }
+            });
+            if (targetPos !== null) {
+              const domAtPos = view.domAtPos(targetPos);
+              const el = domAtPos.node.childNodes[domAtPos.offset] as HTMLElement
+                ?? domAtPos.node;
+              el?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+            return true;
+          }
+
+          // External link — open in system browser
+          invoke("open_url", { url: href });
+          return true;
+        },
       },
       handleKeyDown: (view, event) => {
         // Cmd+C for rich text copy
@@ -143,6 +221,17 @@ export function MarkdownEditor({
     };
   }, []);
 
+  // Listen for image insertions from external drag-drop
+  useEffect(() => {
+    const handleInsertImage = (e: Event) => {
+      if (!editor) return;
+      const { src } = (e as CustomEvent).detail;
+      editor.chain().focus().setImage({ src }).run();
+    };
+    window.addEventListener("ghost-insert-image", handleInsertImage);
+    return () => window.removeEventListener("ghost-insert-image", handleInsertImage);
+  }, [editor]);
+
   // Expose search commands for top bar and native menu
   useEffect(() => {
     window.__ghostSearch = {
@@ -190,6 +279,7 @@ export function MarkdownEditor({
 
   return (
     <div className="h-full">
+      {editor && <LinkBubbleMenu editor={editor} />}
       <EditorContent editor={editor} className="h-full" />
     </div>
   );

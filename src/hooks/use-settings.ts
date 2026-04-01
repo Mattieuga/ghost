@@ -7,6 +7,8 @@ export interface Settings {
   fontSize: number;
   lineHeight: number;
   editorWidth: number;
+  paragraphSpacing: number;
+  headingSpacing: number;
 }
 
 const DEFAULTS: Settings = {
@@ -15,6 +17,8 @@ const DEFAULTS: Settings = {
   fontSize: 16,
   lineHeight: 1.75,
   editorWidth: 730,
+  paragraphSpacing: 0.75,
+  headingSpacing: 1,
 };
 
 const STORE_KEY = "settings";

@@ -57,5 +57,18 @@ export function useTrackedFolders() {
     [persist]
   );
 
-  return { folders, loading, addFolder, addFolderByPath, removeFolder };
+  const reorderFolders = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      setFolders((prev) => {
+        const next = [...prev];
+        const [moved] = next.splice(fromIndex, 1);
+        next.splice(toIndex, 0, moved);
+        persist(next);
+        return next;
+      });
+    },
+    [persist]
+  );
+
+  return { folders, loading, addFolder, addFolderByPath, removeFolder, reorderFolders };
 }

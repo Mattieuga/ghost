@@ -46,6 +46,7 @@ pub fn run() {
             commands::fs::markdown_to_html,
             commands::fs::markdown_to_plain_text,
             commands::fs::get_file_metadata,
+            commands::fs::list_system_fonts,
             commands::search::search_file_contents,
             watcher::watch_directories,
             get_pending_open_files,

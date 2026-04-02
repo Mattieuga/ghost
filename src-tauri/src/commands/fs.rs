@@ -351,3 +351,22 @@ pub async fn markdown_to_plain_text(markdown: String) -> Result<String, String> 
     }
     Ok(plain.trim().to_string())
 }
+
+#[tauri::command]
+pub async fn list_system_fonts() -> Result<Vec<String>, String> {
+    use font_kit::source::SystemSource;
+    use std::collections::BTreeSet;
+
+    let source = SystemSource::new();
+    let families = source.all_families().map_err(|e| format!("Failed to list fonts: {}", e))?;
+
+    // Deduplicate and sort via BTreeSet, filter out hidden/system fonts
+    let names: Vec<String> = families
+        .into_iter()
+        .filter(|f| !f.starts_with('.') && !f.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+
+    Ok(names)
+}

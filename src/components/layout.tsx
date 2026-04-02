@@ -92,6 +92,14 @@ export function GhostLayout() {
     applyTheme(settings.themeColors);
   }, [settings.themeColors]);
 
+  // Apply font settings directly on :root for reliable cascade in WKWebView
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--editor-text-font", `"${settings.textFont}"`);
+    root.style.setProperty("--editor-heading-font", `"${settings.headingFont}"`);
+    root.style.setProperty("--editor-code-font", `"${settings.codeFont}"`);
+  }, [settings.textFont, settings.headingFont, settings.codeFont]);
+
 
   const extensions = useMemo(
     () => (settings.showAllFiles ? [] : ["md"]),

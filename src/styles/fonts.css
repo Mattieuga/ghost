@@ -1,0 +1,73 @@
+/* Bundled fonts — all SIL OFL 1.1 licensed */
+
+/* === Text & Heading Fonts === */
+
+/* Lora */
+@font-face { font-family: "Lora"; src: url("/fonts/lora/regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Lora"; src: url("/fonts/lora/bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Lora"; src: url("/fonts/lora/italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Lora"; src: url("/fonts/lora/bold-italic.woff2") format("woff2"); font-weight: 700; font-style: italic; font-display: swap; }
+
+/* Source Serif 4 */
+@font-face { font-family: "Source Serif 4"; src: url("/fonts/source-serif-4/regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Source Serif 4"; src: url("/fonts/source-serif-4/bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Source Serif 4"; src: url("/fonts/source-serif-4/italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Source Serif 4"; src: url("/fonts/source-serif-4/bold-italic.woff2") format("woff2"); font-weight: 700; font-style: italic; font-display: swap; }
+
+/* Crimson Pro */
+@font-face { font-family: "Crimson Pro"; src: url("/fonts/crimson-pro/regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Crimson Pro"; src: url("/fonts/crimson-pro/bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Crimson Pro"; src: url("/fonts/crimson-pro/italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Crimson Pro"; src: url("/fonts/crimson-pro/bold-italic.woff2") format("woff2"); font-weight: 700; font-style: italic; font-display: swap; }
+
+/* Playfair Display */
+@font-face { font-family: "Playfair Display"; src: url("/fonts/playfair-display/regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Playfair Display"; src: url("/fonts/playfair-display/bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Playfair Display"; src: url("/fonts/playfair-display/italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Playfair Display"; src: url("/fonts/playfair-display/bold-italic.woff2") format("woff2"); font-weight: 700; font-style: italic; font-display: swap; }
+
+/* Fraunces */
+@font-face { font-family: "Fraunces"; src: url("/fonts/fraunces/regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Fraunces"; src: url("/fonts/fraunces/bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Fraunces"; src: url("/fonts/fraunces/italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Fraunces"; src: url("/fonts/fraunces/bold-italic.woff2") format("woff2"); font-weight: 700; font-style: italic; font-display: swap; }
+
+/* IBM Plex Serif */
+@font-face { font-family: "IBM Plex Serif"; src: url("/fonts/ibm-plex-serif/regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "IBM Plex Serif"; src: url("/fonts/ibm-plex-serif/bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "IBM Plex Serif"; src: url("/fonts/ibm-plex-serif/italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "IBM Plex Serif"; src: url("/fonts/ibm-plex-serif/bold-italic.woff2") format("woff2"); font-weight: 700; font-style: italic; font-display: swap; }
+
+/* Roboto */
+@font-face { font-family: "Roboto"; src: url("/fonts/roboto/regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Roboto"; src: url("/fonts/roboto/bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Roboto"; src: url("/fonts/roboto/italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Roboto"; src: url("/fonts/roboto/bold-italic.woff2") format("woff2"); font-weight: 700; font-style: italic; font-display: swap; }
+
+/* Inter */
+@font-face { font-family: "Inter"; src: url("/fonts/inter/regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("/fonts/inter/bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("/fonts/inter/italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("/fonts/inter/bold-italic.woff2") format("woff2"); font-weight: 700; font-style: italic; font-display: swap; }
+
+/* Space Grotesk (no italic variant exists for this font) */
+@font-face { font-family: "Space Grotesk"; src: url("/fonts/space-grotesk/regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Space Grotesk"; src: url("/fonts/space-grotesk/bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+
+/* === Code Fonts === */
+
+/* JetBrains Mono */
+@font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono/regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono/bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+
+/* Fira Code */
+@font-face { font-family: "Fira Code"; src: url("/fonts/fira-code/regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Fira Code"; src: url("/fonts/fira-code/bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+
+/* IBM Plex Mono */
+@font-face { font-family: "IBM Plex Mono"; src: url("/fonts/ibm-plex-mono/regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "IBM Plex Mono"; src: url("/fonts/ibm-plex-mono/bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+
+/* Source Code Pro */
+@font-face { font-family: "Source Code Pro"; src: url("/fonts/source-code-pro/regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Source Code Pro"; src: url("/fonts/source-code-pro/bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }

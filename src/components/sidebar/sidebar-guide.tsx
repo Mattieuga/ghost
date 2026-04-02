@@ -13,6 +13,8 @@ export function SidebarGuide({ treeAreaRef }: { treeAreaRef: React.RefObject<HTM
   const [current, setCurrent] = useState<GuideState | null>(null);
   const [animating, setAnimating] = useState(false);
   const rafRef = useRef<number>(0);
+  const isScrolling = useRef(false);
+  const prevRootFolder = useRef<string | null>(null);
 
   const measure = useCallback((): GuideState | null => {
     const treeArea = treeAreaRef.current;
@@ -31,53 +33,51 @@ export function SidebarGuide({ treeAreaRef }: { treeAreaRef: React.RefObject<HTM
     if (!dotEl) return null;
 
     const treeRect = treeArea.getBoundingClientRect();
-    const scrollTop = treeArea.scrollTop;
 
+    // Viewport-relative positions within the container (NO scrollTop adjustment)
     const activeRect = activeEl.getBoundingClientRect();
     const dotRect = dotEl.getBoundingClientRect();
     const folderRect = rootFolderEl.getBoundingClientRect();
     const guideX = dotRect.left - treeRect.left + dotRect.width / 2;
 
     return {
-      dotY: dotRect.top - treeRect.top + scrollTop + dotRect.height / 2,
-      folderBottom: folderRect.bottom - treeRect.top + scrollTop,
-      activeTop: activeRect.top - treeRect.top + scrollTop,
-      activeBottom: activeRect.top - treeRect.top + scrollTop + activeRect.height,
+      dotY: dotRect.top - treeRect.top + dotRect.height / 2,
+      folderBottom: folderRect.bottom - treeRect.top,
+      activeTop: activeRect.top - treeRect.top,
+      activeBottom: activeRect.top - treeRect.top + activeRect.height,
       rootFolder,
       guideX,
     };
   }, [treeAreaRef]);
 
+  const update = useCallback((fromScroll = false) => {
+    const newState = measure();
+    setCurrent((prev) => {
+      if (!newState) return null;
+
+      // Only animate when the active file/folder changes, not during scroll
+      if (!fromScroll && prev && (
+        prev.rootFolder !== newState.rootFolder ||
+        prev.activeTop !== newState.activeTop ||
+        prev.activeBottom !== newState.activeBottom
+      )) {
+        setAnimating(true);
+      }
+
+      prevRootFolder.current = newState.rootFolder;
+      return newState;
+    });
+  }, [measure]);
+
   useEffect(() => {
     const treeArea = treeAreaRef.current;
     if (!treeArea) return;
-
-    const update = () => {
-      const newState = measure();
-      setCurrent((prev) => {
-        if (!newState) return null;
-        if (!prev) return newState;
-
-        // Any change in position → animate slide
-        const changed =
-          prev.activeTop !== newState.activeTop ||
-          prev.activeBottom !== newState.activeBottom ||
-          prev.dotY !== newState.dotY ||
-          prev.folderBottom !== newState.folderBottom;
-
-        if (changed) {
-          setAnimating(true);
-          return newState;
-        }
-        return newState;
-      });
-    };
 
     update();
 
     const observer = new MutationObserver(() => {
       cancelAnimationFrame(rafRef.current);
-      rafRef.current = requestAnimationFrame(update);
+      rafRef.current = requestAnimationFrame(() => update(false));
     });
     observer.observe(treeArea, {
       attributeFilter: ["data-file-active", "data-folder-active"],
@@ -85,11 +85,18 @@ export function SidebarGuide({ treeAreaRef }: { treeAreaRef: React.RefObject<HTM
       subtree: true,
     });
 
+    const onScroll = () => {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => update(true));
+    };
+    treeArea.addEventListener("scroll", onScroll, { passive: true });
+
     return () => {
       observer.disconnect();
+      treeArea.removeEventListener("scroll", onScroll);
       cancelAnimationFrame(rafRef.current);
     };
-  }, [treeAreaRef, measure]);
+  }, [treeAreaRef, update]);
 
   // Clear animating flag after transition completes
   useEffect(() => {

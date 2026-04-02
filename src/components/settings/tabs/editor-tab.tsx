@@ -13,9 +13,24 @@ const BUNDLED_CODE_FONTS = [
   "JetBrains Mono", "Fira Code", "IBM Plex Mono", "Source Code Pro",
 ];
 
+const MAX_VISIBLE_SYSTEM_FONTS = 50;
+
+// Module-level cache: fetch system fonts once, share across all pickers
+let systemFontsPromise: Promise<string[]> | null = null;
+function fetchSystemFonts(): Promise<string[]> {
+  if (!systemFontsPromise) {
+    systemFontsPromise = invoke<string[]>("list_system_fonts").catch(() => []);
+  }
+  return systemFontsPromise;
+}
+
+/** Strip characters that could break CSS property values */
+function sanitizeFont(name: string): string {
+  return name.replace(/[";{}\\]/g, "");
+}
+
 interface FontPickerProps {
   label: string;
-  description: string;
   value: string;
   bundledFonts: string[];
   onChange: (font: string) => void;
@@ -29,16 +44,23 @@ function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
   const btnRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
+  const [activeIndex, setActiveIndex] = useState(-1);
 
   const query = search.toLowerCase();
   const filteredBundled = bundledFonts.filter((f) => f.toLowerCase().includes(query));
-  const filteredSystem = systemFonts?.filter((f) => f.toLowerCase().includes(query)) ?? null;
+  const allFilteredSystem = systemFonts?.filter((f) => f.toLowerCase().includes(query)) ?? null;
+  const filteredSystem = allFilteredSystem?.slice(0, MAX_VISIBLE_SYSTEM_FONTS) ?? null;
+  const totalSystemMatches = allFilteredSystem?.length ?? 0;
+
+  // All selectable items in order (for keyboard nav)
+  const allItems = [...filteredBundled, ...(filteredSystem ?? [])];
 
   useEffect(() => {
     if (!open) return;
     const handle = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node) &&
-          btnRef.current && !btnRef.current.contains(e.target as Node)) {
+      if (e.target instanceof Node &&
+          ref.current && !ref.current.contains(e.target) &&
+          btnRef.current && !btnRef.current.contains(e.target)) {
         setOpen(false);
         setSearch("");
       }
@@ -49,12 +71,35 @@ function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
 
   useEffect(() => {
     if (open && systemFonts === null) {
-      invoke<string[]>("list_system_fonts")
-        .then(setSystemFonts)
-        .catch(() => setSystemFonts([]));
+      fetchSystemFonts().then(setSystemFonts);
     }
-    if (open) setTimeout(() => searchRef.current?.focus(), 0);
+    if (open) {
+      setActiveIndex(-1);
+      setTimeout(() => searchRef.current?.focus(), 0);
+    }
   }, [open, systemFonts]);
+
+  const selectItem = (font: string) => {
+    onChange(sanitizeFont(font));
+    setOpen(false);
+    setSearch("");
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setOpen(false);
+      setSearch("");
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.min(i + 1, allItems.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter" && activeIndex >= 0 && activeIndex < allItems.length) {
+      e.preventDefault();
+      selectItem(allItems[activeIndex]);
+    }
+  };
 
   return (
     <div className="relative">
@@ -71,7 +116,7 @@ function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
         }}
         className="h-8 w-full px-3 rounded-md border border-border hover:border-ring bg-transparent text-sm text-card-foreground cursor-pointer flex items-center gap-2 justify-between"
       >
-        <span className="truncate" style={{ fontFamily: `"${value}", sans-serif` }}>{value}</span>
+        <span className="truncate" style={{ fontFamily: `"${sanitizeFont(value)}", sans-serif` }}>{value}</span>
         <span className="text-muted-foreground text-xs">▾</span>
       </button>
 
@@ -82,8 +127,8 @@ function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
               <input
                 ref={searchRef}
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Escape") { setOpen(false); setSearch(""); } }}
+                onChange={(e) => { setSearch(e.target.value); setActiveIndex(-1); }}
+                onKeyDown={handleKeyDown}
                 placeholder="Search fonts..."
                 className="w-full h-7 px-2 rounded-md border border-border bg-transparent text-xs text-card-foreground outline-none focus:border-ring caret-ghost-amber placeholder:text-muted-foreground"
               />
@@ -96,11 +141,12 @@ function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
                   <div className="text-[10px] font-medium uppercase text-muted-foreground px-2 mb-0.5" style={{ letterSpacing: "1px" }}>
                     Bundled
                   </div>
-                  {filteredBundled.map((font) => (
+                  {filteredBundled.map((font, i) => (
                     <button
                       key={font}
-                      onClick={() => { onChange(font); setOpen(false); setSearch(""); }}
+                      onClick={() => selectItem(font)}
                       className={`w-full text-left px-2 py-1 rounded-md text-sm cursor-pointer transition-colors ${
+                        activeIndex === i ? "bg-accent text-accent-foreground" :
                         value === font ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
                       }`}
                       style={{ fontFamily: `"${font}", sans-serif` }}
@@ -111,30 +157,33 @@ function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
                 </div>
               )}
 
-              {filteredBundled.length > 0 && (filteredSystem === null || (filteredSystem?.length ?? 0) > 0) && (
+              {filteredBundled.length > 0 && (filteredSystem === null || filteredSystem.length > 0) && (
                 <div className="border-t border-border mx-2" />
               )}
 
-              {/* System fonts section */}
+              {/* System fonts section — capped at MAX_VISIBLE, rendered in default font */}
               {filteredSystem === null ? (
                 <div className="px-4 py-2 text-xs text-muted-foreground">Loading...</div>
               ) : filteredSystem.length > 0 ? (
                 <div className="px-2 py-1">
                   <div className="text-[10px] font-medium uppercase text-muted-foreground px-2 mb-0.5" style={{ letterSpacing: "1px" }}>
-                    System
+                    System{totalSystemMatches > MAX_VISIBLE_SYSTEM_FONTS ? ` (${MAX_VISIBLE_SYSTEM_FONTS} of ${totalSystemMatches})` : ""}
                   </div>
-                  {filteredSystem.map((font) => (
-                    <button
-                      key={font}
-                      onClick={() => { onChange(font); setOpen(false); setSearch(""); }}
-                      className={`w-full text-left px-2 py-1 rounded-md text-sm cursor-pointer transition-colors ${
-                        value === font ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-                      }`}
-                      style={{ fontFamily: `"${font}", sans-serif` }}
-                    >
-                      {font}
-                    </button>
-                  ))}
+                  {filteredSystem.map((font, i) => {
+                    const globalIdx = filteredBundled.length + i;
+                    return (
+                      <button
+                        key={font}
+                        onClick={() => selectItem(font)}
+                        className={`w-full text-left px-2 py-1 rounded-md text-sm cursor-pointer transition-colors ${
+                          activeIndex === globalIdx ? "bg-accent text-accent-foreground" :
+                          value === font ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+                        }`}
+                      >
+                        {font}
+                      </button>
+                    );
+                  })}
                 </div>
               ) : search && filteredBundled.length === 0 ? (
                 <div className="px-4 py-2 text-xs text-muted-foreground">No fonts found</div>
@@ -172,19 +221,19 @@ export function EditorTab({ settings, onUpdateSettings }: EditorTabProps) {
       {/* Fonts — 3 pickers in a row */}
       <div className="grid grid-cols-3 gap-3">
         <FontPicker
-          label="Text" description=""
+          label="Text"
           value={settings.textFont}
           bundledFonts={BUNDLED_TEXT_FONTS}
           onChange={(textFont) => onUpdateSettings({ textFont })}
         />
         <FontPicker
-          label="Heading" description=""
+          label="Heading"
           value={settings.headingFont}
           bundledFonts={BUNDLED_TEXT_FONTS}
           onChange={(headingFont) => onUpdateSettings({ headingFont })}
         />
         <FontPicker
-          label="Code" description=""
+          label="Code"
           value={settings.codeFont}
           bundledFonts={BUNDLED_CODE_FONTS}
           onChange={(codeFont) => onUpdateSettings({ codeFont })}
@@ -225,7 +274,7 @@ export function EditorTab({ settings, onUpdateSettings }: EditorTabProps) {
       <div className="flex justify-end pt-1">
         <button
           onClick={() => onUpdateSettings({
-            textFont: "Inter", headingFont: "Inter", codeFont: "Space Mono",
+            textFont: "Inter", headingFont: "Inter", codeFont: "JetBrains Mono",
             fontSize: 16, lineHeight: 1.60, paragraphSpacing: 0.50, headingSpacing: 0.80, editorWidth: 730,
           })}
           className="text-xs text-muted-foreground hover:text-card-foreground transition-colors cursor-pointer"

@@ -13,5 +13,9 @@ fn main() {
         let _ = std::fs::copy(prod_icon, active_icon);
     }
 
+    // Re-run this script if icon files change
+    println!("cargo:rerun-if-changed=icons/icon-prod.icns");
+    println!("cargo:rerun-if-changed=icons/icon-dev.icns");
+
     tauri_build::build();
 }

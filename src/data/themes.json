@@ -1,0 +1,137 @@
+[
+  {
+    "id": "factory",
+    "label": "Factory",
+    "editorBg": "#09090b",
+    "sidebarBg": "#0e0e10",
+    "text": "#e4e4e7",
+    "accent": "#f57c00",
+    "heading": "#fafafa"
+  },
+  {
+    "id": "dracula",
+    "label": "Dracula",
+    "editorBg": "#282a36",
+    "sidebarBg": "#21222c",
+    "text": "#f8f8f2",
+    "accent": "#bd93f9",
+    "heading": "#f8f8f2"
+  },
+  {
+    "id": "nord",
+    "label": "Nord",
+    "editorBg": "#2e3440",
+    "sidebarBg": "#272c36",
+    "text": "#d8dee9",
+    "accent": "#88c0d0",
+    "heading": "#eceff4"
+  },
+  {
+    "id": "monokai",
+    "label": "Monokai",
+    "editorBg": "#272822",
+    "sidebarBg": "#1e1f1c",
+    "text": "#f8f8f2",
+    "accent": "#f92672",
+    "heading": "#f8f8f2"
+  },
+  {
+    "id": "gruvbox-dark",
+    "label": "Gruvbox Dark",
+    "editorBg": "#282828",
+    "sidebarBg": "#1d2021",
+    "text": "#ebdbb2",
+    "accent": "#fe8019",
+    "heading": "#fbf1c7"
+  },
+  {
+    "id": "tokyo-night",
+    "label": "Tokyo Night",
+    "editorBg": "#1a1b26",
+    "sidebarBg": "#16161e",
+    "text": "#a9b1d6",
+    "accent": "#7aa2f7",
+    "heading": "#c0caf5"
+  },
+  {
+    "id": "catppuccin-mocha",
+    "label": "Catppuccin Mocha",
+    "editorBg": "#1e1e2e",
+    "sidebarBg": "#181825",
+    "text": "#cdd6f4",
+    "accent": "#cba6f7",
+    "heading": "#cdd6f4"
+  },
+  {
+    "id": "one-dark",
+    "label": "One Dark",
+    "editorBg": "#282c34",
+    "sidebarBg": "#21252b",
+    "text": "#abb2bf",
+    "accent": "#61afef",
+    "heading": "#e5e9f0"
+  },
+  {
+    "id": "rose-pine",
+    "label": "Ros\u00e9 Pine",
+    "editorBg": "#191724",
+    "sidebarBg": "#1f1d2e",
+    "text": "#e0def4",
+    "accent": "#ebbcba",
+    "heading": "#e0def4"
+  },
+  {
+    "id": "solarized-dark",
+    "label": "Solarized Dark",
+    "editorBg": "#002b36",
+    "sidebarBg": "#073642",
+    "text": "#839496",
+    "accent": "#b58900",
+    "heading": "#eee8d5"
+  },
+  {
+    "id": "solarized-light",
+    "label": "Solarized Light",
+    "editorBg": "#fdf6e3",
+    "sidebarBg": "#eee8d5",
+    "text": "#657b83",
+    "accent": "#b58900",
+    "heading": "#073642"
+  },
+  {
+    "id": "gruvbox-light",
+    "label": "Gruvbox Light",
+    "editorBg": "#fbf1c7",
+    "sidebarBg": "#f2e5bc",
+    "text": "#504945",
+    "accent": "#d65d0e",
+    "heading": "#282828"
+  },
+  {
+    "id": "github-light",
+    "label": "GitHub Light",
+    "editorBg": "#ffffff",
+    "sidebarBg": "#f6f8fa",
+    "text": "#424242",
+    "accent": "#0969da",
+    "heading": "#1f2328"
+  },
+  {
+    "id": "catppuccin-latte",
+    "label": "Catppuccin Latte",
+    "editorBg": "#eff1f5",
+    "sidebarBg": "#e6e9ef",
+    "text": "#4c4f69",
+    "accent": "#8839ef",
+    "heading": "#1e1e2e"
+  },
+  {
+    "id": "sepia",
+    "label": "Sepia",
+    "editorBg": "#f4ecd8",
+    "sidebarBg": "#ebe3cf",
+    "text": "#5b4636",
+    "accent": "#a0522d",
+    "heading": "#2c1810"
+  }
+]

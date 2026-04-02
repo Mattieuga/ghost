@@ -31,7 +31,7 @@ const DEFAULTS: Settings = {
   customThemes: [],
   textFont: "Inter",
   headingFont: "Inter",
-  codeFont: "Space Mono",
+  codeFont: "JetBrains Mono",
   fontSize: 16,
   lineHeight: 1.60,
   editorWidth: 730,

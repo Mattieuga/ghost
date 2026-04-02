@@ -13,8 +13,6 @@ export function SidebarGuide({ treeAreaRef }: { treeAreaRef: React.RefObject<HTM
   const [current, setCurrent] = useState<GuideState | null>(null);
   const [animating, setAnimating] = useState(false);
   const rafRef = useRef<number>(0);
-  const isScrolling = useRef(false);
-  const prevRootFolder = useRef<string | null>(null);
 
   const measure = useCallback((): GuideState | null => {
     const treeArea = treeAreaRef.current;
@@ -64,7 +62,6 @@ export function SidebarGuide({ treeAreaRef }: { treeAreaRef: React.RefObject<HTM
         setAnimating(true);
       }
 
-      prevRootFolder.current = newState.rootFolder;
       return newState;
     });
   }, [measure]);

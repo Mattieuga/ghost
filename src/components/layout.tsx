@@ -95,9 +95,10 @@ export function GhostLayout() {
   // Apply font settings directly on :root for reliable cascade in WKWebView
   useEffect(() => {
     const root = document.documentElement;
-    root.style.setProperty("--editor-text-font", `"${settings.textFont}"`);
-    root.style.setProperty("--editor-heading-font", `"${settings.headingFont}"`);
-    root.style.setProperty("--editor-code-font", `"${settings.codeFont}"`);
+    const sanitize = (s: string) => s.replace(/[";{}\\]/g, "");
+    root.style.setProperty("--editor-text-font", `"${sanitize(settings.textFont)}"`);
+    root.style.setProperty("--editor-heading-font", `"${sanitize(settings.headingFont)}"`);
+    root.style.setProperty("--editor-code-font", `"${sanitize(settings.codeFont)}"`);
   }, [settings.textFont, settings.headingFont, settings.codeFont]);
 
 

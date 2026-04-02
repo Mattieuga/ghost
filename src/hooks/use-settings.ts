@@ -8,6 +8,9 @@ export interface Settings {
   theme: string;
   themeColors: ThemeColors;
   customThemes: ThemePreset[];
+  textFont: string;
+  headingFont: string;
+  codeFont: string;
   fontSize: number;
   lineHeight: number;
   editorWidth: number;
@@ -26,11 +29,14 @@ const DEFAULTS: Settings = {
     heading: DEFAULT_THEME.heading,
   },
   customThemes: [],
+  textFont: "Inter",
+  headingFont: "Inter",
+  codeFont: "Space Mono",
   fontSize: 16,
-  lineHeight: 1.75,
+  lineHeight: 1.60,
   editorWidth: 730,
-  paragraphSpacing: 0.75,
-  headingSpacing: 1,
+  paragraphSpacing: 0.50,
+  headingSpacing: 0.80,
 };
 
 const STORE_KEY = "settings";

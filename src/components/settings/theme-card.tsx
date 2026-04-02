@@ -1,63 +1,23 @@
 import { cn } from "@/lib/utils";
-
-interface ThemePreset {
-  id: "light" | "dark" | "system";
-  label: string;
-  bg: string;
-  fg: string;
-  mutedFg: string;
-  heading: string;
-  accent: string;
-  border: string;
-}
-
-export const THEME_PRESETS: ThemePreset[] = [
-  {
-    id: "light",
-    label: "Light",
-    bg: "#ffffff",
-    fg: "#0a0a0a",
-    mutedFg: "#71717a",
-    heading: "#0a0a0a",
-    accent: "#f57c00",
-    border: "#e4e4e7",
-  },
-  {
-    id: "dark",
-    label: "Dark",
-    bg: "#09090b",
-    fg: "#e4e4e7",
-    mutedFg: "#71717a",
-    heading: "#fafafa",
-    accent: "#f57c00",
-    border: "#27272a",
-  },
-  {
-    id: "system",
-    label: "System",
-    bg: "linear-gradient(135deg, #ffffff 50%, #09090b 50%)",
-    fg: "#e4e4e7",
-    mutedFg: "#71717a",
-    heading: "#fafafa",
-    accent: "#f57c00",
-    border: "#27272a",
-  },
-];
+import type { ThemeColors } from "@/lib/theme-engine";
+import { deriveTheme } from "@/lib/theme-engine";
 
 interface ThemeCardProps {
-  preset: ThemePreset;
+  label: string;
+  colors: ThemeColors;
   isActive: boolean;
   onClick: () => void;
+  onDelete?: () => void;
 }
 
-export function ThemeCard({ preset, isActive, onClick }: ThemeCardProps) {
-  const isSystem = preset.id === "system";
+export function ThemeCard({ label, colors, isActive, onClick, onDelete }: ThemeCardProps) {
+  const derived = deriveTheme(colors);
 
   return (
     <button
       onClick={onClick}
       className={cn(
-        "w-full rounded-xl border-2 p-3 text-left transition-all cursor-pointer",
+        "relative w-full rounded-xl border-2 p-2 text-left transition-all cursor-pointer",
         isActive
           ? "border-ghost-amber"
           : "border-border hover:border-ring"
@@ -65,39 +25,51 @@ export function ThemeCard({ preset, isActive, onClick }: ThemeCardProps) {
     >
       {/* Mini editor preview */}
       <div
-        className="rounded-lg p-4 h-36 overflow-hidden"
+        className="rounded-lg overflow-hidden flex"
         style={{
-          background: preset.bg,
-          border: `1px solid ${preset.border}`,
+          border: `1px solid ${derived["--border"]}`,
+          height: 100,
         }}
       >
-        {isSystem ? (
-          <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
-            Follows OS appearance
+        {/* Sidebar preview */}
+        <div
+          className="w-[40px] shrink-0 p-1.5 flex flex-col gap-1"
+          style={{ background: colors.sidebarBg, borderRight: `1px solid ${derived["--sidebar-border"]}` }}
+        >
+          <div className="h-1 rounded-full w-5" style={{ background: derived["--sidebar-primary"] }} />
+          <div className="h-0.5 rounded-full w-6 ml-1" style={{ background: derived["--sidebar-foreground"], opacity: 0.5 }} />
+          <div className="h-0.5 rounded-full w-4 ml-1" style={{ background: colors.accent }} />
+          <div className="h-0.5 rounded-full w-5 ml-1" style={{ background: derived["--sidebar-foreground"], opacity: 0.5 }} />
+        </div>
+        {/* Editor preview */}
+        <div className="flex-1 p-2 overflow-hidden" style={{ background: colors.editorBg }}>
+          <div style={{ color: colors.heading, fontWeight: 700, fontSize: 10, marginBottom: 3 }}>
+            The Great Gatsby
           </div>
-        ) : (
-          <>
-            <div
-              style={{ color: preset.heading, fontWeight: 700, fontSize: 14, marginBottom: 8 }}
-            >
-              Things Hidden Since the Foundation
-            </div>
-            <div style={{ color: preset.mutedFg, fontSize: 11, lineHeight: 1.6 }}>
-              Lorem ipsum{" "}
-              <span style={{ color: preset.fg, fontWeight: 700 }}>dolor sit amet</span>,
-              consectetur adipiscing elit. Mauris iaculis{" "}
-              <span style={{ color: preset.accent }}>semper</span> pharetra.
-            </div>
-          </>
-        )}
+          <div style={{ color: colors.text, fontSize: 8, lineHeight: 1.5 }}>
+            In my younger years, my father gave me{" "}
+            <span style={{ color: colors.accent, textDecoration: "underline" }}>advice</span>{" "}
+            that I've been turning over in my mind.
+          </div>
+        </div>
       </div>
 
       {/* Label row */}
-      <div className="mt-3 flex items-center justify-between px-1">
-        <span className="text-sm font-medium">{preset.label}</span>
-        {isActive && (
-          <span className="size-2.5 rounded-full bg-ghost-amber" />
-        )}
+      <div className="mt-1.5 flex items-center justify-between px-0.5">
+        <span className="text-xs font-medium truncate">{label}</span>
+        <div className="flex items-center gap-1.5">
+          {isActive && <span className="size-2 rounded-full bg-ghost-amber shrink-0" />}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              className="text-muted-foreground hover:text-destructive text-xs cursor-pointer"
+              title="Delete theme"
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </div>
     </button>
   );

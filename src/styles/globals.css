@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+/* Theme is applied via CSS custom properties on :root, not via .dark class */
 
 /* Enable native window dragging on elements with data-tauri-drag-region */
 [data-tauri-drag-region] {
@@ -44,78 +44,43 @@
   --radius-2xl: calc(var(--radius) * 1.8);
 }
 
+/* Theme colors are applied at runtime by theme-engine.ts via inline styles on :root.
+   Fallback defaults (dark theme) for initial render before JS loads. */
 :root {
   --radius: 0.5rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-  --ghost-amber: #f57c00;
-  --checkbox-background: oklch(0.88 0 0);
-  --checkbox-border: oklch(0.75 0 0);
-  --checkbox-background-checked: oklch(0.97 0 0);
-  --checkbox-border-checked: oklch(0.93 0 0);
-  --checkbox-mark: oklch(0.82 0 0);
-}
-
-/* Exact Figma colors from zinc palette */
-.dark {
-  --background: #09090b;       /* zinc-950 — editor bg */
-  --foreground: #fafafa;       /* zinc-50 — headings */
-  --card: #18181b;             /* zinc-900 — code blocks, active file bg */
-  --card-foreground: #e4e4e7;  /* zinc-200 */
-  --popover: #18181b;          /* zinc-900 */
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #18181b;
+  --card-foreground: #e4e4e7;
+  --popover: #0e0e10;
   --popover-foreground: #e4e4e7;
-  --primary: #fafafa;          /* zinc-50 */
+  --primary: #fafafa;
   --primary-foreground: #09090b;
-  --secondary: #18181b;        /* zinc-900 */
+  --secondary: #18181b;
   --secondary-foreground: #e4e4e7;
-  --muted: #18181b;            /* zinc-900 — code blocks, search bg */
-  --muted-foreground: #71717a; /* zinc-500 — body text */
+  --muted: #18181b;
+  --muted-foreground: #71717a;
   --accent: #18181b;
   --accent-foreground: #e4e4e7;
   --destructive: #dc2626;
   --destructive-foreground: #fafafa;
-  --border: #1c1c20;           /* separator lines */
+  --border: #1c1c20;
   --input: #18181b;
-  --ring: #3f3f46;             /* zinc-700 */
-  --sidebar: #0e0e10;          /* title bar / sidebar bg */
-  --sidebar-foreground: #71717a; /* zinc-500 — file names */
-  --sidebar-primary: #a1a1aa;  /* zinc-400 — folder names */
+  --ring: #3f3f46;
+  --sidebar: #0e0e10;
+  --sidebar-foreground: #71717a;
+  --sidebar-primary: #a1a1aa;
   --sidebar-primary-foreground: #0e0e10;
-  --sidebar-accent: #18181b;   /* zinc-900 — active file bg */
-  --sidebar-accent-foreground: #e4e4e7; /* zinc-200 — active file text */
+  --sidebar-accent: #18181b;
+  --sidebar-accent-foreground: #e4e4e7;
   --sidebar-border: #1c1c20;
   --sidebar-ring: #3f3f46;
   --ghost-amber: #f57c00;
-  --checkbox-background: #27272a;        /* zinc-800 */
-  --checkbox-border: #3f3f46;            /* zinc-700 */
-  --checkbox-background-checked: #18181b; /* zinc-900 */
-  --checkbox-border-checked: #27272a;    /* zinc-800 */
-  --checkbox-mark: #52525b;              /* zinc-600 */
+  --checkbox-background: #27272a;
+  --checkbox-border: #3f3f46;
+  --checkbox-background-checked: #18181b;
+  --checkbox-border-checked: #27272a;
+  --checkbox-mark: #52525b;
 }
 
 @layer base {

@@ -29,7 +29,7 @@ import { SettingsPage } from "@/components/settings/settings-page";
 import { useTrackedFolders } from "@/hooks/use-tracked-folders";
 import { useFileWatcher } from "@/hooks/use-file-watcher";
 import { useSettings } from "@/hooks/use-settings";
-import { useTheme } from "@/components/theme-provider";
+import { applyTheme } from "@/lib/theme-engine";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -46,8 +46,7 @@ import { useFileTree } from "@/hooks/use-file-tree";
 
 export function GhostLayout() {
   const { folders, loading, addFolder, addFolderByPath, removeFolder, reorderFolders } = useTrackedFolders();
-  const { settings, updateSettings } = useSettings();
-  const { setTheme } = useTheme();
+  const { settings, updateSettings, saveTheme, deleteTheme } = useSettings();
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -90,8 +89,8 @@ export function GhostLayout() {
   );
 
   useEffect(() => {
-    setTheme(settings.theme);
-  }, [settings.theme, setTheme]);
+    applyTheme(settings.themeColors);
+  }, [settings.themeColors]);
 
 
   const extensions = useMemo(
@@ -924,6 +923,9 @@ export function GhostLayout() {
           settings={settings}
           onUpdateSettings={updateSettings}
           onClose={() => setShowSettings(false)}
+          customThemes={settings.customThemes}
+          onSaveTheme={saveTheme}
+          onDeleteTheme={deleteTheme}
         />
       )}
 

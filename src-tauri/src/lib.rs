@@ -140,11 +140,17 @@ pub fn run() {
                 use objc2_foundation::NSData;
 
                 let icon_bytes = include_bytes!("../../icon-dev.png");
-                let mtm = MainThreadMarker::new().expect("must be on main thread");
-                let data = NSData::with_bytes(icon_bytes);
-                if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
-                    let ns_app = NSApplication::sharedApplication(mtm);
-                    unsafe { ns_app.setApplicationIconImage(Some(&image)); }
+                if let Some(mtm) = MainThreadMarker::new() {
+                    let data = NSData::with_bytes(icon_bytes);
+                    if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
+                        let ns_app = NSApplication::sharedApplication(mtm);
+                        unsafe { ns_app.setApplicationIconImage(Some(&image)); }
+                        println!("[ghost] dev icon set successfully");
+                    } else {
+                        println!("[ghost] failed to create NSImage from dev icon bytes");
+                    }
+                } else {
+                    println!("[ghost] not on main thread, skipping dev icon");
                 }
             }
 

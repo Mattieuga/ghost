@@ -45,10 +45,13 @@ import { SidebarGuide } from "@/components/sidebar/sidebar-guide";
 import { useRecentFiles } from "@/hooks/use-recent-files";
 import { useSearch } from "@/hooks/use-search";
 import { useFileTree } from "@/hooks/use-file-tree";
+import { useUpdater } from "@/hooks/use-updater";
+import { UpdateBanner } from "@/components/ui/update-banner";
 
 export function GhostLayout() {
   const { folders, loading, addFolder, addFolderByPath, removeFolder, reorderFolders } = useTrackedFolders();
   const { settings, updateSettings, saveTheme, deleteTheme } = useSettings();
+  const updater = useUpdater();
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
   const [contentKey, setContentKey] = useState(0);
@@ -977,8 +980,11 @@ export function GhostLayout() {
           customThemes={settings.customThemes}
           onSaveTheme={saveTheme}
           onDeleteTheme={deleteTheme}
+          updater={updater}
         />
       )}
+
+      {!showSettings && <UpdateBanner updater={updater} />}
 
       {commandPaletteOpen && (
         <CommandPalette

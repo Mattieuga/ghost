@@ -93,15 +93,14 @@ export function useUpdater(): UpdateInfo {
     setDismissed(true);
   }, []);
 
-  // Auto-check on mount with 5-second delay
+  // Auto-check on mount with 5-second delay, then every 24 hours
   useEffect(() => {
-    const timer = setTimeout(() => {
-      checkForUpdate().catch(() => {
-        // Silently swallow auto-check errors
-        setState("idle");
-      });
-    }, 5000);
-    return () => clearTimeout(timer);
+    const silentCheck = () => {
+      checkForUpdate().catch(() => setState("idle"));
+    };
+    const initial = setTimeout(silentCheck, 5000);
+    const daily = setInterval(silentCheck, 24 * 60 * 60 * 1000);
+    return () => { clearTimeout(initial); clearInterval(daily); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {

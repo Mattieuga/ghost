@@ -13,13 +13,15 @@ interface EditorWindowProps {
 }
 
 export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const search = useSearch();
   const [filePath, setFilePath] = useState(initialFilePath);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [wordCount, setWordCount] = useState(0);
   const [contentKey, setContentKey] = useState(0);
   const lastSaveTimestamp = useRef(0);
+  const styleBarRef = useRef(settings.showStyleBar);
+  styleBarRef.current = settings.showStyleBar;
   const fileContentRef = useRef(fileContent);
   fileContentRef.current = fileContent;
 
@@ -107,9 +109,11 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   useEffect(() => {
     window.__ghostFind = () => search.openSearch("find");
     window.__ghostFindAndReplace = () => search.openSearch("replace");
+    window.__ghostToggleStyleBar = () => updateSettings({ showStyleBar: !styleBarRef.current });
     return () => {
       delete window.__ghostFind;
       delete window.__ghostFindAndReplace;
+      delete window.__ghostToggleStyleBar;
     };
   }, [search.openSearch]);
 
@@ -213,6 +217,8 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
           replaceTerm={search.searchOpen ? search.replaceTerm : ""}
           onSearchResults={search.handleSearchResults}
           activeFile={filePath}
+          showStyleBar={settings.showStyleBar}
+          onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
         />
       </main>
     </div>

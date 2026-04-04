@@ -929,7 +929,7 @@ export function GhostLayout() {
         </div>
 
         {/* Editor — scrolls behind the floating header */}
-        <main className="h-full overflow-auto overscroll-contain">
+        <main className="h-full overflow-auto overscroll-contain relative z-0">
           {activeFile ? (
             <MarkdownEditor
               key={`${activeFile}-${contentKey}`}

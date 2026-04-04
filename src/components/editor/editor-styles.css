@@ -596,11 +596,26 @@
   display: none;
 }
 
-/* Tables */
-.ghost-editor table {
-  border-collapse: collapse;
-  width: 100%;
+/* Tables — wrapper for horizontal scroll on wide tables */
+.ghost-editor .tableWrapper {
+  overflow-x: auto;
   margin: 1rem 0;
+  background:
+    linear-gradient(to right, var(--background) 30%, transparent),
+    linear-gradient(to left, var(--background) 30%, transparent),
+    linear-gradient(to right, rgba(0,0,0,0.15), transparent),
+    linear-gradient(to left, rgba(0,0,0,0.15), transparent);
+  background-position: left center, right center, left center, right center;
+  background-size: 20px 100%, 20px 100%, 12px 100%, 12px 100%;
+  background-attachment: local, local, scroll, scroll;
+  background-repeat: no-repeat;
+}
+
+
+.ghost-editor table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
   overflow: hidden;
   border-radius: 6px;
   border: 1px solid var(--border);
@@ -608,15 +623,26 @@
 
 .ghost-editor th,
 .ghost-editor td {
-  border: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   padding: 8px 12px;
   text-align: left;
   vertical-align: top;
   min-width: 80px;
 }
 
+.ghost-editor th:last-child,
+.ghost-editor td:last-child {
+  border-right: none;
+}
+
+.ghost-editor tr:last-child td,
+.ghost-editor tr:last-child th {
+  border-bottom: none;
+}
+
 .ghost-editor th {
-  background: var(--muted);
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
   font-weight: 600;
   font-size: 13px;
   color: var(--foreground);
@@ -626,9 +652,138 @@
   font-size: var(--editor-font-size, 16px);
 }
 
-.ghost-editor .selectedCell {
+.ghost-editor .column-resize-handle {
+  position: absolute;
+  right: -4px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  background: transparent;
+  cursor: col-resize;
+  z-index: 5;
+}
+
+/* Only show the amber line in the center of the handle area */
+.ghost-editor .column-resize-handle::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: -1px;
+  bottom: -1px;
+  width: 2px;
   background: var(--ghost-amber);
-  opacity: 0.15;
+  border-radius: 1px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.ghost-editor .column-resize-handle:hover::after,
+.ghost-editor.resize-cursor .column-resize-handle::after {
+  opacity: 1;
+}
+
+.ghost-editor.resize-cursor {
+  cursor: col-resize;
+}
+
+/* Cells need relative positioning for resize handles */
+.ghost-editor th,
+.ghost-editor td {
+  position: relative;
+}
+
+/* Table focus indicator */
+.ghost-editor table.table-focused {
+  border-color: var(--ghost-amber);
+  transition: border-color 0.15s;
+}
+
+.ghost-editor .selectedCell {
+  background: color-mix(in srgb, var(--ghost-amber) 15%, transparent);
+}
+
+/* Table "+" add buttons */
+.table-add-btn {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--muted-foreground) 8%, transparent);
+  border: none;
+  cursor: pointer;
+  z-index: 5;
+  transition: background 0.15s;
+  padding: 0;
+}
+
+.table-add-btn:hover {
+  background: color-mix(in srgb, var(--ghost-amber) 15%, transparent);
+}
+
+.table-add-row {
+  height: 24px;
+  border-radius: 6px;
+}
+
+.table-add-col {
+  width: 24px;
+  border-radius: 6px;
+}
+
+.table-add-icon {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  line-height: 1;
+}
+
+.table-add-btn:hover .table-add-icon {
+  color: var(--ghost-amber);
+}
+
+/* Table right-click context menu */
+.table-context-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 200px;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  padding: 4px;
+  user-select: none;
+}
+
+.table-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: none;
+  color: var(--popover-foreground);
+  font-size: 13px;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.table-menu-item:hover {
+  background: var(--accent);
+}
+
+.table-menu-danger {
+  color: var(--destructive);
+}
+
+.table-menu-danger:hover {
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+}
+
+.table-menu-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 6px;
 }
 
 /* Collapsed content — hidden */

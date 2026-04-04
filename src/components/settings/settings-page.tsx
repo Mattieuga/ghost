@@ -3,6 +3,7 @@ import { Settings2, Type, Palette } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Settings } from "@/hooks/use-settings";
 import type { ThemePreset } from "@/lib/theme-engine";
+import type { UpdateInfo } from "@/hooks/use-updater";
 import { GeneralTab } from "@/components/settings/tabs/general-tab";
 import { EditorTab } from "@/components/settings/tabs/editor-tab";
 import { ThemesTab } from "@/components/settings/tabs/themes-tab";
@@ -23,6 +24,7 @@ interface SettingsPageProps {
   customThemes: ThemePreset[];
   onSaveTheme: (preset: ThemePreset) => void;
   onDeleteTheme: (id: string) => void;
+  updater: UpdateInfo;
 }
 
 export function SettingsPage({
@@ -32,6 +34,7 @@ export function SettingsPage({
   customThemes,
   onSaveTheme,
   onDeleteTheme,
+  updater,
 }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 
@@ -96,6 +99,7 @@ export function SettingsPage({
               <GeneralTab
                 settings={settings}
                 onUpdateSettings={onUpdateSettings}
+                updater={updater}
               />
             )}
             {activeTab === "editor" && (

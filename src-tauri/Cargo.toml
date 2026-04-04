@@ -1,6 +1,6 @@
 [package]
 name = "ghost"
-version = "0.1.0"
+version = "0.5.0"
 description = "A minimalist markdown editor"
 authors = ["you"]
 edition = "2021"
@@ -24,6 +24,8 @@ pulldown-cmark = "0.12"
 notify = "7"
 notify-debouncer-mini = "0.5"
 font-kit = "0.14"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

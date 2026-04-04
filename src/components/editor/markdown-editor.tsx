@@ -17,6 +17,7 @@ import { CollapsibleHeadings } from "./collapsible-headings";
 import { useEffect, useRef, useCallback } from "react";
 import { DOMSerializer } from "@tiptap/pm/model";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { LinkBubbleMenu } from "./link-bubble-menu";
 import { ensureProtocol } from "./floating-toolbar";
 import { ImageBubbleMenu } from "./image-bubble-menu";
@@ -246,6 +247,36 @@ export function MarkdownEditor({
       contentSet.current = true;
     }
   }, [editor]);
+
+  // Expose flush function for updater (and other consumers) to force-save before relaunch
+  useEffect(() => {
+    window.__ghostFlushSave = async () => {
+      if (saveTimeout.current) {
+        clearTimeout(saveTimeout.current);
+        saveTimeout.current = null;
+      }
+      const md = editor?.storage.markdown.getMarkdown();
+      if (md !== undefined) {
+        await onContentChange(md);
+      }
+    };
+    return () => { delete window.__ghostFlushSave; };
+  }, [editor, onContentChange]);
+
+  // Listen for flush-saves event (broadcast to all windows before relaunch)
+  useEffect(() => {
+    const unlisten = listen("flush-saves", () => {
+      if (saveTimeout.current) {
+        clearTimeout(saveTimeout.current);
+        saveTimeout.current = null;
+      }
+      const md = editor?.storage.markdown.getMarkdown();
+      if (md !== undefined) {
+        onContentChange(md);
+      }
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [editor, onContentChange]);
 
   // Cleanup timeout on unmount
   useEffect(() => {

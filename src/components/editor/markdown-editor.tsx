@@ -10,6 +10,79 @@ import Table from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
+
+// Override table markdown serialization: use HTML when columns have custom widths
+const ResizableTable = Table.extend({
+  addStorage() {
+    return {
+      markdown: {
+        serialize(state: any, node: any) {
+          // Check if any cell has custom column widths (short-circuit on first match)
+          let hasCustomWidths = false;
+          node.forEach((row: any) => {
+            if (hasCustomWidths) return;
+            row.forEach((cell: any) => {
+              if (hasCustomWidths) return;
+              if (cell.attrs.colwidth && cell.attrs.colwidth.some((w: number | null) => w !== null && w > 0)) {
+                hasCustomWidths = true;
+              }
+            });
+          });
+
+          if (hasCustomWidths) {
+            // Serialize as HTML to preserve widths
+            state.write(serializeTableToHtml(node));
+            state.closeBlock(node);
+          } else {
+            // Standard GFM pipe table
+            state.inTable = true;
+            node.forEach((row: any, _p: number, i: number) => {
+              state.write("| ");
+              row.forEach((col: any, _p2: number, j: number) => {
+                if (j) state.write(" | ");
+                const cellContent = col.firstChild;
+                if (cellContent?.textContent.trim()) {
+                  state.renderInline(cellContent);
+                }
+              });
+              state.write(" |");
+              state.ensureNewLine();
+              if (!i) {
+                const delimiterRow = Array.from({ length: row.childCount }).map(() => "---").join(" | ");
+                state.write(`| ${delimiterRow} |`);
+                state.ensureNewLine();
+              }
+            });
+            state.closeBlock(node);
+            state.inTable = false;
+          }
+        },
+        parse: {},
+      },
+    };
+  },
+});
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function serializeTableToHtml(node: any): string {
+  let html = "<table>\n";
+  node.forEach((row: any) => {
+    html += "  <tr>\n";
+    row.forEach((cell: any) => {
+      const tag = cell.type.name === "tableHeader" ? "th" : "td";
+      const widthAttr = cell.attrs.colwidth ? ` colwidth="${cell.attrs.colwidth.join(",")}"` : "";
+      const content = escapeHtml(cell.textContent || "");
+      html += `    <${tag}${widthAttr}>${content}</${tag}>\n`;
+    });
+    html += "  </tr>\n";
+  });
+  html += "</table>\n\n";
+  return html;
+}
+
 import { ResizableImage } from "./image-extension";
 import { Markdown } from "tiptap-markdown";
 import { SearchAndReplace } from "./search-and-replace";
@@ -22,6 +95,7 @@ import { LinkBubbleMenu } from "./link-bubble-menu";
 import { ensureProtocol } from "./floating-toolbar";
 import { ImageBubbleMenu } from "./image-bubble-menu";
 import { FloatingToolbar } from "./floating-toolbar";
+import { TableControls } from "./table-controls";
 import "./editor-styles.css";
 
 interface MarkdownEditorProps {
@@ -96,7 +170,7 @@ export function MarkdownEditor({
       }),
       Underline,
       Highlight,
-      Table.configure({ resizable: false }),
+      ResizableTable.configure({ resizable: true }),
       TableRow,
       TableHeader,
       TableCell,
@@ -348,6 +422,7 @@ export function MarkdownEditor({
       {editor && <LinkBubbleMenu editor={editor} />}
       {editor && <ImageBubbleMenu editor={editor} />}
       <EditorContent editor={editor} className="h-full" />
+      {editor && <TableControls editor={editor} />}
       {editor && showStyleBar && <FloatingToolbar editor={editor} onHide={() => onToggleStyleBar?.()} />}
     </div>
   );

@@ -66,8 +66,14 @@ pub fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         *mi = Some(show_main_item.clone());
     }
 
+    let toggle_style_bar = MenuItemBuilder::with_id("toggle_style_bar", "Toggle Style Bar")
+        .accelerator("CmdOrCtrl+Shift+Y")
+        .build(app)?;
+
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(&show_main_item)
+        .separator()
+        .item(&toggle_style_bar)
         .separator()
         .item(&PredefinedMenuItem::fullscreen(app, None)?)
         .build()?;
@@ -111,6 +117,11 @@ pub fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             "find_replace" => {
                 if let Some(window) = focused_window {
                     let _ = window.eval("window.__ghostFindAndReplace && window.__ghostFindAndReplace()");
+                }
+            }
+            "toggle_style_bar" => {
+                if let Some(window) = focused_window {
+                    let _ = window.eval("window.__ghostToggleStyleBar && window.__ghostToggleStyleBar()");
                 }
             }
             "show_main_window" => {

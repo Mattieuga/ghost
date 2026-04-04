@@ -2,6 +2,7 @@ import { BubbleMenu, type Editor } from "@tiptap/react";
 import { useState, useRef, useCallback } from "react";
 import { ExternalLink, Unlink } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { ensureProtocol } from "./floating-toolbar";
 
 interface LinkBubbleMenuProps {
   editor: Editor;
@@ -80,7 +81,7 @@ export function LinkBubbleMenu({ editor }: LinkBubbleMenuProps) {
   const openLink = () => {
     const href = url.trim();
     if (!href || href.startsWith("#")) return;
-    invoke("open_url", { url: href });
+    invoke("open_url", { url: ensureProtocol(href) });
   };
 
   const inputClass =
@@ -92,12 +93,15 @@ export function LinkBubbleMenu({ editor }: LinkBubbleMenuProps) {
   return (
     <BubbleMenu
       editor={editor}
+      updateDelay={0}
       shouldShow={({ editor }) => {
         try { return editor.isActive("link"); } catch { return false; }
       }}
       tippyOptions={{
         placement: "bottom-start",
         offset: [0, 4],
+        duration: 0,
+        moveTransition: "",
         onShow: () => {
           showRef.current = true;
           requestAnimationFrame(syncFromEditor);

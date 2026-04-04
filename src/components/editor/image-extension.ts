@@ -10,19 +10,26 @@ function escapeAttr(s: string): string {
 }
 
 /**
+ * Get the full path of the currently active file.
+ */
+export function getActiveFilePath(): string {
+  return window.__ghostActiveFile ?? "";
+}
+
+/**
  * Get the directory of the currently active file.
- * Falls back to empty string if not available.
  */
 export function getActiveFileDir(): string {
-  const activeFile = window.__ghostActiveFile;
+  const activeFile = getActiveFilePath();
   if (!activeFile) return "";
   const lastSlash = activeFile.lastIndexOf("/");
   return lastSlash >= 0 ? activeFile.substring(0, lastSlash) : "";
 }
 
-async function handleImageFile(file: File): Promise<{ src: string } | null> {
-  const dir = getActiveFileDir();
-  if (!dir) return null;
+/** Save an image file to the active file's .assets/ folder */
+export async function handleImageFile(file: File): Promise<{ src: string } | null> {
+  const activeFile = getActiveFilePath();
+  if (!activeFile) return null;
 
   const buffer = await file.arrayBuffer();
   const data = Array.from(new Uint8Array(buffer));
@@ -30,12 +37,23 @@ async function handleImageFile(file: File): Promise<{ src: string } | null> {
   const filename = rawName.replace(/\s+/g, "-");
 
   const relativePath = await invoke<string>("save_image", {
-    dir,
+    activeFile,
     filename,
     data,
   });
 
   return { src: relativePath };
+}
+
+/** Save an image from a file path (for toolbar picker and drag-drop) */
+export async function handleImageFromPath(filePath: string): Promise<string | null> {
+  const activeFile = getActiveFilePath();
+  if (!activeFile) return null;
+
+  const data = await invoke<number[]>("read_file_bytes", { path: filePath });
+  const filename = filePath.substring(filePath.lastIndexOf("/") + 1).replace(/\s+/g, "-");
+  const relativePath = await invoke<string>("save_image", { activeFile, filename, data });
+  return relativePath;
 }
 
 export const ResizableImage = Image.extend({
@@ -92,6 +110,7 @@ export const ResizableImage = Image.extend({
             const items = event.clipboardData?.items;
             if (!items) return false;
 
+            // Check for image file blobs (screenshots, copy-image)
             for (const item of items) {
               if (item.type.startsWith("image/")) {
                 event.preventDefault();
@@ -100,17 +119,34 @@ export const ResizableImage = Image.extend({
 
                 handleImageFile(file).then((result) => {
                   if (!result) return;
-                  // Use fresh state for insertion
                   const { state } = view;
-                  const node = state.schema.nodes.image.create({
-                    src: result.src,
-                  });
+                  const node = state.schema.nodes.image.create({ src: result.src });
                   const tr = state.tr.replaceSelectionWith(node);
                   view.dispatch(tr);
                 });
                 return true;
               }
             }
+
+            // Check for markdown image syntax in pasted text: ![alt](src)
+            const text = event.clipboardData?.getData("text/plain");
+            if (text) {
+              const match = text.match(/^!\[([^\]]*)\]\((\S+?)(?:\s+"([^"]*)")?\)$/);
+              if (match) {
+                event.preventDefault();
+                const [, alt, src, title] = match;
+                const { state } = view;
+                const node = state.schema.nodes.image.create({
+                  src,
+                  alt: alt || null,
+                  title: title || null,
+                });
+                const tr = state.tr.replaceSelectionWith(node);
+                view.dispatch(tr);
+                return true;
+              }
+            }
+
             return false;
           },
 
@@ -128,58 +164,18 @@ export const ResizableImage = Image.extend({
               left: event.clientX,
               top: event.clientY,
             });
-            // Capture position synchronously
             const dropPos = coordinates?.pos ?? view.state.selection.from;
 
             for (const file of imageFiles) {
               handleImageFile(file).then((result) => {
                 if (!result) return;
                 const { state } = view;
-                const node = state.schema.nodes.image.create({
-                  src: result.src,
-                });
-                // Use fresh state for insertion
+                const node = state.schema.nodes.image.create({ src: result.src });
                 const tr = state.tr.insert(Math.min(dropPos, state.doc.content.size), node);
                 view.dispatch(tr);
               });
             }
             return true;
-          },
-        },
-      }),
-
-      // Clean up .images/ files when image nodes are deleted
-      new Plugin({
-        key: new PluginKey("imageCleanup"),
-        state: {
-          init(_config, state) {
-            // Collect initial set of image srcs
-            const srcs = new Set<string>();
-            state.doc.descendants((node) => {
-              if (node.type.name === "image" && node.attrs.src?.startsWith(".images/")) {
-                srcs.add(node.attrs.src);
-              }
-            });
-            return srcs;
-          },
-          apply(tr, oldSrcs: Set<string>, _oldState, newState) {
-            if (!tr.docChanged) return oldSrcs;
-            const newSrcs = new Set<string>();
-            newState.doc.descendants((node) => {
-              if (node.type.name === "image" && node.attrs.src?.startsWith(".images/")) {
-                newSrcs.add(node.attrs.src);
-              }
-            });
-            // Delete files for removed images (fire-and-forget, outside transaction)
-            for (const src of oldSrcs) {
-              if (!newSrcs.has(src)) {
-                const dir = getActiveFileDir();
-                if (dir) {
-                  invoke("delete_file", { path: `${dir}/${src}` }).catch(() => {});
-                }
-              }
-            }
-            return newSrcs;
           },
         },
       })

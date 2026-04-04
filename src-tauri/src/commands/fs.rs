@@ -107,6 +107,25 @@ pub async fn read_file(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))
 }
 
+/// List filenames in a directory (non-recursive, files only)
+#[tauri::command]
+pub async fn list_directory_files(path: String) -> Result<Vec<String>, String> {
+    let dir = Path::new(&path);
+    if !dir.is_dir() {
+        return Ok(vec![]);
+    }
+    let mut files = Vec::new();
+    let entries = fs::read_dir(dir).map_err(|e| format!("Failed to read directory: {}", e))?;
+    for entry in entries.flatten() {
+        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            if let Some(name) = entry.file_name().to_str() {
+                files.push(name.to_string());
+            }
+        }
+    }
+    Ok(files)
+}
+
 #[tauri::command]
 pub async fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
     fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))
@@ -157,6 +176,21 @@ pub async fn move_file(file_path: String, target_dir: String, force: Option<bool
         }
     }
     fs::rename(&file_path, &dest).map_err(|e| format!("Failed to move file: {}", e))?;
+
+    // Move companion .assets/ folder if it exists (e.g., readme.assets/ for readme.md)
+    if let Some(file_stem) = source.file_stem() {
+        let assets_name = format!("{}.assets", file_stem.to_string_lossy());
+        let source_assets = source.parent().map(|p| p.join(&assets_name));
+        let dest_assets = Path::new(&target_dir).join(&assets_name);
+        if let Some(src_assets) = source_assets {
+            if src_assets.is_dir() {
+                if let Err(e) = fs::rename(&src_assets, &dest_assets) {
+                    eprintln!("Warning: failed to move assets folder: {}", e);
+                }
+            }
+        }
+    }
+
     Ok(dest.to_string_lossy().to_string())
 }
 
@@ -251,11 +285,18 @@ pub async fn reveal_in_finder(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn save_image(dir: String, filename: String, data: Vec<u8>) -> Result<String, String> {
+pub async fn save_image(active_file: String, filename: String, data: Vec<u8>) -> Result<String, String> {
     validate_name(&filename)?;
-    let images_dir = Path::new(&dir).join(".images");
-    fs::create_dir_all(&images_dir)
-        .map_err(|e| format!("Failed to create .images directory: {}", e))?;
+
+    // Build {stem}.assets/ directory alongside the active markdown file
+    let active = Path::new(&active_file);
+    let dir = active.parent().ok_or("Cannot determine file directory")?;
+    let file_stem = active.file_stem().ok_or("Cannot determine file stem")?.to_string_lossy();
+    let assets_dir_name = format!("{}.assets", file_stem);
+    let assets_dir = dir.join(&assets_dir_name);
+
+    fs::create_dir_all(&assets_dir)
+        .map_err(|e| format!("Failed to create assets directory: {}", e))?;
 
     // Deduplicate: if filename exists, add a numeric suffix
     let mut final_name = filename.clone();
@@ -263,16 +304,16 @@ pub async fn save_image(dir: String, filename: String, data: Vec<u8>) -> Result<
     let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
     let ext = path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
     let mut counter = 1u32;
-    while images_dir.join(&final_name).exists() {
+    while assets_dir.join(&final_name).exists() {
         final_name = format!("{}-{}{}", stem, counter, ext);
         counter += 1;
     }
 
-    let file_path = images_dir.join(&final_name);
+    let file_path = assets_dir.join(&final_name);
     fs::write(&file_path, &data)
         .map_err(|e| format!("Failed to write image: {}", e))?;
 
-    Ok(format!(".images/{}", final_name))
+    Ok(format!("{}/{}", assets_dir_name, final_name))
 }
 
 #[tauri::command]

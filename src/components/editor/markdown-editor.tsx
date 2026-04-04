@@ -4,6 +4,12 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Link from "@tiptap/extension-link";
 import Focus from "@tiptap/extension-focus";
+import Underline from "@tiptap/extension-underline";
+import Highlight from "@tiptap/extension-highlight";
+import Table from "@tiptap/extension-table";
+import TableRow from "@tiptap/extension-table-row";
+import TableHeader from "@tiptap/extension-table-header";
+import TableCell from "@tiptap/extension-table-cell";
 import { ResizableImage } from "./image-extension";
 import { Markdown } from "tiptap-markdown";
 import { SearchAndReplace } from "./search-and-replace";
@@ -12,6 +18,9 @@ import { useEffect, useRef, useCallback } from "react";
 import { DOMSerializer } from "@tiptap/pm/model";
 import { invoke } from "@tauri-apps/api/core";
 import { LinkBubbleMenu } from "./link-bubble-menu";
+import { ensureProtocol } from "./floating-toolbar";
+import { ImageBubbleMenu } from "./image-bubble-menu";
+import { FloatingToolbar } from "./floating-toolbar";
 import "./editor-styles.css";
 
 interface MarkdownEditorProps {
@@ -21,6 +30,8 @@ interface MarkdownEditorProps {
   replaceTerm?: string;
   onSearchResults?: (count: number, currentIndex: number) => void;
   activeFile?: string;
+  showStyleBar?: boolean;
+  onToggleStyleBar?: () => void;
 }
 
 export function MarkdownEditor({
@@ -30,6 +41,8 @@ export function MarkdownEditor({
   replaceTerm = "",
   onSearchResults,
   activeFile,
+  showStyleBar = true,
+  onToggleStyleBar,
 }: MarkdownEditorProps) {
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSearchResults = useRef({ count: 0, index: 0 });
@@ -80,10 +93,16 @@ export function MarkdownEditor({
         transformPastedText: true,
         transformCopiedText: false,
       }),
+      Underline,
+      Highlight,
+      Table.configure({ resizable: false }),
+      TableRow,
+      TableHeader,
+      TableCell,
       SearchAndReplace,
       CollapsibleHeadings,
     ],
-    content,
+    content: "",
     onUpdate: ({ editor }) => {
       const markdown = editor.storage.markdown.getMarkdown();
       debouncedSave(markdown);
@@ -151,8 +170,8 @@ export function MarkdownEditor({
             return true;
           }
 
-          // External link — open in system browser
-          invoke("open_url", { url: href });
+          // External link — open in system browser (add protocol if missing)
+          invoke("open_url", { url: ensureProtocol(href) });
           return true;
         },
       },
@@ -172,8 +191,8 @@ export function MarkdownEditor({
             return true;
           }
         }
-        // Cmd+S for immediate save
-        if ((event.metaKey || event.ctrlKey) && event.key === "s") {
+        // Cmd+S for immediate save (but not Cmd+Shift+S which is strikethrough)
+        if ((event.metaKey || event.ctrlKey) && event.key === "s" && !event.shiftKey) {
           event.preventDefault();
           if (saveTimeout.current) {
             clearTimeout(saveTimeout.current);
@@ -294,9 +313,11 @@ export function MarkdownEditor({
   }, [editor]);
 
   return (
-    <div className="h-full">
+    <div className="h-full relative" data-ghost-editor-root>
       {editor && <LinkBubbleMenu editor={editor} />}
+      {editor && <ImageBubbleMenu editor={editor} />}
       <EditorContent editor={editor} className="h-full" />
+      {editor && showStyleBar && <FloatingToolbar editor={editor} onHide={() => onToggleStyleBar?.()} />}
     </div>
   );
 }

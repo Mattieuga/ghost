@@ -1,6 +1,7 @@
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { startBlockDrag } from "./block-drag";
 
 // Module-level blob URL cache: path -> { url, refCount }
 const blobCache = new Map<string, { url: string; refCount: number }>();
@@ -33,7 +34,7 @@ function sampleCornerLuminance(img: HTMLImageElement): "light" | "dark" {
   }
 }
 
-export function ResizableImageView({ node, updateAttributes, selected }: NodeViewProps) {
+export function ResizableImageView({ node, updateAttributes, selected, editor, getPos }: NodeViewProps) {
   const { src, alt, width } = node.attrs;
   const imgRef = useRef<HTMLImageElement>(null);
   const [resizing, setResizing] = useState(false);
@@ -50,12 +51,13 @@ export function ResizableImageView({ node, updateAttributes, selected }: NodeVie
       return;
     }
 
-    // Validate: only allow .images/ relative paths for local resolution
-    if (!src.startsWith(".images/")) {
+    // Reject path traversal attempts
+    if (src.includes("..")) {
       setResolvedSrc(null);
       return;
     }
 
+    // Relative path — resolve against the active file's directory
     const activeFile = window.__ghostActiveFile;
     if (!activeFile) return;
 
@@ -115,7 +117,7 @@ export function ResizableImageView({ node, updateAttributes, selected }: NodeVie
     setLineColor(brightness === "light" ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.7)");
   }, []);
 
-  const handleMouseDown = useCallback(
+  const handleResizeDown = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
@@ -142,8 +144,19 @@ export function ResizableImageView({ node, updateAttributes, selected }: NodeVie
     [updateAttributes]
   );
 
+  const handleDragDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const pos = typeof getPos === "function" ? getPos() : undefined;
+      if (pos === undefined || !editor) return;
+      startBlockDrag(editor.view, pos, node.nodeSize, e.nativeEvent, "Image");
+    },
+    [editor, getPos, node.nodeSize]
+  );
+
   return (
-    <NodeViewWrapper className="ghost-image-wrapper" data-drag-handle>
+    <NodeViewWrapper className="ghost-image-wrapper">
       <div
         className={`ghost-image-container ${selected ? "selected" : ""}`}
         style={{ width: `${width || 300}px`, maxWidth: "100%" }}
@@ -157,12 +170,26 @@ export function ResizableImageView({ node, updateAttributes, selected }: NodeVie
             onLoad={handleImageLoad}
           />
         ) : (
-          <div className="ghost-image-placeholder" />
+          <div style={{ height: 0 }} />
         )}
-        {/* Resize handle — 3 diagonal lines, color adapts to image */}
+
+        {/* Drag handle — top-left corner, visible on hover */}
+        <div
+          className="ghost-image-drag-handle"
+          onPointerDown={handleDragDown}
+          title="Drag to move"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+            <circle cx="3" cy="2" r="1" /><circle cx="7" cy="2" r="1" />
+            <circle cx="3" cy="5" r="1" /><circle cx="7" cy="5" r="1" />
+            <circle cx="3" cy="8" r="1" /><circle cx="7" cy="8" r="1" />
+          </svg>
+        </div>
+
+        {/* Resize handle — bottom-right corner */}
         <div
           className={`ghost-image-resize-handle ${resizing ? "active" : ""}`}
-          onMouseDown={handleMouseDown}
+          onMouseDown={handleResizeDown}
         >
           <svg viewBox="0 0 14 14" fill="none">
             <line x1="12.5" y1="5.5" x2="5.5" y2="12.5" stroke={lineColor} strokeWidth="1.5" strokeLinecap="round" />

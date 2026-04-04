@@ -108,7 +108,7 @@
 }
 
 /* Ghost label that follows cursor during drag */
-.heading-drag-ghost {
+.block-drag-ghost {
   position: fixed;
   font-size: 11px;
   font-weight: 600;
@@ -136,6 +136,18 @@
 
 .ghost-editor em {
   font-style: italic;
+}
+
+.ghost-editor u {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ghost-editor mark {
+  background: oklch(0.8 0.15 85 / 0.4);
+  color: inherit;
+  padding: 0.1em 0.2em;
+  border-radius: 3px;
 }
 
 .ghost-editor s {
@@ -370,6 +382,32 @@
   outline-offset: 2px;
 }
 
+.ghost-image-drag-handle {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.4);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+}
+
+.ghost-image-drag-handle:active {
+  cursor: grabbing;
+}
+
+.ghost-image-container:hover .ghost-image-drag-handle {
+  opacity: 1;
+}
+
 .ghost-image-resize-handle {
   position: absolute;
   right: 3px;
@@ -391,24 +429,36 @@
   opacity: 1;
 }
 
-/* Gap cursor — shown next to block nodes like hr */
-.ProseMirror-gapcursor {
+/* Gap cursor — shown next to block nodes like images, hr */
+.ghost-editor .ProseMirror-gapcursor {
   display: none;
   pointer-events: none;
-  position: absolute;
+  position: relative;
+  background: none;
+  border: none;
+  outline: none;
+  padding: 0;
+  margin: 0;
+  height: 0;
+  overflow: visible;
 }
 
-.ProseMirror-focused .ProseMirror-gapcursor {
+.ghost-editor.ProseMirror-focused .ProseMirror-gapcursor {
   display: block;
 }
 
-.ProseMirror-gapcursor::after {
+.ghost-editor .ProseMirror-gapcursor::after {
   content: "";
-  display: block;
+  display: inline-block;
   position: absolute;
-  top: -2px;
-  width: 20px;
-  border-top: 1px solid var(--ghost-amber);
+  left: 0;
+  top: -10px;
+  width: 2px;
+  height: 20px;
+  background: var(--ghost-amber);
+  border: none;
+  outline: none;
+  border-radius: 1px;
   animation: ProseMirror-cursor-blink 1.1s steps(2, start) infinite;
 }
 
@@ -511,7 +561,7 @@
 }
 
 /* Heading drag drop indicator line */
-.heading-drop-indicator {
+.block-drop-indicator {
   position: fixed;
   height: 2px;
   background: var(--ghost-amber);
@@ -546,7 +596,167 @@
   display: none;
 }
 
+/* Tables */
+.ghost-editor table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.ghost-editor th,
+.ghost-editor td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+  min-width: 80px;
+}
+
+.ghost-editor th {
+  background: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--foreground);
+}
+
+.ghost-editor td {
+  font-size: var(--editor-font-size, 16px);
+}
+
+.ghost-editor .selectedCell {
+  background: var(--ghost-amber);
+  opacity: 0.15;
+}
+
 /* Collapsed content — hidden */
 .collapsed-content {
   display: none !important;
+}
+
+/* ========== Floating Toolbar ========== */
+
+.floating-toolbar {
+  position: fixed;
+  bottom: 16px;
+  /* left is set dynamically via inline style */
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 10px;
+  background: var(--background);
+  background-color: color-mix(in srgb, var(--background) 80%, transparent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+  z-index: 40;
+  user-select: none;
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0 8px;
+  border: none;
+  background: none;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.toolbar-btn:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.toolbar-btn.active {
+  color: var(--ghost-amber);
+}
+
+.toolbar-caret {
+  font-size: 10px;
+  opacity: 0.7;
+  margin-left: 2px;
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+  margin: 0 2px;
+}
+
+/* Dropdown */
+.toolbar-dropdown {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 200px;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  padding: 4px;
+  z-index: 50;
+}
+
+.toolbar-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: none;
+  color: var(--popover-foreground);
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.toolbar-dropdown-item:hover {
+  background: var(--accent);
+}
+
+.toolbar-dropdown-item.active {
+  color: var(--ghost-amber);
+}
+
+.toolbar-dropdown-icon {
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+}
+
+.toolbar-dropdown-item.active .toolbar-dropdown-icon {
+  color: var(--ghost-amber);
+}
+
+.toolbar-dropdown-shortcut {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin-left: auto;
+}
+
+.toolbar-dropdown-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 6px;
 }

@@ -1,6 +1,7 @@
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, EditorView } from "@tiptap/pm/view";
+import { getBlockDropPos, updateDropIndicator } from "./block-drag";
 
 const pluginKey = new PluginKey("collapsibleHeadings");
 
@@ -14,69 +15,15 @@ let dragState: {
   indicator: HTMLElement;
 } | null = null;
 
-function getDropPos(view: EditorView, clientY: number): number {
-  const { doc } = view.state;
-  let bestPos = 0;
-  let bestDist = Infinity;
-
-  doc.forEach((node, offset) => {
-    const domNode = view.nodeDOM(offset);
-    if (!(domNode instanceof HTMLElement)) return;
-
-    const rect = domNode.getBoundingClientRect();
-
-    const topDist = Math.abs(clientY - rect.top);
-    if (topDist < bestDist) {
-      bestDist = topDist;
-      bestPos = offset;
-    }
-
-    const bottomDist = Math.abs(clientY - rect.bottom);
-    if (bottomDist < bestDist) {
-      bestDist = bottomDist;
-      bestPos = offset + node.nodeSize;
-    }
-  });
-
-  return bestPos;
-}
-
-function updateIndicator(view: EditorView, indicator: HTMLElement, insertPos: number) {
-  const editorRect = view.dom.getBoundingClientRect();
-  let targetY: number;
-
-  if (insertPos >= view.state.doc.content.size) {
-    const lastChild = view.dom.lastElementChild as HTMLElement;
-    targetY = lastChild ? lastChild.getBoundingClientRect().bottom : editorRect.top;
-  } else {
-    const domNode = view.nodeDOM(insertPos);
-    if (domNode instanceof HTMLElement) {
-      targetY = domNode.getBoundingClientRect().top;
-    } else {
-      return;
-    }
-  }
-
-  const contentLeft = editorRect.left + 56;
-  const contentRight = editorRect.right - 45;
-
-  indicator.style.top = `${targetY}px`;
-  indicator.style.left = `${contentLeft}px`;
-  indicator.style.width = `${contentRight - contentLeft}px`;
-  indicator.style.display = "block";
-}
-
 function onPointerMove(e: PointerEvent) {
   if (!dragState) return;
   e.preventDefault();
 
-  // Move ghost element
   dragState.ghost.style.left = `${e.clientX + 8}px`;
   dragState.ghost.style.top = `${e.clientY - 12}px`;
 
-  // Update drop indicator
-  const insertPos = getDropPos(dragState.view, e.clientY);
-  updateIndicator(dragState.view, dragState.indicator, insertPos);
+  const insertPos = getBlockDropPos(dragState.view, e.clientY);
+  updateDropIndicator(dragState.view, dragState.indicator, insertPos);
 }
 
 /**
@@ -122,7 +69,7 @@ function onPointerUp(e: PointerEvent) {
   const sectionEnd = getSectionEnd(view, headingPos);
 
   // Don't drop onto itself
-  const insertPos = getDropPos(view, e.clientY);
+  const insertPos = getBlockDropPos(view, e.clientY);
   if (insertPos >= headingPos && insertPos <= sectionEnd) return;
 
   // Check if this heading was collapsed
@@ -158,7 +105,7 @@ function onPointerUp(e: PointerEvent) {
 function startDrag(view: EditorView, headingPos: number, level: number, e: PointerEvent) {
   // Ghost label that follows the cursor
   const ghost = document.createElement("span");
-  ghost.className = "heading-drag-ghost";
+  ghost.className = "block-drag-ghost";
   ghost.textContent = `H${level}`;
   ghost.style.left = `${e.clientX + 8}px`;
   ghost.style.top = `${e.clientY - 12}px`;
@@ -166,7 +113,7 @@ function startDrag(view: EditorView, headingPos: number, level: number, e: Point
 
   // Drop indicator line
   const indicator = document.createElement("div");
-  indicator.className = "heading-drop-indicator";
+  indicator.className = "block-drop-indicator";
   document.body.appendChild(indicator);
 
   dragState = { view, headingPos, ghost, indicator };
@@ -277,7 +224,7 @@ export const CollapsibleHeadings = Extension.create({
 
                     return label;
                   },
-                  { side: -1, key: `hlabel-${h.pos}` }
+                  { side: -1, key: `hlabel-${h.pos}-${h.level}` }
                 )
               );
 

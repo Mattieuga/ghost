@@ -6,6 +6,7 @@ import { DEFAULT_THEME } from "@/lib/theme-engine";
 
 export interface Settings {
   showAllFiles: boolean;
+  showStyleBar: boolean;
   theme: string;
   themeColors: ThemeColors;
   customThemes: ThemePreset[];
@@ -21,6 +22,7 @@ export interface Settings {
 
 const DEFAULTS: Settings = {
   showAllFiles: false,
+  showStyleBar: true,
   theme: "factory",
   themeColors: {
     editorBg: DEFAULT_THEME.editorBg,

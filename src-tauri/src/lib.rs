@@ -25,6 +25,7 @@ pub fn run() {
             commands::fs::read_directory,
             commands::fs::read_file,
             commands::fs::read_file_bytes,
+            commands::fs::list_directory_files,
             commands::fs::write_file,
             commands::fs::create_file,
             commands::fs::create_directory,

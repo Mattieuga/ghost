@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { handleImageFromPath } from "@/components/editor/image-extension";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import {
@@ -77,6 +78,8 @@ export function GhostLayout() {
   const fileContentRef = useRef(fileContent);
   fileContentRef.current = fileContent;
   const lastSaveTimestamp = useRef(0);
+  const styleBarRef = useRef(settings.showStyleBar);
+  styleBarRef.current = settings.showStyleBar;
   const { recentFiles, addRecentFile } = useRecentFiles();
 
   const sensors = useSensors(
@@ -108,7 +111,54 @@ export function GhostLayout() {
 
   const { closeSearch, openSearch } = search;
 
+  // Clean up orphaned assets when switching away from a file (fire-and-forget)
+  const cleanupOrphanedAssets = useCallback(async (filePath: string) => {
+    try {
+      const fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
+      const stem = fileName.replace(/\.[^.]+$/, "");
+      const dir = filePath.substring(0, filePath.lastIndexOf("/"));
+      const assetsDir = `${dir}/${stem}.assets`;
+      const assetsRef = `${stem}.assets/`;
+
+      // Read the current saved markdown content
+      const markdown = await invoke<string>("read_file", { path: filePath });
+
+      // Collect all referenced asset filenames (simple string matching, no regex)
+      const referenced = new Set<string>();
+      let idx = 0;
+      while ((idx = markdown.indexOf(assetsRef, idx)) !== -1) {
+        const start = idx + assetsRef.length;
+        // Extract filename until next whitespace, quote, or paren
+        let end = start;
+        while (end < markdown.length && !/[\s"')]/.test(markdown[end])) end++;
+        if (end > start) referenced.add(markdown.substring(start, end));
+        idx = end;
+      }
+
+      // List files on disk
+      const filesOnDisk = await invoke<string[]>("list_directory_files", { path: assetsDir });
+
+      // Delete unreferenced files in parallel
+      const orphans = filesOnDisk.filter((file) => !referenced.has(file));
+      await Promise.all(
+        orphans.map((file) => invoke("delete_file", { path: `${assetsDir}/${file}` }).catch(() => {}))
+      );
+
+      // If directory is now empty, remove it
+      if (orphans.length === filesOnDisk.length) {
+        await invoke("delete_file", { path: assetsDir }).catch(() => {});
+      }
+    } catch {
+      // Silently ignore — cleanup is best-effort
+    }
+  }, []);
+
   const handleFileSelect = useCallback(async (path: string) => {
+    // Fire-and-forget cleanup of the previous file's orphaned assets
+    if (activeFileRef.current && activeFileRef.current !== path) {
+      cleanupOrphanedAssets(activeFileRef.current);
+    }
+
     try {
       const content = await invoke<string>("read_file", { path });
       setActiveFile(path);
@@ -122,7 +172,7 @@ export function GhostLayout() {
     } catch (err) {
       console.error("Failed to read file:", err);
     }
-  }, [closeSearch, addRecentFile]);
+  }, [closeSearch, addRecentFile, cleanupOrphanedAssets]);
 
   // openSearch wrapper: only open if a file is active
   const openSearchIfFile = useCallback((mode: "find" | "replace") => {
@@ -272,12 +322,14 @@ export function GhostLayout() {
     window.__ghostFind = () => openSearchIfFile("find");
     window.__ghostFindAndReplace = () => openSearchIfFile("replace");
     window.__ghostCommandPalette = () => setCommandPaletteOpen((p) => !p);
+    window.__ghostToggleStyleBar = () => updateSettings({ showStyleBar: !styleBarRef.current });
     return () => {
       delete window.__ghostAddFolder;
       delete window.__ghostNewFile;
       delete window.__ghostFind;
       delete window.__ghostFindAndReplace;
       delete window.__ghostCommandPalette;
+      delete window.__ghostToggleStyleBar;
     };
   }, [addFolder, createNewFile, openSearchIfFile]);
 
@@ -286,10 +338,21 @@ export function GhostLayout() {
   // Listen for external file/folder drag-drop from Finder
   useEffect(() => {
     const unlistenEnter = listen<{ paths: string[]; position: { x: number; y: number } }>("tauri://drag-enter", (event) => {
-      // Only show overlay for external drags (with file paths)
-      if (event.payload.paths?.length > 0) {
-        setExternalDragOver(true);
-      }
+      if (!event.payload.paths?.length) return;
+
+      // Only show sidebar drop zone for folders or markdown files, not pure image drags
+      const paths = event.payload.paths;
+      const imageExts = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"]);
+      const allImages = paths.every((p) => {
+        const ext = p.substring(p.lastIndexOf(".")).toLowerCase();
+        return imageExts.has(ext);
+      });
+
+      // If dragging only images and there's an active editor, don't show sidebar overlay
+      // (images go to the editor instead)
+      if (allImages && activeFileRef.current) return;
+
+      setExternalDragOver(true);
     });
     const unlistenLeave = listen("tauri://drag-leave", () => {
       setExternalDragOver(false);
@@ -320,13 +383,11 @@ export function GhostLayout() {
             // If image dropped over editor, insert it inline
             const ext = droppedPath.substring(droppedPath.lastIndexOf(".")).toLowerCase();
             if (isOverEditor && imageExts.has(ext)) {
-              // Read the file and save as .images/ relative to the active file
-              const data = await invoke<number[]>("read_file_bytes", { path: droppedPath });
-              const filename = droppedPath.substring(droppedPath.lastIndexOf("/") + 1).replace(/\s+/g, "-");
-              const dir = activeFileRef.current!.substring(0, activeFileRef.current!.lastIndexOf("/"));
-              const relativePath = await invoke<string>("save_image", { dir, filename, data });
-              // Insert into editor via a custom event
-              window.dispatchEvent(new CustomEvent("ghost-insert-image", { detail: { src: relativePath } }));
+              // Save to {stem}.assets/ folder and insert into editor
+              const relativePath = await handleImageFromPath(droppedPath);
+              if (relativePath) {
+                window.dispatchEvent(new CustomEvent("ghost-insert-image", { detail: { src: relativePath } }));
+              }
             } else {
               // Open non-image files in an accessory window
               invoke("open_editor_window", { filePath: droppedPath });
@@ -875,6 +936,8 @@ export function GhostLayout() {
               replaceTerm={search.searchOpen ? search.replaceTerm : ""}
               onSearchResults={search.handleSearchResults}
               activeFile={activeFile}
+              showStyleBar={settings.showStyleBar}
+              onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
             />
           ) : (
             <div className="flex h-full items-center justify-center">

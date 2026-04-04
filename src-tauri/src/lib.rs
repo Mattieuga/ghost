@@ -1,23 +1,14 @@
 mod commands;
+mod menu;
 mod watcher;
+mod windows;
 #[cfg(target_os = "macos")]
 mod context_menu;
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::Manager;
-use tauri::{Emitter, RunEvent};
-use tauri::menu::{MenuBuilder, SubmenuBuilder, MenuItemBuilder, PredefinedMenuItem};
-
-/// Stores file paths opened via Finder before the frontend is ready
-struct PendingOpenFiles(Mutex<Vec<String>>);
-
-#[tauri::command]
-fn get_pending_open_files(state: tauri::State<PendingOpenFiles>) -> Vec<String> {
-    match state.0.lock() {
-        Ok(mut pending) => pending.drain(..).collect(),
-        Err(_) => Vec::new(),
-    }
-}
+use tauri::RunEvent;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -27,7 +18,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(watcher::WatcherState::new())
-        .manage(PendingOpenFiles(Mutex::new(Vec::new())))
+        .manage(windows::EditorWindowMap(Mutex::new(HashMap::new())))
+        .manage(menu::ShowMainMenuItem(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             commands::fs::is_directory,
             commands::fs::read_directory,
@@ -49,89 +41,12 @@ pub fn run() {
             commands::fs::list_system_fonts,
             commands::search::search_file_contents,
             watcher::watch_directories,
-            get_pending_open_files,
+            windows::open_editor_window,
+            windows::emit_file_renamed,
+            windows::emit_file_deleted,
         ])
         .setup(|app| {
-            // Build macOS menu bar
-            let app_menu = SubmenuBuilder::new(app, "Ghost")
-                .about(None)
-                .separator()
-                .services()
-                .separator()
-                .hide()
-                .hide_others()
-                .show_all()
-                .separator()
-                .quit()
-                .build()?;
-
-            let file_menu = SubmenuBuilder::new(app, "File")
-                .item(&MenuItemBuilder::with_id("add_folder", "Add Folder")
-                    .accelerator("CmdOrCtrl+O")
-                    .build(app)?)
-                .item(&MenuItemBuilder::with_id("new_file", "New File")
-                    .accelerator("CmdOrCtrl+N")
-                    .build(app)?)
-                .separator()
-                .close_window()
-                .build()?;
-
-            let edit_menu = SubmenuBuilder::new(app, "Edit")
-                .undo()
-                .redo()
-                .separator()
-                .cut()
-                .copy()
-                .paste()
-                .select_all()
-                .separator()
-                .item(&MenuItemBuilder::with_id("find", "Find")
-                    .accelerator("CmdOrCtrl+F")
-                    .build(app)?)
-                .item(&MenuItemBuilder::with_id("find_replace", "Find and Replace")
-                    .accelerator("CmdOrCtrl+Alt+F")
-                    .build(app)?)
-                .build()?;
-
-            let view_menu = SubmenuBuilder::new(app, "View")
-                .item(&PredefinedMenuItem::fullscreen(app, None)?)
-                .build()?;
-
-            let menu = MenuBuilder::new(app)
-                .item(&app_menu)
-                .item(&file_menu)
-                .item(&edit_menu)
-                .item(&view_menu)
-                .build()?;
-
-            app.set_menu(menu)?;
-
-            // Handle menu events
-            app.on_menu_event(move |app_handle, event| {
-                match event.id().as_ref() {
-                    "add_folder" => {
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.eval("window.__ghostAddFolder && window.__ghostAddFolder()");
-                        }
-                    }
-                    "new_file" => {
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.eval("window.__ghostNewFile && window.__ghostNewFile()");
-                        }
-                    }
-                    "find" => {
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.eval("window.__ghostFind && window.__ghostFind()");
-                        }
-                    }
-                    "find_replace" => {
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.eval("window.__ghostFindAndReplace && window.__ghostFindAndReplace()");
-                        }
-                    }
-                    _ => {}
-                }
-            });
+            menu::setup_menu(app)?;
 
             // Use dev icon for dock when in debug mode
             #[cfg(all(debug_assertions, target_os = "macos"))]
@@ -170,21 +85,65 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            if let RunEvent::Opened { urls } = &event {
-                for url in urls {
-                    if url.scheme() == "file" {
-                        if let Ok(path) = url.to_file_path() {
-                            let path_str = path.to_string_lossy().to_string();
-                            let _ = app_handle.emit("file-open", &path_str);
-                            // Always store in pending — frontend may not be ready yet
-                            if let Some(state) = app_handle.try_state::<PendingOpenFiles>() {
-                                if let Ok(mut pending) = state.0.lock() {
-                                    pending.push(path_str);
-                                }
+            match &event {
+                RunEvent::Opened { urls } => {
+                    for url in urls {
+                        if url.scheme() == "file" {
+                            if let Ok(path) = url.to_file_path() {
+                                let path_str = path.to_string_lossy().to_string();
+                                let _ = windows::create_editor_window(app_handle, &path_str);
                             }
                         }
                     }
                 }
+                RunEvent::WindowEvent { label, event: window_event, .. } => {
+                    match window_event {
+                        tauri::WindowEvent::CloseRequested { api, .. } => {
+                            if label == "main" {
+                                api.prevent_close();
+                                if let Some(win) = app_handle.get_webview_window("main") {
+                                    let _ = win.hide();
+                                }
+                                if let Some(state) = app_handle.try_state::<menu::ShowMainMenuItem>() {
+                                    state.set_enabled(true);
+                                }
+                            }
+                        }
+                        tauri::WindowEvent::Destroyed => {
+                            if label.starts_with("editor-") {
+                                if let Some(map) = app_handle.try_state::<windows::EditorWindowMap>() {
+                                    if let Ok(mut map_lock) = map.0.lock() {
+                                        map_lock.retain(|_, v| v != label);
+                                        if map_lock.is_empty() {
+                                            let main_visible = app_handle
+                                                .get_webview_window("main")
+                                                .and_then(|w| w.is_visible().ok())
+                                                .unwrap_or(false);
+                                            if !main_visible {
+                                                app_handle.exit(0);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                RunEvent::ExitRequested { api, .. } => {
+                    api.prevent_exit();
+                }
+                #[cfg(target_os = "macos")]
+                RunEvent::Reopen { .. } => {
+                    if let Some(win) = app_handle.get_webview_window("main") {
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                        if let Some(state) = app_handle.try_state::<menu::ShowMainMenuItem>() {
+                            state.set_enabled(false);
+                        }
+                    }
+                }
+                _ => {}
             }
         });
 }

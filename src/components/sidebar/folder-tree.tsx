@@ -391,9 +391,6 @@ function DroppableFolder({
           <ContextMenuItem onSelect={() => onRemoveFolder?.(id)}>
             Close Project
           </ContextMenuItem>
-          <ContextMenuItem disabled>
-            Open in New Window
-          </ContextMenuItem>
           <ContextMenuItem onSelect={onAddProject}>
             Open New Project
             <ContextMenuShortcut>⌘O</ContextMenuShortcut>
@@ -430,9 +427,6 @@ function DroppableFolder({
       <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
         <ContextMenuItem onSelect={() => { const next = !open; setOpen(next); onOpenChange?.(next); }}>
           {open ? "Collapse" : "Expand"}
-        </ContextMenuItem>
-        <ContextMenuItem disabled>
-          Open in New Window
         </ContextMenuItem>
         <ContextMenuItem onSelect={onAddProject}>
           Open New Project

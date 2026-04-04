@@ -189,6 +189,22 @@ export function MarkdownEditor({
     },
   });
 
+  // Flush pending save when window loses focus (ensures other windows see latest content)
+  useEffect(() => {
+    const handleBlur = () => {
+      if (saveTimeout.current) {
+        clearTimeout(saveTimeout.current);
+        saveTimeout.current = null;
+        const md = editor?.storage.markdown?.getMarkdown();
+        if (md !== undefined) {
+          onContentChange(md);
+        }
+      }
+    };
+    window.addEventListener("blur", handleBlur);
+    return () => window.removeEventListener("blur", handleBlur);
+  }, [editor, onContentChange]);
+
   // Sync search term from parent into editor extension
   useEffect(() => {
     if (!editor) return;

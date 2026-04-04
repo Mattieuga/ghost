@@ -42,6 +42,7 @@ import { SearchBar } from "@/components/editor/search-bar";
 import { CommandPalette } from "@/components/command-palette/command-palette";
 import { SidebarGuide } from "@/components/sidebar/sidebar-guide";
 import { useRecentFiles } from "@/hooks/use-recent-files";
+import { useSearch } from "@/hooks/use-search";
 import { useFileTree } from "@/hooks/use-file-tree";
 
 export function GhostLayout() {
@@ -49,6 +50,7 @@ export function GhostLayout() {
   const { settings, updateSettings, saveTheme, deleteTheme } = useSettings();
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
+  const [contentKey, setContentKey] = useState(0);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [isRenamingHeader, setIsRenamingHeader] = useState(false);
@@ -62,15 +64,7 @@ export function GhostLayout() {
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const isResizing = useRef(false);
   const [pendingMove, setPendingMove] = useState<{ filePath: string; targetDir: string } | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchMode, setSearchMode] = useState<"find" | "replace">("find");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
-  const [replaceTerm, setReplaceTerm] = useState("");
-  const [searchResultCount, setSearchResultCount] = useState(0);
-  const [searchResultIndex, setSearchResultIndex] = useState(0);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const search = useSearch();
   const sidebarHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sidebarCollapsedAt = useRef<number>(0);
   const sidebarContextMenuOpen = useRef(false);
@@ -80,6 +74,9 @@ export function GhostLayout() {
   const treeAreaRef = useRef<HTMLDivElement>(null);
   const activeFileRef = useRef<string | null>(null);
   activeFileRef.current = activeFile;
+  const fileContentRef = useRef(fileContent);
+  fileContentRef.current = fileContent;
+  const lastSaveTimestamp = useRef(0);
   const { recentFiles, addRecentFile } = useRecentFiles();
 
   const sensors = useSensors(
@@ -109,13 +106,7 @@ export function GhostLayout() {
 
   const { flatFiles: allFiles, getEntries, getError } = useFileTree(folders, extensions, refreshTrigger);
 
-  const closeSearch = useCallback(() => {
-    setSearchOpen(false);
-    setSearchTerm("");
-    setDebouncedSearchTerm("");
-    setReplaceTerm("");
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-  }, []);
+  const { closeSearch, openSearch } = search;
 
   const handleFileSelect = useCallback(async (path: string) => {
     try {
@@ -133,24 +124,11 @@ export function GhostLayout() {
     }
   }, [closeSearch, addRecentFile]);
 
-  const handleSearchTermChange = useCallback((value: string) => {
-    setSearchTerm(value);
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    searchDebounceRef.current = setTimeout(() => {
-      setDebouncedSearchTerm(value);
-    }, 150);
-  }, []);
-
-  const openSearch = useCallback((mode: "find" | "replace") => {
+  // openSearch wrapper: only open if a file is active
+  const openSearchIfFile = useCallback((mode: "find" | "replace") => {
     if (!activeFileRef.current) return;
-    setSearchOpen(true);
-    setSearchMode(mode);
-  }, []);
-
-  const handleSearchResults = useCallback((count: number, index: number) => {
-    setSearchResultCount(count);
-    setSearchResultIndex(index);
-  }, []);
+    openSearch(mode);
+  }, [openSearch]);
 
 
   const handleContentChange = useCallback(
@@ -159,6 +137,7 @@ export function GhostLayout() {
       // Update word count
       const words = markdown.trim().split(/\s+/).filter(Boolean).length;
       setWordCount(words);
+      lastSaveTimestamp.current = Date.now();
       try {
         await invoke("write_file", { path: activeFile, content: markdown });
       } catch (err) {
@@ -174,10 +153,36 @@ export function GhostLayout() {
 
   useFileWatcher(folders, handleFsChange);
 
+  // Reload active file when the main window regains focus (picks up edits from accessory windows)
+  useEffect(() => {
+    const handleFocus = async () => {
+      if (!activeFileRef.current) return;
+      // Skip if we just saved (avoid reloading our own changes)
+      const elapsed = Date.now() - lastSaveTimestamp.current;
+      if (elapsed < 1000) return;
+      try {
+        const content = await invoke<string>("read_file", { path: activeFileRef.current });
+        // Only remount editor if content actually changed
+        if (content !== fileContentRef.current) {
+          setFileContent(content);
+          setContentKey((k) => k + 1);
+          const words = content.trim().split(/\s+/).filter(Boolean).length;
+          setWordCount(words);
+        }
+      } catch {
+        // File might have been deleted
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, []);
+
   const handleFileRenamed = useCallback(
     (oldPath: string, newPath: string) => {
       if (activeFile === oldPath) setActiveFile(newPath);
       handleFsChange();
+      // Notify accessory windows
+      invoke("emit_file_renamed", { oldPath, newPath }).catch(() => {});
     },
     [activeFile, handleFsChange]
   );
@@ -189,6 +194,8 @@ export function GhostLayout() {
         setFileContent("");
       }
       handleFsChange();
+      // Notify accessory windows — they will auto-close
+      invoke("emit_file_deleted", { path }).catch(() => {});
     },
     [activeFile, handleFsChange]
   );
@@ -262,8 +269,8 @@ export function GhostLayout() {
   useEffect(() => {
     window.__ghostAddFolder = addFolder;
     window.__ghostNewFile = createNewFile;
-    window.__ghostFind = () => openSearch("find");
-    window.__ghostFindAndReplace = () => openSearch("replace");
+    window.__ghostFind = () => openSearchIfFile("find");
+    window.__ghostFindAndReplace = () => openSearchIfFile("replace");
     window.__ghostCommandPalette = () => setCommandPaletteOpen((p) => !p);
     return () => {
       delete window.__ghostAddFolder;
@@ -272,40 +279,9 @@ export function GhostLayout() {
       delete window.__ghostFindAndReplace;
       delete window.__ghostCommandPalette;
     };
-  }, [addFolder, createNewFile, openSearch]);
+  }, [addFolder, createNewFile, openSearchIfFile]);
 
-  // Handle files opened from Finder (file associations)
-  const openExternalFile = useCallback(async (filePath: string) => {
-    const parentDir = filePath.substring(0, filePath.lastIndexOf("/"));
-
-    // Add parent folder if not already tracked
-    const isTracked = folders.some((f) => filePath.startsWith(f + "/") || filePath.startsWith(f));
-    if (!isTracked) {
-      addFolderByPath(parentDir);
-      handleFsChange();
-    }
-
-    // Open the file
-    handleFileSelect(filePath);
-  }, [folders, addFolderByPath, handleFileSelect, handleFsChange]);
-
-  // Check for files opened during cold start
-  useEffect(() => {
-    if (loading) return; // Wait for tracked folders to load
-    invoke<string[]>("get_pending_open_files").then((paths) => {
-      if (paths.length > 0) {
-        openExternalFile(paths[0]);
-      }
-    }).catch(() => {});
-  }, [loading, openExternalFile]);
-
-  // Listen for files opened while app is running
-  useEffect(() => {
-    const unlisten = listen<string>("file-open", (event) => {
-      openExternalFile(event.payload);
-    });
-    return () => { unlisten.then((fn) => fn()); };
-  }, [openExternalFile]);
+  // Finder file-open events are now handled by Rust (opens accessory windows directly)
 
   // Listen for external file/folder drag-drop from Finder
   useEffect(() => {
@@ -352,7 +328,8 @@ export function GhostLayout() {
               // Insert into editor via a custom event
               window.dispatchEvent(new CustomEvent("ghost-insert-image", { detail: { src: relativePath } }));
             } else {
-              openExternalFile(droppedPath);
+              // Open non-image files in an accessory window
+              invoke("open_editor_window", { filePath: droppedPath });
             }
           }
         } catch (err) {
@@ -366,7 +343,7 @@ export function GhostLayout() {
       unlistenLeave.then((fn) => fn());
       unlistenDrop.then((fn) => fn());
     };
-  }, [addFolderByPath, openExternalFile, handleFsChange]);
+  }, [addFolderByPath, handleFsChange]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -405,12 +382,12 @@ export function GhostLayout() {
 
       if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
         e.preventDefault();
-        openSearch("find");
+        openSearchIfFile("find");
       }
 
       if (mod && e.altKey && e.key.toLowerCase() === "f") {
         e.preventDefault();
-        openSearch("replace");
+        openSearchIfFile("replace");
       }
 
       if (mod && e.key === "o") {
@@ -442,7 +419,7 @@ export function GhostLayout() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [folders, addFolder, createNewFile, handleFileSelect, openSearch, closeSearch]);
+  }, [folders, addFolder, createNewFile, handleFileSelect, openSearchIfFile, closeSearch]);
 
   // Breadcrumb from active file
   const breadcrumb = useMemo(() => {
@@ -627,6 +604,8 @@ export function GhostLayout() {
       });
       setActiveFile(newPath);
       handleFsChange();
+      // Notify accessory windows
+      invoke("emit_file_renamed", { oldPath: activeFile, newPath }).catch(() => {});
     } catch (err) {
       console.error("Failed to rename:", err);
     }
@@ -828,23 +807,23 @@ export function GhostLayout() {
           }`}
           data-tauri-drag-region
         >
-          {searchOpen ? (
+          {search.searchOpen ? (
             <div className="flex items-center flex-1 min-w-0 pointer-events-auto">
               <SearchBar
-                mode={searchMode}
-                searchTerm={searchTerm}
-                replaceTerm={replaceTerm}
-                onSearchTermChange={handleSearchTermChange}
-                onReplaceTermChange={setReplaceTerm}
-                resultCount={searchResultCount}
-                resultIndex={searchResultIndex}
+                mode={search.searchMode}
+                searchTerm={search.searchTerm}
+                replaceTerm={search.replaceTerm}
+                onSearchTermChange={search.handleSearchTermChange}
+                onReplaceTermChange={search.setReplaceTerm}
+                resultCount={search.searchResultCount}
+                resultIndex={search.searchResultIndex}
                 onNext={() => window.__ghostSearch?.next()}
                 onPrevious={() => window.__ghostSearch?.previous()}
                 onReplace={() => window.__ghostSearch?.replace()}
                 onReplaceAll={() => window.__ghostSearch?.replaceAll()}
                 onClose={closeSearch}
-                onToggleMode={() => setSearchMode(m => m === "find" ? "replace" : "find")}
-                searchInputRef={searchInputRef}
+                onToggleMode={() => search.setSearchMode(m => m === "find" ? "replace" : "find")}
+                searchInputRef={search.searchInputRef}
               />
             </div>
           ) : (
@@ -889,12 +868,12 @@ export function GhostLayout() {
         <main className="h-full overflow-auto overscroll-contain">
           {activeFile ? (
             <MarkdownEditor
-              key={activeFile}
+              key={`${activeFile}-${contentKey}`}
               content={fileContent}
               onContentChange={handleContentChange}
-              searchTerm={searchOpen ? debouncedSearchTerm : ""}
-              replaceTerm={searchOpen ? replaceTerm : ""}
-              onSearchResults={handleSearchResults}
+              searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
+              replaceTerm={search.searchOpen ? search.replaceTerm : ""}
+              onSearchResults={search.handleSearchResults}
               activeFile={activeFile}
             />
           ) : (

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { load } from "@tauri-apps/plugin-store";
+import { emit, listen } from "@tauri-apps/api/event";
 import type { ThemeColors, ThemePreset } from "@/lib/theme-engine";
 import { DEFAULT_THEME } from "@/lib/theme-engine";
 
@@ -57,6 +58,14 @@ export function useSettings() {
     ).catch((err) => console.error("Failed to load settings:", err));
   }, []);
 
+  // Listen for settings changes from other windows
+  useEffect(() => {
+    const unlisten = listen<Settings>("settings-changed", (event) => {
+      setSettings({ ...DEFAULTS, ...event.payload });
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, []);
+
   const persist = useCallback((next: Settings) => {
     const store = storeRef.current;
     if (store) {
@@ -64,6 +73,8 @@ export function useSettings() {
         console.error("Failed to persist settings:", err)
       );
     }
+    // Notify other windows
+    emit("settings-changed", next).catch(() => {});
   }, []);
 
   const updateSettings = useCallback((updates: Partial<Settings>) => {

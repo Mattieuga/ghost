@@ -57,6 +57,9 @@ export function FileItem({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const blurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleOpenInNewWindow = () => {
+    invoke("open_editor_window", { filePath: entry.path });
+  };
 
   const parentDir = entry.path.substring(0, entry.path.lastIndexOf("/"));
 
@@ -224,6 +227,7 @@ export function FileItem({
           <button
             data-tree-label
             onClick={onSelect}
+            onDoubleClick={handleOpenInNewWindow}
             className={`w-full text-left py-1 pr-2 text-[13px] truncate transition-colors cursor-pointer select-none
               ${isActive
                 ? "text-card-foreground font-medium"
@@ -239,7 +243,7 @@ export function FileItem({
           <ContextMenuItem onSelect={onSelect} disabled={isActive}>
             Open File
           </ContextMenuItem>
-          <ContextMenuItem disabled>
+          <ContextMenuItem onSelect={handleOpenInNewWindow}>
             Open File in New Window
           </ContextMenuItem>
           <ContextMenuItem onSelect={onAddProject}>

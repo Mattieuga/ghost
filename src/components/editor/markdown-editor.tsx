@@ -108,6 +108,7 @@ interface MarkdownEditorProps {
   activeFile?: string;
   showStyleBar?: boolean;
   onToggleStyleBar?: () => void;
+  onEditorReady?: (editor: ReturnType<typeof useEditor>) => void;
 }
 
 export function MarkdownEditor({
@@ -119,6 +120,7 @@ export function MarkdownEditor({
   activeFile,
   showStyleBar = true,
   onToggleStyleBar,
+  onEditorReady,
 }: MarkdownEditorProps) {
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSearchResults = useRef({ count: 0, index: 0 });
@@ -323,6 +325,11 @@ export function MarkdownEditor({
       contentSet.current = true;
     }
   }, [editor]);
+
+  // Notify parent when editor instance is ready
+  useEffect(() => {
+    if (editor) onEditorReady?.(editor);
+  }, [editor, onEditorReady]);
 
   // Expose flush function for updater (and other consumers) to force-save before relaunch
   useEffect(() => {

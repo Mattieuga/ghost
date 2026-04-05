@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { FolderTree } from "@/components/sidebar/folder-tree";
 import { EmptyState } from "@/components/sidebar/empty-state";
 import { MarkdownEditor } from "@/components/editor/markdown-editor";
+import { HeadingMinimap } from "@/components/editor/heading-minimap";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { useTrackedFolders } from "@/hooks/use-tracked-folders";
 import { useFileWatcher } from "@/hooks/use-file-watcher";
@@ -76,6 +77,8 @@ export function GhostLayout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [externalDragOver, setExternalDragOver] = useState(false);
   const treeAreaRef = useRef<HTMLDivElement>(null);
+  const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
+  const [editorInstance, setEditorInstance] = useState<any>(null);
   const activeFileRef = useRef<string | null>(null);
   activeFileRef.current = activeFile;
   const fileContentRef = useRef(fileContent);
@@ -929,7 +932,7 @@ export function GhostLayout() {
         </div>
 
         {/* Editor — scrolls behind the floating header */}
-        <main className="h-full overflow-auto overscroll-contain relative z-0">
+        <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative z-0">
           {activeFile ? (
             <MarkdownEditor
               key={`${activeFile}-${contentKey}`}
@@ -941,6 +944,7 @@ export function GhostLayout() {
               activeFile={activeFile}
               showStyleBar={settings.showStyleBar}
               onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
+              onEditorReady={setEditorInstance}
             />
           ) : (
             <div className="flex h-full items-center justify-center">
@@ -950,6 +954,10 @@ export function GhostLayout() {
             </div>
           )}
         </main>
+        {/* Heading minimap — right edge overlay */}
+        {editorInstance && mainEl && activeFile && (
+          <HeadingMinimap editor={editorInstance} scrollContainer={mainEl} />
+        )}
       </div>
 
       {/* Override confirmation for drag move */}

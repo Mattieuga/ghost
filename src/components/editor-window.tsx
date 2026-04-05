@@ -187,7 +187,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
           </div>
         ) : (
           <>
-            <div className="flex items-center min-w-0 flex-1 text-[13px] pointer-events-auto">
+            <div className="flex items-center min-w-0 flex-1 text-[13px] pointer-events-none">
               <div className="flex items-center min-w-0 overflow-hidden">
                 {parentFolder && (
                   <>

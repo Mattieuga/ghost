@@ -892,7 +892,7 @@ export function GhostLayout() {
             </div>
           ) : (
             <>
-              <div className="flex items-center min-w-0 flex-1 text-[13px] pointer-events-auto">
+              <div className="flex items-center min-w-0 flex-1 text-[13px] pointer-events-none">
                 {isRenamingHeader ? (
                   <Input
                     ref={headerInputRef}
@@ -903,14 +903,14 @@ export function GhostLayout() {
                       if (e.key === "Enter") handleHeaderRename();
                       if (e.key === "Escape") setIsRenamingHeader(false);
                     }}
-                    className="h-6 text-[13px] px-1 w-48 bg-transparent"
+                    className="h-6 text-[13px] px-1 w-48 bg-transparent pointer-events-auto"
                   />
                 ) : breadcrumb ? (
                   <div className="flex items-center min-w-0 overflow-hidden">
                     <span className="text-muted-foreground pointer-events-none select-none truncate" style={{ flexShrink: 10 }}>{breadcrumb.folderName}</span>
                     <span className="text-ring mx-1 pointer-events-none select-none shrink-0">/</span>
                     <span
-                      className="text-sidebar-primary font-medium cursor-pointer hover:text-sidebar-foreground transition-colors truncate"
+                      className="text-sidebar-primary font-medium cursor-pointer hover:text-sidebar-foreground transition-colors truncate pointer-events-auto"
                       style={{ flexShrink: 1 }}
                       onClick={startHeaderRename}
                     >

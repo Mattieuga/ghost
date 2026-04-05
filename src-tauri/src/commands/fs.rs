@@ -204,6 +204,29 @@ pub async fn rename_file(old_path: String, new_name: String) -> Result<String, S
         return Err(format!("A file with that name already exists: {}", new_path.display()));
     }
     fs::rename(&old_path, &new_path).map_err(|e| format!("Failed to rename: {}", e))?;
+
+    // Rename companion .assets/ folder and rewrite references in the markdown
+    if let (Some(old_stem), Some(new_stem)) = (old.file_stem(), Path::new(&new_name).file_stem()) {
+        let old_assets_name = format!("{}.assets", old_stem.to_string_lossy());
+        let new_assets_name = format!("{}.assets", new_stem.to_string_lossy());
+        let old_assets = parent.join(&old_assets_name);
+        if old_assets.is_dir() && old_stem != new_stem {
+            let new_assets = parent.join(&new_assets_name);
+            if let Err(e) = fs::rename(&old_assets, &new_assets) {
+                eprintln!("Warning: failed to rename assets folder: {}", e);
+            }
+            // Rewrite asset references inside the markdown file
+            if let Ok(content) = fs::read_to_string(&new_path) {
+                let updated = content.replace(&old_assets_name, &new_assets_name);
+                if updated != content {
+                    if let Err(e) = fs::write(&new_path, &updated) {
+                        eprintln!("Warning: failed to update asset references: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
     Ok(new_path.to_string_lossy().to_string())
 }
 

@@ -88,17 +88,20 @@ export function FloatingToolbar({ editor, onHide }: ToolbarProps) {
   const [centerX, setCenterX] = useState<number | null>(null);
 
   // useLayoutEffect so position is set before first paint (no flash at left edge)
+  // ResizeObserver catches sidebar collapse/expand (container resizes without window resize)
   useLayoutEffect(() => {
+    const editorEl = editor.view.dom.closest("[data-ghost-editor-root]");
+    if (!editorEl) return;
+
     const update = () => {
-      const editorEl = editor.view.dom.closest("[data-ghost-editor-root]");
-      if (editorEl) {
-        const rect = editorEl.getBoundingClientRect();
-        setCenterX(rect.left + rect.width / 2);
-      }
+      const rect = editorEl.getBoundingClientRect();
+      setCenterX(rect.left + rect.width / 2);
     };
     update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
+
+    const ro = new ResizeObserver(update);
+    ro.observe(editorEl);
+    return () => ro.disconnect();
   }, [editor]);
 
   const insertImageFromPicker = async () => {
@@ -229,10 +232,8 @@ export function FloatingToolbar({ editor, onHide }: ToolbarProps) {
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <rect x="1" y="1" width="14" height="14" rx="2" />
-          <line x1="1" y1="5.5" x2="15" y2="5.5" />
-          <line x1="1" y1="10.5" x2="15" y2="10.5" />
-          <line x1="5.5" y1="1" x2="5.5" y2="15" />
-          <line x1="10.5" y1="1" x2="10.5" y2="15" />
+          <line x1="1" y1="8" x2="15" y2="8" />
+          <line x1="8" y1="1" x2="8" y2="15" />
         </svg>
       </button>
 

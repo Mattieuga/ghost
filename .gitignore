@@ -39,3 +39,6 @@ src-tauri/target/
 # Playwright
 test-results/
 playwright-report/
+
+# Project workflow
+PROJECT.md

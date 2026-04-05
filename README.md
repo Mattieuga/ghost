@@ -1,10 +1,10 @@
-<p align="center">
-  <img src="icon.png" width="128" height="128" alt="Ghost">
-</p>
 
-<h1 align="center">Ghost</h1>
+<img src="icon.png" alt="Ghost" width="128">
 
-<p align="center">A minimalist markdown editor for Mac.</p>
+
+# Ghost
+
+A minimalist markdown editor for Mac.
 
 ---
 
@@ -12,7 +12,7 @@ Type markdown, see rich text. Files live on your filesystem. No cloud, no databa
 
 ## Stack
 
-- [Tauri v2](https://v2.tauri.app) — Rust backend, ~5MB app bundle
+- [Tauri v2](https://v2.tauri.app) — Rust backend, \~5MB app bundle
 - [React 19](https://react.dev) + TypeScript
 - [Tiptap](https://tiptap.dev) — ProseMirror-based editor
 - [Tailwind CSS v4](https://tailwindcss.com) — OKLCH theme tokens

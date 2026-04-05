@@ -91,6 +91,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { DOMSerializer } from "@tiptap/pm/model";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { writeText, writeHtml } from "@tauri-apps/plugin-clipboard-manager";
 import { LinkBubbleMenu } from "./link-bubble-menu";
 import { ensureProtocol } from "./floating-toolbar";
 import { ImageBubbleMenu } from "./image-bubble-menu";
@@ -251,18 +252,19 @@ export function MarkdownEditor({
         },
       },
       handleKeyDown: (view, event) => {
-        // Cmd+C for rich text copy
+        // Cmd+C — copy as markdown
         if ((event.metaKey || event.ctrlKey) && event.key === "c" && !event.shiftKey) {
           const { from, to } = view.state.selection;
           if (from !== to) {
             event.preventDefault();
             const slice = view.state.doc.slice(from, to);
-            const serializer = DOMSerializer.fromSchema(view.state.schema);
-            const div = document.createElement("div");
-            div.appendChild(serializer.serializeFragment(slice.content));
-            import("@tauri-apps/plugin-clipboard-manager").then(({ writeHtml }) => {
-              writeHtml(div.innerHTML);
-            });
+            const tempDoc = view.state.schema.topNodeType.create(null, slice.content);
+            try {
+              const md = editor?.storage.markdown.serializer.serialize(tempDoc);
+              writeText(md);
+            } catch {
+              writeText(view.state.doc.textBetween(from, to, "\n"));
+            }
             return true;
           }
         }
@@ -339,7 +341,9 @@ export function MarkdownEditor({
 
   // Listen for flush-saves event (broadcast to all windows before relaunch)
   useEffect(() => {
+    let mounted = true;
     const unlisten = listen("flush-saves", () => {
+      if (!mounted) return;
       if (saveTimeout.current) {
         clearTimeout(saveTimeout.current);
         saveTimeout.current = null;
@@ -349,7 +353,10 @@ export function MarkdownEditor({
         onContentChange(md);
       }
     });
-    return () => { unlisten.then((fn) => fn()); };
+    return () => {
+      mounted = false;
+      unlisten.then((fn) => fn());
+    };
   }, [editor, onContentChange]);
 
   // Cleanup timeout on unmount
@@ -389,8 +396,6 @@ export function MarkdownEditor({
       if (!editor) return;
       const { from, to } = editor.state.selection;
       if (from === to) return;
-
-      const { writeText, writeHtml } = await import("@tauri-apps/plugin-clipboard-manager");
 
       if (format === "plain") {
         const text = editor.state.doc.textBetween(from, to, "\n");

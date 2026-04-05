@@ -343,8 +343,7 @@
 /* Links */
 .ghost-editor a {
   color: var(--ghost-amber);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration: none;
   cursor: pointer;
 }
 

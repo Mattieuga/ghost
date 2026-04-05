@@ -535,7 +535,7 @@ export function CommandPalette({
                   <div className="mt-4 border-t border-border pt-4">
                     {previewHtml ? (
                       <div
-                        className="prose prose-sm prose-invert max-w-none text-[13px] text-muted-foreground [&_h1]:text-foreground [&_h2]:text-foreground [&_h3]:text-foreground [&_strong]:text-foreground"
+                        className="prose prose-sm prose-invert max-w-none text-[13px] text-muted-foreground [&_h1]:text-foreground [&_h2]:text-foreground [&_h3]:text-foreground [&_strong]:text-foreground [&_img]:hidden [&_table]:hidden"
                         dangerouslySetInnerHTML={{ __html: previewHtml }}
                       />
                     ) : (

@@ -10,7 +10,7 @@ Build a VS Code-style Cmd+K command palette for Ghost that provides fast file sw
 
 ## Problem Statement / Motivation
 
-Ghost currently has no way to quickly jump between files without manually navigating the sidebar tree. For users with many files across multiple tracked folders, this is slow. A Cmd+K palette is the standard UX pattern for fast file access in modern editors.
+Ghost currently has no way to quickly jump between files without manually navigating the sidebar tree. For users with *many* files across multiple tracked folders, this is slow. A Cmd+K palette is the standard UX pattern for fast file access in modern editors.
 
 The sidebar already has a non-functional search bar placeholder at `layout.tsx:603-609` showing "Search... Cmd+K" — this feature was always planned.
 

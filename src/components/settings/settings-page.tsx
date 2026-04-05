@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Settings2, Type, Palette } from "lucide-react";
+import { Settings2, Type, Palette, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Settings } from "@/hooks/use-settings";
 import type { ThemePreset } from "@/lib/theme-engine";
@@ -70,7 +70,13 @@ export function SettingsPage({
           <div className="px-5 pt-5 pb-3 border-b border-border shrink-0">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold">Settings</h2>
-              <kbd className="text-[11px] font-medium text-ring select-none">esc</kbd>
+              <button
+                onClick={onClose}
+                aria-label="Close"
+                className="text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+              >
+                <X className="size-4" />
+              </button>
             </div>
 
             {/* Tab bar */}

@@ -48,57 +48,55 @@ export function GeneralTab({ settings, onUpdateSettings, updater }: GeneralTabPr
       </div>
 
       <div className="rounded-xl border bg-card p-6 space-y-4">
-        <div>
-          <p className="text-sm font-medium">Updates</p>
-          <p className="text-xs text-muted-foreground">
-            Ghost v{appVersion}
-          </p>
-        </div>
+        <SettingRow
+          label="Updates"
+          description={`Ghost v${appVersion}`}
+        >
+          <div className="flex items-center gap-3">
+            {state === "idle" || state === "up-to-date" || state === "error" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={checkForUpdate}
+              >
+                Check for Updates
+              </Button>
+            ) : state === "checking" ? (
+              <Button size="sm" variant="outline" disabled>
+                <RefreshCw className="size-3.5 animate-spin" />
+                Checking...
+              </Button>
+            ) : state === "available" ? (
+              <Button size="sm" onClick={installUpdate}>
+                Install v{updateVersion}
+              </Button>
+            ) : state === "downloading" ? (
+              <Button size="sm" disabled>
+                <RefreshCw className="size-3.5 animate-spin" />
+                Downloading...
+              </Button>
+            ) : state === "installing" ? (
+              <Button size="sm" disabled>
+                <RefreshCw className="size-3.5 animate-spin" />
+                Installing...
+              </Button>
+            ) : null}
 
-        <div className="flex items-center gap-3">
-          {state === "idle" || state === "up-to-date" || state === "error" ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={checkForUpdate}
-            >
-              Check for Updates
-            </Button>
-          ) : state === "checking" ? (
-            <Button size="sm" variant="outline" disabled>
-              <RefreshCw className="size-3.5 animate-spin" />
-              Checking...
-            </Button>
-          ) : state === "available" ? (
-            <Button size="sm" onClick={installUpdate}>
-              Install v{updateVersion}
-            </Button>
-          ) : state === "downloading" ? (
-            <Button size="sm" disabled>
-              <RefreshCw className="size-3.5 animate-spin" />
-              Downloading...
-            </Button>
-          ) : state === "installing" ? (
-            <Button size="sm" disabled>
-              <RefreshCw className="size-3.5 animate-spin" />
-              Installing...
-            </Button>
-          ) : null}
+            {state === "up-to-date" && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Check className="size-3.5" />
+                Up to date
+              </span>
+            )}
 
-          {state === "up-to-date" && (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Check className="size-3.5" />
-              You're up to date
-            </span>
-          )}
-
-          {state === "error" && (
-            <span className="flex items-center gap-1.5 text-xs text-destructive">
-              <AlertCircle className="size-3.5" />
-              {error ?? "Update check failed"}
-            </span>
-          )}
-        </div>
+            {state === "error" && (
+              <span className="flex items-center gap-1.5 text-xs text-destructive">
+                <AlertCircle className="size-3.5" />
+                {error ?? "Update check failed"}
+              </span>
+            )}
+          </div>
+        </SettingRow>
       </div>
     </div>
   );

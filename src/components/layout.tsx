@@ -26,6 +26,8 @@ import { Button } from "@/components/ui/button";
 import { FolderTree } from "@/components/sidebar/folder-tree";
 import { EmptyState } from "@/components/sidebar/empty-state";
 import { MarkdownEditor } from "@/components/editor/markdown-editor";
+import { HeadingMinimap } from "@/components/editor/heading-minimap";
+import type { Editor } from "@tiptap/react";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { useTrackedFolders } from "@/hooks/use-tracked-folders";
 import { useFileWatcher } from "@/hooks/use-file-watcher";
@@ -76,6 +78,8 @@ export function GhostLayout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [externalDragOver, setExternalDragOver] = useState(false);
   const treeAreaRef = useRef<HTMLDivElement>(null);
+  const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
+  const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   const activeFileRef = useRef<string | null>(null);
   activeFileRef.current = activeFile;
   const fileContentRef = useRef(fileContent);
@@ -892,7 +896,7 @@ export function GhostLayout() {
             </div>
           ) : (
             <>
-              <div className="flex items-center min-w-0 flex-1 text-[13px] pointer-events-auto">
+              <div className="flex items-center min-w-0 flex-1 text-[13px] pointer-events-none">
                 {isRenamingHeader ? (
                   <Input
                     ref={headerInputRef}
@@ -903,14 +907,14 @@ export function GhostLayout() {
                       if (e.key === "Enter") handleHeaderRename();
                       if (e.key === "Escape") setIsRenamingHeader(false);
                     }}
-                    className="h-6 text-[13px] px-1 w-48 bg-transparent"
+                    className="h-6 text-[13px] px-1 w-48 bg-transparent pointer-events-auto"
                   />
                 ) : breadcrumb ? (
                   <div className="flex items-center min-w-0 overflow-hidden">
                     <span className="text-muted-foreground pointer-events-none select-none truncate" style={{ flexShrink: 10 }}>{breadcrumb.folderName}</span>
                     <span className="text-ring mx-1 pointer-events-none select-none shrink-0">/</span>
                     <span
-                      className="text-sidebar-primary font-medium cursor-pointer hover:text-sidebar-foreground transition-colors truncate"
+                      className="text-sidebar-primary font-medium cursor-pointer hover:text-sidebar-foreground transition-colors truncate pointer-events-auto"
                       style={{ flexShrink: 1 }}
                       onClick={startHeaderRename}
                     >
@@ -929,7 +933,7 @@ export function GhostLayout() {
         </div>
 
         {/* Editor — scrolls behind the floating header */}
-        <main className="h-full overflow-auto overscroll-contain relative z-0">
+        <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative z-0">
           {activeFile ? (
             <MarkdownEditor
               key={`${activeFile}-${contentKey}`}
@@ -941,6 +945,7 @@ export function GhostLayout() {
               activeFile={activeFile}
               showStyleBar={settings.showStyleBar}
               onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
+              onEditorReady={setEditorInstance}
             />
           ) : (
             <div className="flex h-full items-center justify-center">
@@ -950,6 +955,10 @@ export function GhostLayout() {
             </div>
           )}
         </main>
+        {/* Heading minimap — right edge overlay */}
+        {editorInstance && mainEl && activeFile && (
+          <HeadingMinimap editor={editorInstance} scrollContainer={mainEl} />
+        )}
       </div>
 
       {/* Override confirmation for drag move */}

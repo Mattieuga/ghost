@@ -1,4 +1,4 @@
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
@@ -108,6 +108,7 @@ interface MarkdownEditorProps {
   activeFile?: string;
   showStyleBar?: boolean;
   onToggleStyleBar?: () => void;
+  onEditorReady?: (editor: Editor | null) => void;
 }
 
 export function MarkdownEditor({
@@ -119,6 +120,7 @@ export function MarkdownEditor({
   activeFile,
   showStyleBar = true,
   onToggleStyleBar,
+  onEditorReady,
 }: MarkdownEditorProps) {
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSearchResults = useRef({ count: 0, index: 0 });
@@ -323,6 +325,12 @@ export function MarkdownEditor({
       contentSet.current = true;
     }
   }, [editor]);
+
+  // Notify parent when editor instance is ready; clear on unmount
+  useEffect(() => {
+    if (editor) onEditorReady?.(editor);
+    return () => onEditorReady?.(null);
+  }, [editor, onEditorReady]);
 
   // Expose flush function for updater (and other consumers) to force-save before relaunch
   useEffect(() => {

@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MarkdownEditor } from "@/components/editor/markdown-editor";
+import { HeadingMinimap } from "@/components/editor/heading-minimap";
+import type { Editor } from "@tiptap/react";
 import { SearchBar } from "@/components/editor/search-bar";
 import { useSettings } from "@/hooks/use-settings";
 import { useSearch } from "@/hooks/use-search";
@@ -20,6 +22,8 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   const [wordCount, setWordCount] = useState(0);
   const [contentKey, setContentKey] = useState(0);
   const lastSaveTimestamp = useRef(0);
+  const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
+  const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   const styleBarRef = useRef(settings.showStyleBar);
   styleBarRef.current = settings.showStyleBar;
   const fileContentRef = useRef(fileContent);
@@ -187,7 +191,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
           </div>
         ) : (
           <>
-            <div className="flex items-center min-w-0 flex-1 text-[13px] pointer-events-auto">
+            <div className="flex items-center min-w-0 flex-1 text-[13px] pointer-events-none">
               <div className="flex items-center min-w-0 overflow-hidden">
                 {parentFolder && (
                   <>
@@ -208,19 +212,25 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       </div>
 
       {/* Editor */}
-      <main className="h-full overflow-auto overscroll-contain">
-        <MarkdownEditor
-          key={`${filePath}-${contentKey}`}
-          content={fileContent}
-          onContentChange={handleContentChange}
-          searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
-          replaceTerm={search.searchOpen ? search.replaceTerm : ""}
-          onSearchResults={search.handleSearchResults}
-          activeFile={filePath}
-          showStyleBar={settings.showStyleBar}
-          onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
-        />
-      </main>
+      <div className="relative flex-1 overflow-hidden">
+        <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative z-0">
+          <MarkdownEditor
+            key={`${filePath}-${contentKey}`}
+            content={fileContent}
+            onContentChange={handleContentChange}
+            searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
+            replaceTerm={search.searchOpen ? search.replaceTerm : ""}
+            onSearchResults={search.handleSearchResults}
+            activeFile={filePath}
+            showStyleBar={settings.showStyleBar}
+            onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
+            onEditorReady={setEditorInstance}
+          />
+        </main>
+        {editorInstance && mainEl && (
+          <HeadingMinimap editor={editorInstance} scrollContainer={mainEl} />
+        )}
+      </div>
     </div>
   );
 }

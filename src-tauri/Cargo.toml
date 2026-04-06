@@ -1,6 +1,6 @@
 [package]
 name = "ghost"
-version = "0.7.0"
+version = "0.7.1"
 description = "A minimalist markdown editor"
 authors = ["you"]
 edition = "2021"
@@ -30,4 +30,4 @@ tauri-plugin-process = "2"
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = "0.3"
-objc2-app-kit = { version = "0.3", features = ["NSView", "NSMenu", "NSMenuItem", "NSEvent", "NSResponder", "NSPasteboard", "NSImage", "NSApplication", "NSRunningApplication"] }
+objc2-app-kit = { version = "0.3", features = ["NSView", "NSMenu", "NSMenuItem", "NSEvent", "NSResponder", "NSPasteboard", "NSImage", "NSApplication", "NSRunningApplication", "NSWindow", "NSButton", "NSControl"] }

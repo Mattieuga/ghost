@@ -4,6 +4,8 @@ mod watcher;
 mod windows;
 #[cfg(target_os = "macos")]
 mod context_menu;
+#[cfg(target_os = "macos")]
+mod traffic_lights;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -73,13 +75,14 @@ pub fn run() {
                 }
             }
 
-            // Install native context menu hook on macOS
+            // Install native context menu hook + traffic light positioning on macOS
             #[cfg(target_os = "macos")]
             {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.with_webview(|webview| {
                         unsafe { context_menu::install_context_menu_hook(webview.inner()); }
                     });
+                    traffic_lights::reposition(&window);
                 }
             }
 
@@ -100,6 +103,21 @@ pub fn run() {
                     }
                 }
                 RunEvent::WindowEvent { label, event: window_event, .. } => {
+                    // Re-apply traffic light positions on events that reset them
+                    #[cfg(target_os = "macos")]
+                    {
+                        match window_event {
+                            tauri::WindowEvent::Focused(true)
+                            | tauri::WindowEvent::Resized(_)
+                            | tauri::WindowEvent::ThemeChanged(_) => {
+                                if let Some(win) = app_handle.get_webview_window(label) {
+                                    traffic_lights::reposition(&win);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
                     match window_event {
                         tauri::WindowEvent::CloseRequested { api, .. } => {
                             if label == "main" {

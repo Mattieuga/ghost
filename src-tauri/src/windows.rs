@@ -72,7 +72,7 @@ pub fn create_editor_window(app: &tauri::AppHandle, file_path: &str) -> Result<S
     #[cfg(target_os = "macos")]
     let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay)
         .hidden_title(true)
-        .traffic_light_position(tauri::Position::Logical(tauri::LogicalPosition::new(18.0, 28.0)));
+        .traffic_light_position(tauri::Position::Logical(tauri::LogicalPosition::new(18.0, 34.0)));
 
     match builder.build() {
         Ok(window) => {

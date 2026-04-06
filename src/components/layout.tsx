@@ -27,6 +27,7 @@ import { FolderTree } from "@/components/sidebar/folder-tree";
 import { EmptyState } from "@/components/sidebar/empty-state";
 import { MarkdownEditor } from "@/components/editor/markdown-editor";
 import { HeadingMinimap } from "@/components/editor/heading-minimap";
+import type { Editor } from "@tiptap/react";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { useTrackedFolders } from "@/hooks/use-tracked-folders";
 import { useFileWatcher } from "@/hooks/use-file-watcher";
@@ -78,7 +79,7 @@ export function GhostLayout() {
   const [externalDragOver, setExternalDragOver] = useState(false);
   const treeAreaRef = useRef<HTMLDivElement>(null);
   const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
-  const [editorInstance, setEditorInstance] = useState<any>(null);
+  const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   const activeFileRef = useRef<string | null>(null);
   activeFileRef.current = activeFile;
   const fileContentRef = useRef(fileContent);

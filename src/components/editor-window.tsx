@@ -8,6 +8,7 @@ import type { Editor } from "@tiptap/react";
 import { SearchBar } from "@/components/editor/search-bar";
 import { useSettings } from "@/hooks/use-settings";
 import { useSearch } from "@/hooks/use-search";
+import { useReloadOnFocus } from "@/hooks/use-reload-on-focus";
 import { applyTheme } from "@/lib/theme-engine";
 
 interface EditorWindowProps {
@@ -20,14 +21,20 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   const [filePath, setFilePath] = useState(initialFilePath);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [wordCount, setWordCount] = useState(0);
-  const [contentKey, setContentKey] = useState(0);
   const lastSaveTimestamp = useRef(0);
   const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   const styleBarRef = useRef(settings.showStyleBar);
   styleBarRef.current = settings.showStyleBar;
-  const fileContentRef = useRef(fileContent);
-  fileContentRef.current = fileContent;
+  // Tracks last known on-disk content so the focus handler can tell a genuine
+  // external change from our own save echoing back. Updated on initial load,
+  // on successful saves, and on applied external changes. Not bound to React
+  // state — state would go stale as soon as the user types.
+  const fileContentRef = useRef<string | null>(null);
+  const editorInstanceRef = useRef<Editor | null>(null);
+  editorInstanceRef.current = editorInstance;
+  const mainElRef = useRef<HTMLElement | null>(null);
+  mainElRef.current = mainEl;
 
   // Apply theme
   useEffect(() => {
@@ -48,6 +55,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
     invoke<string>("read_file", { path: filePath })
       .then((content) => {
         setFileContent(content);
+        fileContentRef.current = content;
         const words = content.trim().split(/\s+/).filter(Boolean).length;
         setWordCount(words);
       })
@@ -74,35 +82,35 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
     return () => { unlisten.then((fn) => fn()); };
   }, [filePath]);
 
-  // Reload file when this window regains focus (picks up changes from other windows)
-  useEffect(() => {
-    const handleFocus = async () => {
-      const elapsed = Date.now() - lastSaveTimestamp.current;
-      if (elapsed < 1000) return;
-      try {
-        const content = await invoke<string>("read_file", { path: filePath });
-        if (content !== fileContentRef.current) {
-          setFileContent(content);
-          setContentKey((k) => k + 1);
-          const words = content.trim().split(/\s+/).filter(Boolean).length;
-          setWordCount(words);
-        }
-      } catch {
-        // File might have been deleted
-      }
-    };
-    window.addEventListener("focus", handleFocus);
-    return () => window.removeEventListener("focus", handleFocus);
-  }, [filePath]);
+  // Reload file when this window regains focus (picks up edits from other
+  // windows). Applies external changes in place, no remount.
+  useReloadOnFocus({
+    getPath: () => filePath,
+    editorRef: editorInstanceRef,
+    scrollElRef: mainElRef,
+    contentRef: fileContentRef,
+    lastSaveTimestamp,
+    onContentApplied: (content) => {
+      const words = content.trim().split(/\s+/).filter(Boolean).length;
+      setWordCount(words);
+    },
+  });
 
   const handleContentChange = useCallback(
     async (markdown: string) => {
       const words = markdown.trim().split(/\s+/).filter(Boolean).length;
       setWordCount(words);
+      // Update tracking state BEFORE the await. If we wait until after the
+      // write resolves, a focus event during a slow write would read the
+      // new disk content, compare against the still-stale ref, and trigger
+      // a spurious in-place reload. Rollback on write failure.
+      const prevContent = fileContentRef.current;
+      fileContentRef.current = markdown;
       lastSaveTimestamp.current = Date.now();
       try {
         await invoke("write_file", { path: filePath, content: markdown });
       } catch (err) {
+        fileContentRef.current = prevContent;
         console.error("Failed to save file:", err);
       }
     },
@@ -215,7 +223,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       <div className="relative flex-1 overflow-hidden">
         <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative z-0">
           <MarkdownEditor
-            key={`${filePath}-${contentKey}`}
+            key={filePath}
             content={fileContent}
             onContentChange={handleContentChange}
             searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}

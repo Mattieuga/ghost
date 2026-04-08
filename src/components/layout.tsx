@@ -47,6 +47,7 @@ import { SidebarGuide } from "@/components/sidebar/sidebar-guide";
 import { useRecentFiles } from "@/hooks/use-recent-files";
 import { useSearch } from "@/hooks/use-search";
 import { useFileTree } from "@/hooks/use-file-tree";
+import { useReloadOnFocus } from "@/hooks/use-reload-on-focus";
 import { useUpdater } from "@/hooks/use-updater";
 import { UpdateBanner } from "@/components/ui/update-banner";
 
@@ -56,7 +57,6 @@ export function GhostLayout() {
   const updater = useUpdater();
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
-  const [contentKey, setContentKey] = useState(0);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [isRenamingHeader, setIsRenamingHeader] = useState(false);
@@ -82,8 +82,15 @@ export function GhostLayout() {
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   const activeFileRef = useRef<string | null>(null);
   activeFileRef.current = activeFile;
-  const fileContentRef = useRef(fileContent);
-  fileContentRef.current = fileContent;
+  // Last known on-disk content. Used by useReloadOnFocus to detect genuine
+  // external changes. Updated on initial load, on successful saves, and when
+  // we apply an external change. Deliberately NOT bound to fileContent state
+  // (which only feeds the initial prop to <MarkdownEditor>).
+  const fileContentRef = useRef<string | null>(null);
+  const editorInstanceRef = useRef<Editor | null>(null);
+  editorInstanceRef.current = editorInstance;
+  const mainElRef = useRef<HTMLElement | null>(null);
+  mainElRef.current = mainEl;
   const lastSaveTimestamp = useRef(0);
   const styleBarRef = useRef(settings.showStyleBar);
   styleBarRef.current = settings.showStyleBar;
@@ -170,6 +177,7 @@ export function GhostLayout() {
       const content = await invoke<string>("read_file", { path });
       setActiveFile(path);
       setFileContent(content);
+      fileContentRef.current = content;
       setShowSettings(false);
       closeSearch();
       addRecentFile(path);
@@ -194,10 +202,18 @@ export function GhostLayout() {
       // Update word count
       const words = markdown.trim().split(/\s+/).filter(Boolean).length;
       setWordCount(words);
+      // Update tracking state BEFORE the await. If we wait until after the
+      // write resolves, a focus event that fires during a slow write (iCloud
+      // sync, network home) will read the new disk content, compare against
+      // the still-stale ref, and trigger a spurious in-place reload. Rolling
+      // back on write failure keeps the ref honest.
+      const prevContent = fileContentRef.current;
+      fileContentRef.current = markdown;
       lastSaveTimestamp.current = Date.now();
       try {
         await invoke("write_file", { path: activeFile, content: markdown });
       } catch (err) {
+        fileContentRef.current = prevContent;
         console.error("Failed to save file:", err);
       }
     },
@@ -210,29 +226,19 @@ export function GhostLayout() {
 
   useFileWatcher(folders, handleFsChange);
 
-  // Reload active file when the main window regains focus (picks up edits from accessory windows)
-  useEffect(() => {
-    const handleFocus = async () => {
-      if (!activeFileRef.current) return;
-      // Skip if we just saved (avoid reloading our own changes)
-      const elapsed = Date.now() - lastSaveTimestamp.current;
-      if (elapsed < 1000) return;
-      try {
-        const content = await invoke<string>("read_file", { path: activeFileRef.current });
-        // Only remount editor if content actually changed
-        if (content !== fileContentRef.current) {
-          setFileContent(content);
-          setContentKey((k) => k + 1);
-          const words = content.trim().split(/\s+/).filter(Boolean).length;
-          setWordCount(words);
-        }
-      } catch {
-        // File might have been deleted
-      }
-    };
-    window.addEventListener("focus", handleFocus);
-    return () => window.removeEventListener("focus", handleFocus);
-  }, []);
+  // Reload active file when the main window regains focus (picks up edits
+  // from accessory windows). Applies external changes in place, no remount.
+  useReloadOnFocus({
+    getPath: () => activeFileRef.current,
+    editorRef: editorInstanceRef,
+    scrollElRef: mainElRef,
+    contentRef: fileContentRef,
+    lastSaveTimestamp,
+    onContentApplied: (content) => {
+      const words = content.trim().split(/\s+/).filter(Boolean).length;
+      setWordCount(words);
+    },
+  });
 
   const handleFileRenamed = useCallback(
     (oldPath: string, newPath: string) => {
@@ -936,7 +942,7 @@ export function GhostLayout() {
         <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative z-0">
           {activeFile ? (
             <MarkdownEditor
-              key={`${activeFile}-${contentKey}`}
+              key={activeFile}
               content={fileContent}
               onContentChange={handleContentChange}
               searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}

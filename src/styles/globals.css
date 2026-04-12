@@ -48,39 +48,39 @@
    Fallback defaults (dark theme) for initial render before JS loads. */
 :root {
   --radius: 0.5rem;
-  --background: #09090b;
+  --background: #0e0e0e;
   --foreground: #fafafa;
-  --card: #18181b;
-  --card-foreground: #e4e4e7;
-  --popover: #0e0e10;
-  --popover-foreground: #e4e4e7;
+  --card: #1b1b1b;
+  --card-foreground: #e8e6e2;
+  --popover: #141414;
+  --popover-foreground: #e8e6e2;
   --primary: #fafafa;
-  --primary-foreground: #09090b;
-  --secondary: #18181b;
-  --secondary-foreground: #e4e4e7;
-  --muted: #18181b;
-  --muted-foreground: #71717a;
-  --accent: #18181b;
-  --accent-foreground: #e4e4e7;
+  --primary-foreground: #0e0e0e;
+  --secondary: #1b1b1b;
+  --secondary-foreground: #e8e6e2;
+  --muted: #1b1b1b;
+  --muted-foreground: #b2b0ad;
+  --accent: #1b1b1b;
+  --accent-foreground: #e8e6e2;
   --destructive: #dc2626;
   --destructive-foreground: #fafafa;
-  --border: #1c1c20;
-  --input: #18181b;
-  --ring: #3f3f46;
-  --sidebar: #0e0e10;
-  --sidebar-foreground: #71717a;
-  --sidebar-primary: #a1a1aa;
-  --sidebar-primary-foreground: #0e0e10;
-  --sidebar-accent: #18181b;
-  --sidebar-accent-foreground: #e4e4e7;
-  --sidebar-border: #1c1c20;
-  --sidebar-ring: #3f3f46;
-  --ghost-amber: #f57c00;
-  --checkbox-background: #27272a;
-  --checkbox-border: #3f3f46;
-  --checkbox-background-checked: #18181b;
-  --checkbox-border-checked: #27272a;
-  --checkbox-mark: #52525b;
+  --border: #212121;
+  --input: #494949;
+  --ring: #616161;
+  --sidebar: #141414;
+  --sidebar-foreground: #939290;
+  --sidebar-primary: #b3b2af;
+  --sidebar-primary-foreground: #141414;
+  --sidebar-accent: #212120;
+  --sidebar-accent-foreground: #e8e6e2;
+  --sidebar-border: #262626;
+  --sidebar-ring: #656565;
+  --ghost-amber: #ff5a1f;
+  --checkbox-background: #2a2a2a;
+  --checkbox-border: #494949;
+  --checkbox-background-checked: #1b1b1b;
+  --checkbox-border-checked: #2a2a2a;
+  --checkbox-mark: #616161;
 }
 
 @layer base {

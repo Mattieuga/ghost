@@ -1,24 +1,33 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { load } from "@tauri-apps/plugin-store";
 import { open } from "@tauri-apps/plugin-dialog";
 
 const STORE_KEY = "tracked-folders";
+const COLLAPSED_KEY = "collapsed-folders";
 
 export function useTrackedFolders() {
   const [folders, setFolders] = useState<string[]>([]);
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const storeRef = useRef<Awaited<ReturnType<typeof load>> | null>(null);
 
   useEffect(() => {
     load("settings.json", { defaults: {}, autoSave: true }).then(async (store) => {
+      storeRef.current = store;
       const saved = await store.get<string[]>(STORE_KEY);
+      const collapsed = await store.get<string[]>(COLLAPSED_KEY);
       setFolders(saved ?? []);
+      setCollapsedFolders(new Set(collapsed ?? []));
       setLoading(false);
     });
   }, []);
 
-  const persist = useCallback(async (newFolders: string[]) => {
-    const store = await load("settings.json", { defaults: {}, autoSave: true });
-    await store.set(STORE_KEY, newFolders);
+  const persistFolders = useCallback((newFolders: string[]) => {
+    storeRef.current?.set(STORE_KEY, newFolders);
+  }, []);
+
+  const persistCollapsed = useCallback((collapsed: Set<string>) => {
+    storeRef.current?.set(COLLAPSED_KEY, [...collapsed]);
   }, []);
 
   const addFolder = useCallback(async () => {
@@ -31,30 +40,48 @@ export function useTrackedFolders() {
       setFolders((prev) => {
         if (prev.includes(selected)) return prev;
         const next = [...prev, selected];
-        persist(next);
+        persistFolders(next);
         return next;
       });
     }
-  }, [persist]);
+  }, [persistFolders]);
 
   const addFolderByPath = useCallback((path: string) => {
     setFolders((prev) => {
       if (prev.includes(path)) return prev;
       const next = [...prev, path];
-      persist(next);
+      persistFolders(next);
       return next;
     });
-  }, [persist]);
+  }, [persistFolders]);
 
   const removeFolder = useCallback(
     (path: string) => {
       setFolders((prev) => {
         const next = prev.filter((f) => f !== path);
-        persist(next);
+        persistFolders(next);
+        return next;
+      });
+      setCollapsedFolders((prev) => {
+        const next = new Set(prev);
+        if (next.delete(path)) persistCollapsed(next);
         return next;
       });
     },
-    [persist]
+    [persistFolders, persistCollapsed]
+  );
+
+  const setFolderOpen = useCallback(
+    (path: string, isOpen: boolean) => {
+      setCollapsedFolders((prev) => {
+        const next = new Set(prev);
+        if (isOpen) next.delete(path);
+        else next.add(path);
+        persistCollapsed(next);
+        return next;
+      });
+    },
+    [persistCollapsed]
   );
 
   const reorderFolders = useCallback(
@@ -63,12 +90,17 @@ export function useTrackedFolders() {
         const next = [...prev];
         const [moved] = next.splice(fromIndex, 1);
         next.splice(toIndex, 0, moved);
-        persist(next);
+        persistFolders(next);
         return next;
       });
     },
-    [persist]
+    [persistFolders]
   );
 
-  return { folders, loading, addFolder, addFolderByPath, removeFolder, reorderFolders };
+  const isFolderOpen = useCallback(
+    (path: string) => !collapsedFolders.has(path),
+    [collapsedFolders]
+  );
+
+  return { folders, loading, addFolder, addFolderByPath, removeFolder, reorderFolders, setFolderOpen, isFolderOpen };
 }

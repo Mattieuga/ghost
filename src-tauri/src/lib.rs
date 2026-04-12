@@ -82,7 +82,7 @@ pub fn run() {
                     let _ = window.with_webview(|webview| {
                         unsafe { context_menu::install_context_menu_hook(webview.inner()); }
                     });
-                    traffic_lights::reposition(&window);
+                    traffic_lights::setup(&window);
                 }
             }
 

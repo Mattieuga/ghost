@@ -167,7 +167,7 @@ export function FloatingToolbar({ editor, onHide }: ToolbarProps) {
         <DropdownItem label="Block Quote" shortcut="⌘⇧B" active={isActive("blockquote")}
           icon={<span className="text-xs font-bold">❝</span>}
           onSelect={() => editor.chain().focus().toggleBlockquote().run()} />
-        <DropdownItem label="Task List" active={isActive("taskList")}
+        <DropdownItem label="Task List" shortcut="⌘⇧9" active={isActive("taskList")}
           icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="14" height="14" rx="2" /><path d="M4 8L7 11L12 5" /></svg>}
           onSelect={() => editor.chain().focus().toggleTaskList().run()} />
         <div className="toolbar-dropdown-separator" />

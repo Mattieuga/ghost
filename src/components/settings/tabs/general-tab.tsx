@@ -14,12 +14,21 @@ interface GeneralTabProps {
 
 export function GeneralTab({ settings, onUpdateSettings, updater }: GeneralTabProps) {
   const [appVersion, setAppVersion] = useState<string>("");
+  const [showUpToDate, setShowUpToDate] = useState(false);
 
   useEffect(() => {
     getVersion().then(setAppVersion);
   }, []);
 
   const { state, version: updateVersion, error, checkForUpdate, installUpdate } = updater;
+
+  useEffect(() => {
+    if (state === "up-to-date") {
+      setShowUpToDate(true);
+      const t = setTimeout(() => setShowUpToDate(false), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [state]);
 
   return (
     <div className="space-y-4">
@@ -53,15 +62,7 @@ export function GeneralTab({ settings, onUpdateSettings, updater }: GeneralTabPr
           description={`Ghost v${appVersion}`}
         >
           <div className="flex items-center gap-3">
-            {state === "idle" || state === "up-to-date" || state === "error" ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={checkForUpdate}
-              >
-                Check for Updates
-              </Button>
-            ) : state === "checking" ? (
+            {state === "checking" ? (
               <Button size="sm" variant="outline" disabled>
                 <RefreshCw className="size-3.5 animate-spin" />
                 Checking...
@@ -80,13 +81,19 @@ export function GeneralTab({ settings, onUpdateSettings, updater }: GeneralTabPr
                 <RefreshCw className="size-3.5 animate-spin" />
                 Installing...
               </Button>
-            ) : null}
-
-            {state === "up-to-date" && (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            ) : showUpToDate ? (
+              <Button size="sm" variant="outline" disabled>
                 <Check className="size-3.5" />
                 Up to date
-              </span>
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={checkForUpdate}
+              >
+                Check for Updates
+              </Button>
             )}
 
             {state === "error" && (

@@ -2,10 +2,10 @@
   {
     "id": "factory",
     "label": "Factory",
-    "editorBg": "#09090b",
-    "sidebarBg": "#0e0e10",
-    "text": "#e4e4e7",
-    "accent": "#f57c00",
+    "editorBg": "#0e0e0e",
+    "sidebarBg": "#141414",
+    "text": "#e8e6e2",
+    "accent": "#ff5a1f",
     "heading": "#fafafa"
   },
   {

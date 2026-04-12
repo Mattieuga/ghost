@@ -118,6 +118,7 @@ interface FolderTreeProps {
   folderIndex?: number;
   folderCount?: number;
   onReorderProject?: (fromIndex: number, toIndex: number) => void;
+  defaultOpen?: boolean;
 }
 
 export function FolderTree({
@@ -143,6 +144,7 @@ export function FolderTree({
   folderIndex,
   folderCount,
   onReorderProject,
+  defaultOpen: rootDefaultOpen = true,
 }: FolderTreeProps) {
   const refresh = onRefreshFolder;
 
@@ -209,7 +211,7 @@ export function FolderTree({
       onCreateFile={handleCreateFile}
       onCreateFolder={handleCreateFolder}
       onRefresh={refresh}
-      defaultOpen={true}
+      defaultOpen={rootDefaultOpen}
       depth={0}
       isRoot={true}
       hasActiveFile={hasActiveFile}
@@ -539,6 +541,26 @@ function DroppableFolder({
               setOpen(next);
               onOpenChange?.(next);
             }}
+            onPointerDown={(e) => {
+              if (!isRoot || folderIndex === undefined || !onReorderProject || (folderCount ?? 0) < 2) return;
+              const startX = e.clientX;
+              const startY = e.clientY;
+              let dragging = false;
+              const onMove = (ev: PointerEvent) => {
+                if (!dragging && (Math.abs(ev.clientX - startX) > 4 || Math.abs(ev.clientY - startY) > 4)) {
+                  dragging = true;
+                  startProjectDrag(e.nativeEvent, folderIndex, displayFolderName, onReorderProject);
+                  cleanup();
+                }
+              };
+              const onUp = () => cleanup();
+              const cleanup = () => {
+                document.removeEventListener("pointermove", onMove);
+                document.removeEventListener("pointerup", onUp);
+              };
+              document.addEventListener("pointermove", onMove);
+              document.addEventListener("pointerup", onUp);
+            }}
             data-folder-active={containsActiveFile || undefined}
             className={`relative w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-card-foreground transition-colors cursor-pointer select-none rounded-[5px] ${containsActiveFile ? "bg-white/[0.06]" : "data-[state=open]:bg-white/[0.06]"}`}
             style={{ paddingLeft: `${togglePadding}px` }}
@@ -547,13 +569,7 @@ function DroppableFolder({
             {isRoot ? (
               <span
                 data-root-dot
-                className="inline-block size-[7px] shrink-0 rounded-full transition-colors cursor-grab active:cursor-grabbing"
-                onPointerDown={(e) => {
-                  if (folderIndex === undefined || !onReorderProject || (folderCount ?? 0) < 2) return;
-                  startProjectDrag(e.nativeEvent, folderIndex, displayFolderName, onReorderProject);
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
+                className="inline-block size-[7px] shrink-0 rounded-full transition-colors"
                 style={{
                   backgroundColor: open ? dotColor : "transparent",
                   border: `1.5px solid ${dotColor}`,

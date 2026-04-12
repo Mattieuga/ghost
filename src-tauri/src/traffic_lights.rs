@@ -2,9 +2,11 @@
 
 use objc2::msg_send;
 use objc2::rc::Retained;
-use objc2::runtime::AnyObject;
+use objc2::runtime::{AnyClass, AnyObject, Sel};
+use objc2::sel;
 use objc2_app_kit::{NSView, NSWindow, NSWindowButton};
-use objc2_foundation::{NSPoint, NSRect, NSSize};
+use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
+use std::mem::transmute;
 
 /// Traffic light position constants (must match tauri.conf.json)
 const X: f64 = 18.0;
@@ -48,6 +50,60 @@ unsafe fn apply(ns_window: &NSWindow) {
     }
 }
 
+/// Called by NSNotificationCenter when the titlebar container frame changes.
+unsafe extern "C" fn handle_frame_change(
+    this: &AnyObject,
+    _cmd: Sel,
+    _notification: *mut AnyObject,
+) {
+    let ns_window: *mut NSWindow = msg_send![this, window];
+    if !ns_window.is_null() {
+        apply(&*ns_window);
+    }
+}
+
+/// Install a frame-change observer on the titlebar container so traffic lights
+/// are repositioned continuously during live resize (not just after).
+unsafe fn observe_frame_changes(webview: *mut AnyObject, ns_window: &NSWindow) {
+    let Some(close) = ns_window.standardWindowButton(NSWindowButton::CloseButton) else {
+        return;
+    };
+    let superview: Option<Retained<NSView>> = msg_send![&*close, superview];
+    let Some(container) = superview else { return };
+
+    // Enable frame change notifications on the titlebar container
+    let _: () = msg_send![&*container, setPostsFrameChangedNotifications: true];
+
+    // Install the handler method on the webview's class (like context_menu does)
+    let sel = sel!(ghostHandleFrameChange:);
+    let class: *const AnyClass = msg_send![webview, class];
+    let class = class as *mut AnyClass;
+
+    let existing = objc2::ffi::class_getInstanceMethod(class as *const _, sel);
+    if existing.is_null() {
+        objc2::ffi::class_addMethod(
+            class,
+            sel,
+            transmute::<
+                unsafe extern "C" fn(&AnyObject, Sel, *mut AnyObject),
+                unsafe extern "C-unwind" fn(),
+            >(handle_frame_change),
+            std::ptr::null(),
+        );
+    }
+
+    // Register with NSNotificationCenter
+    let center: *mut AnyObject = msg_send![objc2::class!(NSNotificationCenter), defaultCenter];
+    let name = NSString::from_str("NSViewFrameDidChangeNotification");
+    let _: () = msg_send![
+        center,
+        addObserver: webview,
+        selector: sel,
+        name: &*name,
+        object: &*container
+    ];
+}
+
 /// Apply traffic light positioning to a webview window.
 /// Safe to call repeatedly (idempotent).
 pub fn reposition(window: &tauri::WebviewWindow) {
@@ -56,6 +112,19 @@ pub fn reposition(window: &tauri::WebviewWindow) {
         let ns_window: *mut NSWindow = msg_send![wv, window];
         if !ns_window.is_null() {
             apply(&*ns_window);
+        }
+    });
+}
+
+/// Apply positioning and install a live-resize observer.
+/// Call once during setup.
+pub fn setup(window: &tauri::WebviewWindow) {
+    let _ = window.with_webview(|webview| unsafe {
+        let wv = webview.inner() as *mut AnyObject;
+        let ns_window: *mut NSWindow = msg_send![wv, window];
+        if !ns_window.is_null() {
+            apply(&*ns_window);
+            observe_frame_changes(wv, &*ns_window);
         }
     });
 }

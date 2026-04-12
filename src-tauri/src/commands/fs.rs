@@ -143,7 +143,7 @@ pub async fn create_file(dir: String, name: String) -> Result<String, String> {
     if file_path.exists() {
         return Err(format!("File already exists: {}", file_path.display()));
     }
-    fs::write(&file_path, "").map_err(|e| format!("Failed to create file: {}", e))?;
+    fs::write(&file_path, "# Untitled\n").map_err(|e| format!("Failed to create file: {}", e))?;
     Ok(file_path.to_string_lossy().to_string())
 }
 

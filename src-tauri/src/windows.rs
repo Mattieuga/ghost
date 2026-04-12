@@ -81,6 +81,7 @@ pub fn create_editor_window(app: &tauri::AppHandle, file_path: &str) -> Result<S
                 let _ = window.with_webview(|webview| {
                     unsafe { super::context_menu::install_context_menu_hook(webview.inner()); }
                 });
+                super::traffic_lights::setup(&window);
             }
             Ok(label)
         }

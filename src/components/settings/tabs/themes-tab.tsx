@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Settings } from "@/hooks/use-settings";
 import type { ThemeColors, ThemePreset } from "@/lib/theme-engine";
 import { BUILTIN_THEMES } from "@/lib/theme-engine";
 import { ThemeCard } from "@/components/settings/theme-card";
+import { ColorPicker } from "@/components/settings/color-picker";
 
 interface ThemesTabProps {
   settings: Settings;
@@ -29,6 +30,8 @@ export function ThemesTab({
 }: ThemesTabProps) {
   const [saving, setSaving] = useState(false);
   const [themeName, setThemeName] = useState("");
+  const [activePicker, setActivePicker] = useState<keyof ThemeColors | null>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
 
   const selectPreset = (preset: ThemePreset) => {
     const { id, label, ...colors } = preset;
@@ -41,6 +44,18 @@ export function ThemesTab({
       themeColors: { ...settings.themeColors, [key]: value },
     });
   };
+
+  // Close picker on outside click
+  useEffect(() => {
+    if (!activePicker) return;
+    const handleClick = (e: MouseEvent) => {
+      if (pickerRef.current && e.target instanceof Node && !pickerRef.current.contains(e.target)) {
+        setActivePicker(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [activePicker]);
 
   const handleSave = () => {
     if (!themeName.trim()) return;
@@ -61,21 +76,26 @@ export function ThemesTab({
       <div className="flex items-end gap-3">
         <div className="flex items-center gap-3 flex-1">
           {COLOR_SWATCHES.map(({ key, label }) => (
-            <label key={key} className="flex flex-col items-center gap-1 cursor-pointer">
-              <div className="relative">
-                <input
-                  type="color"
-                  value={settings.themeColors[key]}
-                  onChange={(e) => updateColor(key, e.target.value)}
-                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                />
+            <div key={key} className="relative" ref={activePicker === key ? pickerRef : undefined}>
+              <button
+                className="flex flex-col items-center gap-1 cursor-pointer"
+                onClick={() => setActivePicker(activePicker === key ? null : key)}
+              >
                 <div
                   className="size-8 rounded-full border-2 border-border hover:border-ring transition-colors"
                   style={{ background: settings.themeColors[key] }}
                 />
-              </div>
-              <span className="text-[10px] text-muted-foreground">{label}</span>
-            </label>
+                <span className="text-[10px] text-muted-foreground">{label}</span>
+              </button>
+              {activePicker === key && (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50">
+                  <ColorPicker
+                    color={settings.themeColors[key]}
+                    onChange={(hex) => updateColor(key, hex)}
+                  />
+                </div>
+              )}
+            </div>
           ))}
         </div>
 

@@ -2,6 +2,8 @@ import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
+import { Extension } from "@tiptap/core";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
 import Link from "@tiptap/extension-link";
 import Focus from "@tiptap/extension-focus";
 import Underline from "@tiptap/extension-underline";
@@ -99,6 +101,48 @@ import { FloatingToolbar } from "./floating-toolbar";
 import { TableControls } from "./table-controls";
 import "./editor-styles.css";
 
+/**
+ * Watches for `[ ] ` or `[x] ` typed at the start of a bullet list item
+ * and converts it into a task list item. Uses a PM plugin (not an InputRule)
+ * so it can silently ignore non-matching contexts without blocking input.
+ */
+const BulletToTask = Extension.create({
+  name: "bulletToTask",
+  addProseMirrorPlugins() {
+    const editor = this.editor;
+    return [
+      new Plugin({
+        key: new PluginKey("bulletToTask"),
+        props: {
+          handleTextInput(view, from, _to, text) {
+            if (text !== " ") return false;
+            const { state } = view;
+            const $from = state.doc.resolve(from);
+            // Must be inside a bulletList > listItem
+            const listItem = $from.node(-1);
+            const list = $from.node(-2);
+            if (!list || list.type.name !== "bulletList" || listItem.type.name !== "listItem") return false;
+            // Get text before cursor in this text block
+            const blockStart = $from.start();
+            const textBefore = state.doc.textBetween(blockStart, from, "\0");
+            const match = textBefore.match(/^\[([x ])?\]$/);
+            if (!match) return false;
+            const checked = match[1] === "x";
+            // Delete the `[ ]` or `[x]` text, then convert to task list
+            editor
+              .chain()
+              .deleteRange({ from: blockStart, to: from })
+              .toggleTaskList()
+              .updateAttributes("taskItem", { checked })
+              .run();
+            return true;
+          },
+        },
+      }),
+    ];
+  },
+});
+
 interface MarkdownEditorProps {
   content: string;
   onContentChange: (markdown: string) => void;
@@ -150,6 +194,7 @@ export function MarkdownEditor({
       }),
       TaskList,
       TaskItem.configure({ nested: true }),
+      BulletToTask,
       Link.configure({
         openOnClick: false,
         autolink: true,

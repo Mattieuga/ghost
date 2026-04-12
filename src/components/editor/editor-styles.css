@@ -213,13 +213,13 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--ring);
+  background: var(--ghost-amber);
 }
 
 /* Level 2: hollow circle */
 .ghost-editor ul ul > li::before {
   background: transparent;
-  border: 1.5px solid var(--ring);
+  border: 1.5px solid var(--ghost-amber);
 }
 
 /* Level 3: filled diamond */
@@ -228,7 +228,7 @@
   transform: rotate(45deg);
   width: 5px;
   height: 5px;
-  background: var(--ring);
+  background: var(--ghost-amber);
   border: none;
 }
 
@@ -239,7 +239,7 @@
   width: 5px;
   height: 5px;
   background: transparent;
-  border: 1.5px solid var(--ring);
+  border: 1.5px solid var(--ghost-amber);
 }
 
 /* Level 5+: repeat from filled circle */
@@ -248,7 +248,7 @@
   transform: none;
   width: 6px;
   height: 6px;
-  background: var(--ring);
+  background: var(--ghost-amber);
   border: none;
 }
 
@@ -256,6 +256,11 @@
   list-style-type: decimal;
   padding-left: 1.5rem;
   margin-bottom: 1rem;
+  color: var(--foreground);
+}
+
+.ghost-editor ol > li::marker {
+  color: var(--ghost-amber);
 }
 
 .ghost-editor li {
@@ -335,7 +340,7 @@
 /* Horizontal rule */
 .ghost-editor hr {
   border: none;
-  border-top: 1px solid var(--ring);
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 12%, var(--background));
   margin: 2rem 0;
   width: 100%;
 }
@@ -715,7 +720,7 @@
   background: color-mix(in srgb, var(--muted-foreground) 8%, transparent);
   border: none;
   cursor: pointer;
-  z-index: 5;
+  z-index: 10;
   transition: background 0.15s;
   padding: 0;
 }

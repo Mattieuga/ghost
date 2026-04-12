@@ -221,7 +221,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
 
       {/* Editor */}
       <div className="relative flex-1 overflow-hidden">
-        <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative z-0">
+        <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative">
           <MarkdownEditor
             key={filePath}
             content={fileContent}

@@ -52,7 +52,7 @@ import { useUpdater } from "@/hooks/use-updater";
 import { UpdateBanner } from "@/components/ui/update-banner";
 
 export function GhostLayout() {
-  const { folders, loading, addFolder, addFolderByPath, removeFolder, reorderFolders } = useTrackedFolders();
+  const { folders, loading, addFolder, addFolderByPath, removeFolder, reorderFolders, setFolderOpen, isFolderOpen } = useTrackedFolders();
   const { settings, updateSettings, saveTheme, deleteTheme } = useSettings();
   const updater = useUpdater();
   const [activeFile, setActiveFile] = useState<string | null>(null);
@@ -122,6 +122,16 @@ export function GhostLayout() {
   );
 
   const { flatFiles: allFiles, getEntries, getError } = useFileTree(folders, extensions, refreshTrigger);
+
+  // Auto-remove folders that no longer exist (e.g. deleted in Finder).
+  // Batch all removals to avoid cascading re-renders (one per removed folder).
+  useEffect(() => {
+    const broken = folders.filter((f) => getError(f));
+    if (broken.length === 0) return;
+    for (const folder of broken) {
+      removeFolder(folder);
+    }
+  }, [folders, getError, removeFolder]);
 
   const { closeSearch, openSearch } = search;
 
@@ -789,6 +799,8 @@ export function GhostLayout() {
                     onNewFolderRenamed={() => setNewlyCreatedFolder(null)}
                     activeDropFolder={activeDropFolder}
                     onAddProject={addFolder}
+                    defaultOpen={isFolderOpen(folder)}
+                    onRootOpenChange={setFolderOpen}
                   />
                 ))}
               </div>
@@ -939,7 +951,7 @@ export function GhostLayout() {
         </div>
 
         {/* Editor — scrolls behind the floating header */}
-        <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative z-0">
+        <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative">
           {activeFile ? (
             <MarkdownEditor
               key={activeFile}

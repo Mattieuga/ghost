@@ -5,9 +5,10 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MarkdownEditor } from "@/components/editor/markdown-editor";
 import { CodeEditor } from "@/components/editor/code-editor";
 import { HeadingMinimap } from "@/components/editor/heading-minimap";
+import { TextStats } from "@/components/editor/text-stats";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
-import { applyContentInPlace, countWords } from "@/lib/editor-utils";
+import { applyContentInPlace } from "@/lib/editor-utils";
 import { SearchBar } from "@/components/editor/search-bar";
 import { useSettings } from "@/hooks/use-settings";
 import { useSearch } from "@/hooks/use-search";
@@ -24,7 +25,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   const search = useSearch();
   const [filePath, setFilePath] = useState(initialFilePath);
   const [fileContent, setFileContent] = useState<string | null>(null);
-  const [wordCount, setWordCount] = useState(0);
+  const [liveText, setLiveText] = useState("");
   const lastSaveTimestamp = useRef(0);
   const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
@@ -59,8 +60,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       .then((content) => {
         setFileContent(content);
         fileContentRef.current = content;
-        const words = countWords(content);
-        setWordCount(words);
+        setLiveText(content);
       })
       .catch((err) => console.error("Failed to read file:", err));
   }, [filePath]);
@@ -94,16 +94,12 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
     applyContent: applyContentRef,
     contentRef: fileContentRef,
     lastSaveTimestamp,
-    onContentApplied: (content) => {
-      const words = countWords(content);
-      setWordCount(words);
-    },
+    onContentApplied: (content) => setLiveText(content),
   });
 
   const handleContentChange = useCallback(
     async (text: string) => {
-      const words = countWords(text);
-      setWordCount(words);
+      setLiveText(text);
       const prevContent = fileContentRef.current;
       fileContentRef.current = text;
       lastSaveTimestamp.current = Date.now();
@@ -214,9 +210,11 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
                 </span>
               </div>
             </div>
-            <span className="text-[12px] text-ring pointer-events-none select-none whitespace-nowrap shrink-0 ml-3">
-              {wordCount} words
-            </span>
+            <TextStats
+              text={liveText}
+              countMode={settings.countMode}
+              onCountModeChange={(countMode) => updateSettings({ countMode })}
+            />
           </>
         )}
       </div>

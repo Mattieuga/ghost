@@ -28,10 +28,11 @@ import { EmptyState } from "@/components/sidebar/empty-state";
 import { MarkdownEditor } from "@/components/editor/markdown-editor";
 import { CodeEditor } from "@/components/editor/code-editor";
 import { HeadingMinimap } from "@/components/editor/heading-minimap";
+import { TextStats } from "@/components/editor/text-stats";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
 import { isMarkdown } from "@/lib/file-type";
-import { applyContentInPlace, countWords } from "@/lib/editor-utils";
+import { applyContentInPlace } from "@/lib/editor-utils";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { useTrackedFolders } from "@/hooks/use-tracked-folders";
 import { useFileWatcher } from "@/hooks/use-file-watcher";
@@ -68,7 +69,7 @@ export function GhostLayout() {
   const [isRenamingHeader, setIsRenamingHeader] = useState(false);
   const [headerRenameName, setHeaderRenameName] = useState("");
   const [activeDragName, setActiveDragName] = useState<string | null>(null);
-  const [wordCount, setWordCount] = useState(0);
+  const [liveText, setLiveText] = useState("");
   const [newlyCreatedFile, setNewlyCreatedFile] = useState<string | null>(null);
   const [newlyCreatedFolder, setNewlyCreatedFolder] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -200,9 +201,7 @@ export function GhostLayout() {
       setShowSettings(false);
       closeSearch();
       addRecentFile(path);
-      // Count words
-      const words = countWords(content);
-      setWordCount(words);
+      setLiveText(content);
     } catch (err) {
       console.error("Failed to read file:", err);
     }
@@ -218,9 +217,7 @@ export function GhostLayout() {
   const handleContentChange = useCallback(
     async (markdown: string) => {
       if (!activeFile) return;
-      // Update word count
-      const words = countWords(markdown);
-      setWordCount(words);
+      setLiveText(markdown);
       // Update tracking state BEFORE the await. If we wait until after the
       // write resolves, a focus event that fires during a slow write (iCloud
       // sync, network home) will read the new disk content, compare against
@@ -256,10 +253,7 @@ export function GhostLayout() {
     applyContent: applyContentRef,
     contentRef: fileContentRef,
     lastSaveTimestamp,
-    onContentApplied: (content) => {
-      const words = countWords(content);
-      setWordCount(words);
-    },
+    onContentApplied: (content) => setLiveText(content),
   });
 
   const handleFileRenamed = useCallback(
@@ -954,9 +948,11 @@ export function GhostLayout() {
                 ) : null}
               </div>
               {activeFile && (
-                <span className="text-[12px] text-ring pointer-events-none select-none whitespace-nowrap shrink-0 ml-3">
-                  {wordCount} words
-                </span>
+                <TextStats
+                  text={liveText}
+                  countMode={settings.countMode}
+                  onCountModeChange={(countMode) => updateSettings({ countMode })}
+                />
               )}
             </>
           )}

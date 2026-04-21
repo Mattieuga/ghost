@@ -19,6 +19,7 @@ export interface Settings {
   editorWidth: number;
   paragraphSpacing: number;
   headingSpacing: number;
+  countMode: "words" | "chars" | "lines" | "tokens";
 }
 
 const DEFAULTS: Settings = {
@@ -41,6 +42,7 @@ const DEFAULTS: Settings = {
   editorWidth: 730,
   paragraphSpacing: 0.50,
   headingSpacing: 0.80,
+  countMode: "words",
 };
 
 const STORE_KEY = "settings";

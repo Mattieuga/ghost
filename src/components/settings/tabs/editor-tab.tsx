@@ -199,6 +199,7 @@ function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
 interface EditorTabProps {
   settings: Settings;
   onUpdateSettings: (updates: Partial<Settings>) => void;
+  compact?: boolean;
 }
 
 function CompactSlider({ label, value, display, ...props }: {
@@ -215,11 +216,11 @@ function CompactSlider({ label, value, display, ...props }: {
   );
 }
 
-export function EditorTab({ settings, onUpdateSettings }: EditorTabProps) {
+export function EditorTab({ settings, onUpdateSettings, compact }: EditorTabProps) {
   return (
     <div className="rounded-xl border bg-card p-5 space-y-4">
-      {/* Fonts — 3 pickers in a row */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Fonts */}
+      <div className={compact ? "space-y-3" : "grid grid-cols-3 gap-3"}>
         <FontPicker
           label="Text"
           value={settings.textFont}
@@ -242,8 +243,8 @@ export function EditorTab({ settings, onUpdateSettings }: EditorTabProps) {
 
       <Separator />
 
-      {/* Typography sliders — 2-column grid */}
-      <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+      {/* Typography sliders */}
+      <div className={compact ? "space-y-3" : "grid grid-cols-2 gap-x-6 gap-y-3"}>
         <CompactSlider
           label="Font size" value={settings.fontSize} display={`${settings.fontSize}px`}
           min={12} max={24} step={1}

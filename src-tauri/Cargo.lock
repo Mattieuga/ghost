@@ -1315,7 +1315,7 @@ dependencies = [
 
 [[package]]
 name = "ghost"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "font-kit",
  "notify",

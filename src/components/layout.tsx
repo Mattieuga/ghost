@@ -26,8 +26,12 @@ import { Button } from "@/components/ui/button";
 import { FolderTree } from "@/components/sidebar/folder-tree";
 import { EmptyState } from "@/components/sidebar/empty-state";
 import { MarkdownEditor } from "@/components/editor/markdown-editor";
+import { CodeEditor } from "@/components/editor/code-editor";
 import { HeadingMinimap } from "@/components/editor/heading-minimap";
 import type { Editor } from "@tiptap/react";
+import type { EditorView } from "@codemirror/view";
+import { isMarkdown } from "@/lib/file-type";
+import { applyContentInPlace, countWords } from "@/lib/editor-utils";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { useTrackedFolders } from "@/hooks/use-tracked-folders";
 import { useFileWatcher } from "@/hooks/use-file-watcher";
@@ -50,6 +54,8 @@ import { useFileTree } from "@/hooks/use-file-tree";
 import { useReloadOnFocus } from "@/hooks/use-reload-on-focus";
 import { useUpdater } from "@/hooks/use-updater";
 import { UpdateBanner } from "@/components/ui/update-banner";
+
+const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"]);
 
 export function GhostLayout() {
   const { folders, loading, addFolder, addFolderByPath, removeFolder, reorderFolders, setFolderOpen, isFolderOpen } = useTrackedFolders();
@@ -80,6 +86,7 @@ export function GhostLayout() {
   const treeAreaRef = useRef<HTMLDivElement>(null);
   const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
+  const [cmView, setCmView] = useState<EditorView | null>(null);
   const activeFileRef = useRef<string | null>(null);
   activeFileRef.current = activeFile;
   // Last known on-disk content. Used by useReloadOnFocus to detect genuine
@@ -89,6 +96,8 @@ export function GhostLayout() {
   const fileContentRef = useRef<string | null>(null);
   const editorInstanceRef = useRef<Editor | null>(null);
   editorInstanceRef.current = editorInstance;
+  const cmViewRef = useRef<EditorView | null>(null);
+  cmViewRef.current = cmView;
   const mainElRef = useRef<HTMLElement | null>(null);
   mainElRef.current = mainEl;
   const lastSaveTimestamp = useRef(0);
@@ -103,8 +112,8 @@ export function GhostLayout() {
   );
 
   useEffect(() => {
-    applyTheme(settings.themeColors);
-  }, [settings.themeColors]);
+    applyTheme(settings.themeColors, settings.theme, settings.syntaxPalette);
+  }, [settings.themeColors, settings.theme, settings.syntaxPalette]);
 
   // Apply font settings directly on :root for reliable cascade in WKWebView
   useEffect(() => {
@@ -192,7 +201,7 @@ export function GhostLayout() {
       closeSearch();
       addRecentFile(path);
       // Count words
-      const words = content.trim().split(/\s+/).filter(Boolean).length;
+      const words = countWords(content);
       setWordCount(words);
     } catch (err) {
       console.error("Failed to read file:", err);
@@ -210,7 +219,7 @@ export function GhostLayout() {
     async (markdown: string) => {
       if (!activeFile) return;
       // Update word count
-      const words = markdown.trim().split(/\s+/).filter(Boolean).length;
+      const words = countWords(markdown);
       setWordCount(words);
       // Update tracking state BEFORE the await. If we wait until after the
       // write resolves, a focus event that fires during a slow write (iCloud
@@ -236,16 +245,19 @@ export function GhostLayout() {
 
   useFileWatcher(folders, handleFsChange);
 
+  const applyContentRef = useRef<((content: string) => boolean) | null>(null);
+  applyContentRef.current = (content) =>
+    applyContentInPlace(editorInstanceRef, cmViewRef, mainElRef, content);
+
   // Reload active file when the main window regains focus (picks up edits
   // from accessory windows). Applies external changes in place, no remount.
   useReloadOnFocus({
     getPath: () => activeFileRef.current,
-    editorRef: editorInstanceRef,
-    scrollElRef: mainElRef,
+    applyContent: applyContentRef,
     contentRef: fileContentRef,
     lastSaveTimestamp,
     onContentApplied: (content) => {
-      const words = content.trim().split(/\s+/).filter(Boolean).length;
+      const words = countWords(content);
       setWordCount(words);
     },
   });
@@ -365,7 +377,7 @@ export function GhostLayout() {
 
       // Only show sidebar drop zone for folders or markdown files, not pure image drags
       const paths = event.payload.paths;
-      const imageExts = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"]);
+      const imageExts = IMAGE_EXTENSIONS;
       const allImages = paths.every((p) => {
         const ext = p.substring(p.lastIndexOf(".")).toLowerCase();
         return imageExts.has(ext);
@@ -394,7 +406,7 @@ export function GhostLayout() {
         return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
       })();
 
-      const imageExts = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"]);
+      const imageExts = IMAGE_EXTENSIONS;
 
       for (const droppedPath of paths) {
         try {
@@ -953,18 +965,31 @@ export function GhostLayout() {
         {/* Editor — scrolls behind the floating header */}
         <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative">
           {activeFile ? (
-            <MarkdownEditor
-              key={activeFile}
-              content={fileContent}
-              onContentChange={handleContentChange}
-              searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
-              replaceTerm={search.searchOpen ? search.replaceTerm : ""}
-              onSearchResults={search.handleSearchResults}
-              activeFile={activeFile}
-              showStyleBar={settings.showStyleBar}
-              onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
-              onEditorReady={setEditorInstance}
-            />
+            isMarkdown(activeFile) ? (
+              <MarkdownEditor
+                key={activeFile}
+                content={fileContent}
+                onContentChange={handleContentChange}
+                searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
+                replaceTerm={search.searchOpen ? search.replaceTerm : ""}
+                onSearchResults={search.handleSearchResults}
+                activeFile={activeFile}
+                showStyleBar={settings.showStyleBar}
+                onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
+                onEditorReady={setEditorInstance}
+              />
+            ) : (
+              <CodeEditor
+                key={activeFile}
+                content={fileContent}
+                onContentChange={handleContentChange}
+                searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
+                replaceTerm={search.searchOpen ? search.replaceTerm : ""}
+                onSearchResults={search.handleSearchResults}
+                activeFile={activeFile}
+                onEditorReady={setCmView}
+              />
+            )
           ) : (
             <div className="flex h-full items-center justify-center">
               <p className="text-muted-foreground/40 text-sm">
@@ -973,8 +998,8 @@ export function GhostLayout() {
             </div>
           )}
         </main>
-        {/* Heading minimap — right edge overlay */}
-        {editorInstance && mainEl && activeFile && (
+        {/* Heading minimap — right edge overlay (markdown only) */}
+        {editorInstance && mainEl && activeFile && isMarkdown(activeFile) && (
           <HeadingMinimap editor={editorInstance} scrollContainer={mainEl} />
         )}
       </div>

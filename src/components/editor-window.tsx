@@ -3,13 +3,17 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MarkdownEditor } from "@/components/editor/markdown-editor";
+import { CodeEditor } from "@/components/editor/code-editor";
 import { HeadingMinimap } from "@/components/editor/heading-minimap";
 import type { Editor } from "@tiptap/react";
+import type { EditorView } from "@codemirror/view";
+import { applyContentInPlace, countWords } from "@/lib/editor-utils";
 import { SearchBar } from "@/components/editor/search-bar";
 import { useSettings } from "@/hooks/use-settings";
 import { useSearch } from "@/hooks/use-search";
 import { useReloadOnFocus } from "@/hooks/use-reload-on-focus";
 import { applyTheme } from "@/lib/theme-engine";
+import { isMarkdown } from "@/lib/file-type";
 
 interface EditorWindowProps {
   filePath: string;
@@ -24,22 +28,21 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   const lastSaveTimestamp = useRef(0);
   const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
+  const [cmView, setCmView] = useState<EditorView | null>(null);
   const styleBarRef = useRef(settings.showStyleBar);
   styleBarRef.current = settings.showStyleBar;
-  // Tracks last known on-disk content so the focus handler can tell a genuine
-  // external change from our own save echoing back. Updated on initial load,
-  // on successful saves, and on applied external changes. Not bound to React
-  // state — state would go stale as soon as the user types.
   const fileContentRef = useRef<string | null>(null);
   const editorInstanceRef = useRef<Editor | null>(null);
   editorInstanceRef.current = editorInstance;
+  const cmViewRef = useRef<EditorView | null>(null);
+  cmViewRef.current = cmView;
   const mainElRef = useRef<HTMLElement | null>(null);
   mainElRef.current = mainEl;
 
   // Apply theme
   useEffect(() => {
-    applyTheme(settings.themeColors);
-  }, [settings.themeColors]);
+    applyTheme(settings.themeColors, settings.theme, settings.syntaxPalette);
+  }, [settings.themeColors, settings.theme, settings.syntaxPalette]);
 
   // Apply font settings
   useEffect(() => {
@@ -56,7 +59,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       .then((content) => {
         setFileContent(content);
         fileContentRef.current = content;
-        const words = content.trim().split(/\s+/).filter(Boolean).length;
+        const words = countWords(content);
         setWordCount(words);
       })
       .catch((err) => console.error("Failed to read file:", err));
@@ -82,33 +85,30 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
     return () => { unlisten.then((fn) => fn()); };
   }, [filePath]);
 
-  // Reload file when this window regains focus (picks up edits from other
-  // windows). Applies external changes in place, no remount.
+  const applyContentRef = useRef<((content: string) => boolean) | null>(null);
+  applyContentRef.current = (content) =>
+    applyContentInPlace(editorInstanceRef, cmViewRef, mainElRef, content);
+
   useReloadOnFocus({
     getPath: () => filePath,
-    editorRef: editorInstanceRef,
-    scrollElRef: mainElRef,
+    applyContent: applyContentRef,
     contentRef: fileContentRef,
     lastSaveTimestamp,
     onContentApplied: (content) => {
-      const words = content.trim().split(/\s+/).filter(Boolean).length;
+      const words = countWords(content);
       setWordCount(words);
     },
   });
 
   const handleContentChange = useCallback(
-    async (markdown: string) => {
-      const words = markdown.trim().split(/\s+/).filter(Boolean).length;
+    async (text: string) => {
+      const words = countWords(text);
       setWordCount(words);
-      // Update tracking state BEFORE the await. If we wait until after the
-      // write resolves, a focus event during a slow write would read the
-      // new disk content, compare against the still-stale ref, and trigger
-      // a spurious in-place reload. Rollback on write failure.
       const prevContent = fileContentRef.current;
-      fileContentRef.current = markdown;
+      fileContentRef.current = text;
       lastSaveTimestamp.current = Date.now();
       try {
-        await invoke("write_file", { path: filePath, content: markdown });
+        await invoke("write_file", { path: filePath, content: text });
       } catch (err) {
         fileContentRef.current = prevContent;
         console.error("Failed to save file:", err);
@@ -153,6 +153,8 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
     const parts = filePath.split("/");
     return parts.length >= 2 ? parts[parts.length - 2] : "";
   })();
+
+  const mdFile = isMarkdown(filePath);
 
   if (fileContent === null) {
     return (
@@ -222,20 +224,33 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       {/* Editor */}
       <div className="relative flex-1 overflow-hidden">
         <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative">
-          <MarkdownEditor
-            key={filePath}
-            content={fileContent}
-            onContentChange={handleContentChange}
-            searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
-            replaceTerm={search.searchOpen ? search.replaceTerm : ""}
-            onSearchResults={search.handleSearchResults}
-            activeFile={filePath}
-            showStyleBar={settings.showStyleBar}
-            onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
-            onEditorReady={setEditorInstance}
-          />
+          {mdFile ? (
+            <MarkdownEditor
+              key={filePath}
+              content={fileContent}
+              onContentChange={handleContentChange}
+              searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
+              replaceTerm={search.searchOpen ? search.replaceTerm : ""}
+              onSearchResults={search.handleSearchResults}
+              activeFile={filePath}
+              showStyleBar={settings.showStyleBar}
+              onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
+              onEditorReady={setEditorInstance}
+            />
+          ) : (
+            <CodeEditor
+              key={filePath}
+              content={fileContent}
+              onContentChange={handleContentChange}
+              searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
+              replaceTerm={search.searchOpen ? search.replaceTerm : ""}
+              onSearchResults={search.handleSearchResults}
+              activeFile={filePath}
+              onEditorReady={setCmView}
+            />
+          )}
         </main>
-        {editorInstance && mainEl && (
+        {mdFile && editorInstance && mainEl && (
           <HeadingMinimap editor={editorInstance} scrollContainer={mainEl} />
         )}
       </div>

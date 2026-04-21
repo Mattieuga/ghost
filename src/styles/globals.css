@@ -81,6 +81,15 @@
   --checkbox-background-checked: #1b1b1b;
   --checkbox-border-checked: #2a2a2a;
   --checkbox-mark: #616161;
+  --code-keyword: #c678dd;
+  --code-name: #e06c75;
+  --code-function: #61afef;
+  --code-constant: #d19a66;
+  --code-type: #e5c07b;
+  --code-operator: #56b6c2;
+  --code-string: #98c379;
+  --code-comment: #5c6370;
+  --code-default: #abb2bf;
 }
 
 @layer base {

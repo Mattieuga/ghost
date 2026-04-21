@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Settings2, Type, Palette, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Settings } from "@/hooks/use-settings";
@@ -7,6 +8,7 @@ import type { UpdateInfo } from "@/hooks/use-updater";
 import { GeneralTab } from "@/components/settings/tabs/general-tab";
 import { EditorTab } from "@/components/settings/tabs/editor-tab";
 import { ThemesTab } from "@/components/settings/tabs/themes-tab";
+import { useCompactMode } from "@/hooks/use-compact-mode";
 import type { LucideIcon } from "lucide-react";
 
 type SettingsTab = "general" | "editor" | "themes";
@@ -37,6 +39,7 @@ export function SettingsPage({
   updater,
 }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const compact = useCompactMode();
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -49,7 +52,7 @@ export function SettingsPage({
     return () => window.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
-  return (
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -60,11 +63,11 @@ export function SettingsPage({
       {/* Floating panel */}
       <div
         className="fixed left-1/2 z-50 -translate-x-1/2 animate-in fade-in-0 zoom-in-95 duration-150"
-        style={{ top: "12%", width: 520 }}
+        style={{ top: "min(12%, calc(100vh - 520px))", width: compact ? "calc(100vw - 1.5rem)" : 520, maxWidth: "calc(100vw - 1rem)" }}
       >
         <div
           className="rounded-xl border border-border bg-popover shadow-2xl overflow-hidden flex flex-col"
-          style={{ maxHeight: "72vh" }}
+          style={{ maxHeight: "min(72vh, calc(100vh - 2rem))" }}
         >
           {/* Header: title + tab bar */}
           <div className="px-5 pt-5 pb-3 border-b border-border shrink-0">
@@ -112,6 +115,7 @@ export function SettingsPage({
               <EditorTab
                 settings={settings}
                 onUpdateSettings={onUpdateSettings}
+                compact={compact}
               />
             )}
             {activeTab === "themes" && (
@@ -121,11 +125,13 @@ export function SettingsPage({
                 customThemes={customThemes}
                 onSaveTheme={onSaveTheme}
                 onDeleteTheme={onDeleteTheme}
+                compact={compact}
               />
             )}
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

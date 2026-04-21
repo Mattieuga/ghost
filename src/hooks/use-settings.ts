@@ -9,6 +9,7 @@ export interface Settings {
   showStyleBar: boolean;
   theme: string;
   themeColors: ThemeColors;
+  syntaxPalette?: string;
   customThemes: ThemePreset[];
   textFont: string;
   headingFont: string;
@@ -21,7 +22,7 @@ export interface Settings {
 }
 
 const DEFAULTS: Settings = {
-  showAllFiles: false,
+  showAllFiles: true,
   showStyleBar: true,
   theme: "factory",
   themeColors: {

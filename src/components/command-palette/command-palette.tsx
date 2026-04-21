@@ -1,8 +1,10 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import type { FlatFileEntry } from "@/types";
 import { fuzzySearch } from "@/lib/fuzzy-search";
+import { useCompactMode } from "@/hooks/use-compact-mode";
 
 interface ContentMatch {
   path: string;
@@ -16,6 +18,26 @@ interface SearchResults {
   matches: ContentMatch[];
   total_matches: number;
   files_searched: number;
+}
+
+function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+function formatDate(epochMs: number) {
+  try {
+    const date = new Date(epochMs);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 30) return `${diffDays} days ago`;
+    return date.toLocaleDateString();
+  } catch {
+    return "";
+  }
 }
 
 interface CommandPaletteProps {
@@ -55,6 +77,7 @@ export function CommandPalette({
   const [contentTotal, setContentTotal] = useState(0);
   const [contentLoading, setContentLoading] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const compact = useCompactMode();
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewMeta, setPreviewMeta] = useState<{
     size: number;
@@ -311,29 +334,7 @@ export function CommandPalette({
   // Count unique files in content results
   const contentFileCount = new Set(contentResults.map((m) => m.path)).size;
 
-  // Format file size
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  };
-
-  // Format relative date from epoch millis
-  const formatDate = (epochMs: number) => {
-    try {
-      const date = new Date(epochMs);
-      const now = new Date();
-      const diffMs = now.getTime() - date.getTime();
-      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      if (diffDays === 0) return "Today";
-      if (diffDays === 1) return "Yesterday";
-      if (diffDays < 30) return `${diffDays} days ago`;
-      return date.toLocaleDateString();
-    } catch {
-      return "";
-    }
-  };
-
-  return (
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -344,11 +345,11 @@ export function CommandPalette({
       {/* Palette container */}
       <div
         className="fixed left-1/2 z-50 -translate-x-1/2 animate-in fade-in-0 zoom-in-95 duration-150"
-        style={{ top: "15%", width: previewOpen ? 780 : 580 }}
+        style={{ top: "min(15%, calc(100vh - 480px))", width: compact ? "calc(100vw - 1.5rem)" : (previewOpen ? 780 : 580), maxWidth: "calc(100vw - 1rem)" }}
         onKeyDown={handleKeyDown}
       >
         <div className="rounded-xl border border-border bg-popover shadow-2xl overflow-hidden flex flex-col"
-          style={{ maxHeight: "70vh" }}
+          style={{ maxHeight: "min(70vh, calc(100vh - 2rem))" }}
         >
           {/* Search input */}
           <div className="flex items-center gap-3 px-4 h-14 border-b border-border shrink-0">
@@ -368,12 +369,12 @@ export function CommandPalette({
           </div>
 
           {/* Body: result list + optional preview */}
-          <div className="flex min-h-0 flex-1">
+          <div className="relative flex min-h-0 flex-1">
             {/* Result list */}
             <div
               ref={listRef}
               className={`overflow-y-auto overscroll-contain py-2 ${
-                previewOpen ? "w-[320px] border-r border-border shrink-0" : "flex-1"
+                previewOpen && !compact ? "w-[320px] border-r border-border shrink-0" : "flex-1"
               }`}
               style={{ maxHeight: "calc(70vh - 56px - 40px)" }}
             >
@@ -517,13 +518,28 @@ export function CommandPalette({
 
             {/* Preview panel */}
             {previewOpen && selectedItem && (
-              <div className="flex-1 overflow-y-auto overscroll-contain"
+              <div
+                className={
+                  compact
+                    ? "absolute inset-y-0 right-0 left-10 overflow-y-auto overscroll-contain bg-popover shadow-[-8px_0_24px_rgba(0,0,0,0.3)] border-l border-border"
+                    : "flex-1 overflow-y-auto overscroll-contain"
+                }
                 style={{ maxHeight: "calc(70vh - 56px - 40px)" }}
               >
                 <div className="p-5">
                   <div className="mb-1">
-                    <div className="text-[10px] font-medium uppercase text-ghost-amber tracking-wider mb-2">
-                      Preview
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-medium uppercase text-ghost-amber tracking-wider">
+                        Preview
+                      </span>
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => { setPreviewOpen(false); inputRef.current?.focus(); }}
+                        className="text-ring hover:text-foreground transition-colors cursor-pointer p-0.5"
+                        aria-label="Close preview"
+                      >
+                        <X className="size-3.5" />
+                      </button>
                     </div>
                     <div className="text-[14px] font-medium text-foreground">
                       {getFileName(selectedItem.path)}
@@ -579,6 +595,7 @@ export function CommandPalette({
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

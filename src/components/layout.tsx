@@ -25,13 +25,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { FolderTree } from "@/components/sidebar/folder-tree";
 import { EmptyState } from "@/components/sidebar/empty-state";
-import { MarkdownEditor } from "@/components/editor/markdown-editor";
-import { CodeEditor } from "@/components/editor/code-editor";
 import { HeadingMinimap } from "@/components/editor/heading-minimap";
+import { FileViewer } from "@/components/editor/file-viewer";
 import { TextStats } from "@/components/editor/text-stats";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
-import { isMarkdown } from "@/lib/file-type";
+import { isMarkdown, isBinaryViewer } from "@/lib/file-type";
+import { OpenExternalButton } from "@/components/viewer/open-external-button";
 import { applyContentInPlace } from "@/lib/editor-utils";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { useTrackedFolders } from "@/hooks/use-tracked-folders";
@@ -194,14 +194,22 @@ export function GhostLayout() {
     }
 
     try {
-      const content = await invoke<string>("read_file", { path });
-      setActiveFile(path);
-      setFileContent(content);
-      fileContentRef.current = content;
       setShowSettings(false);
       closeSearch();
       addRecentFile(path);
-      setLiveText(content);
+
+      if (isBinaryViewer(path)) {
+        setActiveFile(path);
+        setFileContent("");
+        fileContentRef.current = "";
+        setLiveText("");
+      } else {
+        const content = await invoke<string>("read_file", { path });
+        setActiveFile(path);
+        setFileContent(content);
+        fileContentRef.current = content;
+        setLiveText(content);
+      }
     } catch (err) {
       console.error("Failed to read file:", err);
     }
@@ -948,11 +956,15 @@ export function GhostLayout() {
                 ) : null}
               </div>
               {activeFile && (
-                <TextStats
-                  text={liveText}
-                  countMode={settings.countMode}
-                  onCountModeChange={(countMode) => updateSettings({ countMode })}
-                />
+                isBinaryViewer(activeFile) ? (
+                  <OpenExternalButton filePath={activeFile} />
+                ) : (
+                  <TextStats
+                    text={liveText}
+                    countMode={settings.countMode}
+                    onCountModeChange={(countMode) => updateSettings({ countMode })}
+                  />
+                )
               )}
             </>
           )}
@@ -961,31 +973,18 @@ export function GhostLayout() {
         {/* Editor — scrolls behind the floating header */}
         <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative">
           {activeFile ? (
-            isMarkdown(activeFile) ? (
-              <MarkdownEditor
-                key={activeFile}
-                content={fileContent}
-                onContentChange={handleContentChange}
-                searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
-                replaceTerm={search.searchOpen ? search.replaceTerm : ""}
-                onSearchResults={search.handleSearchResults}
-                activeFile={activeFile}
-                showStyleBar={settings.showStyleBar}
-                onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
-                onEditorReady={setEditorInstance}
-              />
-            ) : (
-              <CodeEditor
-                key={activeFile}
-                content={fileContent}
-                onContentChange={handleContentChange}
-                searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
-                replaceTerm={search.searchOpen ? search.replaceTerm : ""}
-                onSearchResults={search.handleSearchResults}
-                activeFile={activeFile}
-                onEditorReady={setCmView}
-              />
-            )
+            <FileViewer
+              filePath={activeFile}
+              content={fileContent}
+              onContentChange={handleContentChange}
+              searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
+              replaceTerm={search.searchOpen ? search.replaceTerm : ""}
+              onSearchResults={search.handleSearchResults}
+              onTiptapReady={setEditorInstance}
+              onCmReady={setCmView}
+              showStyleBar={settings.showStyleBar}
+              onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
+            />
           ) : (
             <div className="flex h-full items-center justify-center">
               <p className="text-muted-foreground/40 text-sm">

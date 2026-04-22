@@ -6,7 +6,7 @@ const ghostEditorTheme = EditorView.theme({
   "&": {
     backgroundColor: "var(--background)",
     color: "var(--card-foreground)",
-    minHeight: "100%",
+    height: "100%",
   },
   "&.cm-focused": {
     outline: "none",

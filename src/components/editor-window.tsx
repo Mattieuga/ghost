@@ -2,9 +2,8 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { MarkdownEditor } from "@/components/editor/markdown-editor";
-import { CodeEditor } from "@/components/editor/code-editor";
 import { HeadingMinimap } from "@/components/editor/heading-minimap";
+import { FileViewer } from "@/components/editor/file-viewer";
 import { TextStats } from "@/components/editor/text-stats";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
@@ -14,7 +13,8 @@ import { useSettings } from "@/hooks/use-settings";
 import { useSearch } from "@/hooks/use-search";
 import { useReloadOnFocus } from "@/hooks/use-reload-on-focus";
 import { applyTheme } from "@/lib/theme-engine";
-import { isMarkdown } from "@/lib/file-type";
+import { isMarkdown, isBinaryViewer } from "@/lib/file-type";
+import { OpenExternalButton } from "@/components/viewer/open-external-button";
 
 interface EditorWindowProps {
   filePath: string;
@@ -56,6 +56,12 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
 
   // Load file content on mount
   useEffect(() => {
+    if (isBinaryViewer(filePath)) {
+      setFileContent("");
+      fileContentRef.current = "";
+      setLiveText("");
+      return;
+    }
     invoke<string>("read_file", { path: filePath })
       .then((content) => {
         setFileContent(content);
@@ -210,11 +216,15 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
                 </span>
               </div>
             </div>
-            <TextStats
-              text={liveText}
-              countMode={settings.countMode}
-              onCountModeChange={(countMode) => updateSettings({ countMode })}
-            />
+            {isBinaryViewer(filePath) ? (
+              <OpenExternalButton filePath={filePath} />
+            ) : (
+              <TextStats
+                text={liveText}
+                countMode={settings.countMode}
+                onCountModeChange={(countMode) => updateSettings({ countMode })}
+              />
+            )}
           </>
         )}
       </div>
@@ -222,31 +232,18 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       {/* Editor */}
       <div className="relative flex-1 overflow-hidden">
         <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative">
-          {mdFile ? (
-            <MarkdownEditor
-              key={filePath}
-              content={fileContent}
-              onContentChange={handleContentChange}
-              searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
-              replaceTerm={search.searchOpen ? search.replaceTerm : ""}
-              onSearchResults={search.handleSearchResults}
-              activeFile={filePath}
-              showStyleBar={settings.showStyleBar}
-              onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
-              onEditorReady={setEditorInstance}
-            />
-          ) : (
-            <CodeEditor
-              key={filePath}
-              content={fileContent}
-              onContentChange={handleContentChange}
-              searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
-              replaceTerm={search.searchOpen ? search.replaceTerm : ""}
-              onSearchResults={search.handleSearchResults}
-              activeFile={filePath}
-              onEditorReady={setCmView}
-            />
-          )}
+          <FileViewer
+            filePath={filePath}
+            content={fileContent}
+            onContentChange={handleContentChange}
+            searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
+            replaceTerm={search.searchOpen ? search.replaceTerm : ""}
+            onSearchResults={search.handleSearchResults}
+            onTiptapReady={setEditorInstance}
+            onCmReady={setCmView}
+            showStyleBar={settings.showStyleBar}
+            onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
+          />
         </main>
         {mdFile && editorInstance && mainEl && (
           <HeadingMinimap editor={editorInstance} scrollContainer={mainEl} />

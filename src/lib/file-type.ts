@@ -1,6 +1,9 @@
 import type { LanguageSupport } from "@codemirror/language";
 
 const MARKDOWN_EXTENSIONS = new Set(["md", "mdx", "markdown"]);
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico"]);
+const PDF_EXTENSIONS = new Set(["pdf"]);
+const CSV_EXTENSIONS = new Set(["csv", "tsv"]);
 
 const LANGUAGE_MAP: Record<string, () => Promise<LanguageSupport>> = {
   js: () => import("@codemirror/lang-javascript").then((m) => m.javascript({ jsx: false })),
@@ -59,6 +62,26 @@ function getExtension(filePath: string): string {
 
 export function isMarkdown(filePath: string): boolean {
   return MARKDOWN_EXTENSIONS.has(getExtension(filePath));
+}
+
+export function isImage(filePath: string): boolean {
+  return IMAGE_EXTENSIONS.has(getExtension(filePath));
+}
+
+export function isPdf(filePath: string): boolean {
+  return PDF_EXTENSIONS.has(getExtension(filePath));
+}
+
+export function isCsv(filePath: string): boolean {
+  return CSV_EXTENSIONS.has(getExtension(filePath));
+}
+
+export function isSvg(filePath: string): boolean {
+  return getExtension(filePath) === "svg";
+}
+
+export function isBinaryViewer(filePath: string): boolean {
+  return isImage(filePath) || isPdf(filePath);
 }
 
 export async function getLanguageSupport(filePath: string): Promise<LanguageSupport | null> {

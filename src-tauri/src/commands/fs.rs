@@ -434,3 +434,16 @@ pub async fn list_system_fonts() -> Result<Vec<String>, String> {
 
     Ok(names)
 }
+
+#[tauri::command]
+pub async fn open_with_default_app(path: String) -> Result<(), String> {
+    let meta = fs::metadata(&path).map_err(|e| format!("File not found: {}", e))?;
+    if !meta.is_file() {
+        return Err("Path is not a file".to_string());
+    }
+    std::process::Command::new("open")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+    Ok(())
+}

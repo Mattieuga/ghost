@@ -1,0 +1,238 @@
+import { useMemo, useState, useRef, useCallback, useEffect } from "react";
+import { CodeEditor } from "@/components/editor/code-editor";
+import type { EditorView } from "@codemirror/view";
+import { Table2, FileText } from "lucide-react";
+
+interface CsvViewerProps {
+  filePath: string;
+  content: string;
+  onContentChange?: (text: string) => void;
+  searchTerm?: string;
+  replaceTerm?: string;
+  onSearchResults?: (count: number, currentIndex: number) => void;
+  onEditorReady?: (view: EditorView | null) => void;
+}
+
+function parseCsv(text: string, delimiter: string): string[][] {
+  const rows: string[][] = [];
+  let current: string[] = [];
+  let field = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (inQuotes) {
+      if (ch === '"' && text[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        field += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === delimiter) {
+      current.push(field);
+      field = "";
+    } else if (ch === "\n" || (ch === "\r" && text[i + 1] === "\n")) {
+      current.push(field);
+      field = "";
+      if (current.some((c) => c !== "")) rows.push(current);
+      current = [];
+      if (ch === "\r") i++;
+    } else {
+      field += ch;
+    }
+  }
+
+  current.push(field);
+  if (current.some((c) => c !== "")) rows.push(current);
+
+  return rows;
+}
+
+function serializeCsv(rows: string[][], delimiter: string): string {
+  return rows.map((row) =>
+    row.map((cell) => {
+      if (cell.includes(delimiter) || cell.includes('"') || cell.includes("\n")) {
+        return `"${cell.replace(/"/g, '""')}"`;
+      }
+      return cell;
+    }).join(delimiter)
+  ).join("\n");
+}
+
+export function CsvViewer({ filePath, content, onContentChange, searchTerm, replaceTerm, onSearchResults, onEditorReady }: CsvViewerProps) {
+  const ext = filePath.split(".").pop()?.toLowerCase();
+  const delimiter = ext === "tsv" ? "\t" : ",";
+
+  const parsedFromProp = useMemo(() => parseCsv(content, delimiter), [content, delimiter]);
+  const [rows, setRows] = useState(parsedFromProp);
+
+  // Sync rows when content prop changes externally (e.g. focus reload)
+  const lastContentRef = useRef(content);
+  useEffect(() => {
+    if (content !== lastContentRef.current) {
+      lastContentRef.current = content;
+      setRows(parsedFromProp);
+    }
+  }, [content, parsedFromProp]);
+  const [editing, setEditing] = useState<{ row: number; col: number } | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [mode, setMode] = useState<"table" | "text">("table");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const header = rows[0] ?? [];
+  const body = rows.slice(1);
+  const colCount = rows.length > 0 ? Math.max(...rows.map((r) => r.length)) : 0;
+
+  const commitEdit = useCallback(() => {
+    if (!editing) return;
+    const newRows = rows.map((r) => [...r]);
+    const rowIdx = editing.row;
+    while (newRows[rowIdx].length <= editing.col) newRows[rowIdx].push("");
+    newRows[rowIdx][editing.col] = editValue;
+    setRows(newRows);
+    setEditing(null);
+    onContentChange?.(serializeCsv(newRows, delimiter));
+  }, [editing, editValue, rows, delimiter, onContentChange]);
+
+  const startEdit = useCallback((row: number, col: number) => {
+    const value = rows[row]?.[col] ?? "";
+    setEditing({ row, col });
+    setEditValue(value);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, [rows]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!editing) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitEdit();
+    } else if (e.key === "Escape") {
+      setEditing(null);
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      commitEdit();
+      const nextCol = e.shiftKey ? editing.col - 1 : editing.col + 1;
+      if (nextCol >= 0 && nextCol < colCount) {
+        startEdit(editing.row, nextCol);
+      }
+    }
+  }, [editing, commitEdit, startEdit, colCount]);
+
+  const isEditing = (row: number, col: number) =>
+    editing?.row === row && editing?.col === col;
+
+  const renderCell = (row: number, col: number, value: string, isHeader: boolean) => {
+    if (isEditing(row, col)) {
+      return (
+        <input
+          ref={inputRef}
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={commitEdit}
+          className={`bg-background border border-ghost-amber rounded px-1 py-0.5 text-[13px] outline-none w-full ${isHeader ? "font-semibold" : ""}`}
+        />
+      );
+    }
+    return <span className="truncate block">{value}</span>;
+  };
+
+  const modeToggle = (
+    <div className="flex items-center px-4 py-2.5 text-[11px] text-ring shrink-0 border-t border-border bg-background">
+      <div className="flex items-center rounded-md border border-border overflow-hidden">
+        <button
+          onClick={() => setMode("table")}
+          className={`flex items-center gap-1 px-2 py-1 cursor-pointer transition-colors ${
+            mode === "table" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-card-foreground"
+          }`}
+        >
+          <Table2 className="size-3.5" />
+        </button>
+        <button
+          onClick={() => setMode("text")}
+          className={`flex items-center gap-1 px-2 py-1 cursor-pointer transition-colors ${
+            mode === "text" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-card-foreground"
+          }`}
+        >
+          <FileText className="size-3.5" />
+        </button>
+      </div>
+      <div className="flex-1" />
+      <div className="flex items-center gap-4">
+        <span>{body.length.toLocaleString()} rows</span>
+        <span>{colCount} columns</span>
+      </div>
+    </div>
+  );
+
+  if (mode === "text") {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex-1 min-h-0">
+          <CodeEditor
+            content={serializeCsv(rows, delimiter)}
+            onContentChange={(text) => {
+              setRows(parseCsv(text, delimiter));
+              onContentChange?.(text);
+            }}
+            activeFile={filePath}
+            searchTerm={searchTerm}
+            replaceTerm={replaceTerm}
+            onSearchResults={onSearchResults}
+            onEditorReady={onEditorReady}
+          />
+        </div>
+        {modeToggle}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-auto min-h-0 px-4 pb-4 pt-14">
+        <table className="w-full border-collapse text-[13px]" style={{ tableLayout: "fixed" }}>
+          <thead className="sticky top-0 z-10">
+            <tr>
+              <th className="bg-muted text-muted-foreground text-[11px] font-medium px-3 py-2 text-right border-b border-border" style={{ width: 48 }}>#</th>
+              {header.map((cell, i) => (
+                <th
+                  key={i}
+                  className="bg-muted text-left text-card-foreground font-semibold px-3 py-2 border-b border-border cursor-pointer hover:bg-accent/50 overflow-hidden"
+                  onDoubleClick={() => startEdit(0, i)}
+                >
+                  {renderCell(0, i, cell, true)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {body.map((row, ri) => {
+              const globalRow = ri + 1;
+              return (
+                <tr key={ri} className={ri % 2 === 0 ? "" : "bg-muted/30"}>
+                  <td className="text-[11px] text-ring px-3 py-1.5 text-right border-b border-border/50 tabular-nums">{ri + 1}</td>
+                  {Array.from({ length: colCount }, (_, ci) => (
+                    <td
+                      key={ci}
+                      className="px-3 py-1.5 text-card-foreground border-b border-border/50 cursor-pointer hover:bg-accent/30 overflow-hidden"
+                      onDoubleClick={() => startEdit(globalRow, ci)}
+                    >
+                      {renderCell(globalRow, ci, row[ci] ?? "", false)}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {modeToggle}
+    </div>
+  );
+}

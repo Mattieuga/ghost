@@ -28,14 +28,21 @@ const ghostEditorTheme = EditorView.theme({
     border: "none",
     paddingLeft: "40px",
   },
+  ".cm-gutter.cm-lineNumbers": {
+    width: "52px",
+  },
   ".cm-gutter.cm-lineNumbers .cm-gutterElement": {
     padding: "0 8px 0 0",
-    minWidth: "32px",
+    textAlign: "right",
+    width: "100%",
     fontSize: "13px",
     fontFamily: 'var(--editor-code-font, "JetBrains Mono"), "SF Mono", ui-monospace, monospace',
   },
+  ".cm-gutter.cm-foldGutter": {
+    width: "16px",
+  },
   ".cm-gutter.cm-foldGutter .cm-gutterElement": {
-    padding: "0 4px",
+    padding: "0 2px",
     color: "var(--ring)",
   },
   ".cm-activeLineGutter": {

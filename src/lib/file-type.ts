@@ -1,7 +1,7 @@
 import type { LanguageSupport } from "@codemirror/language";
 
 const MARKDOWN_EXTENSIONS = new Set(["md", "mdx", "markdown"]);
-const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico"]);
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "heic", "heif", "tiff", "tif"]);
 const PDF_EXTENSIONS = new Set(["pdf"]);
 const CSV_EXTENSIONS = new Set(["csv", "tsv"]);
 
@@ -80,8 +80,30 @@ export function isSvg(filePath: string): boolean {
   return getExtension(filePath) === "svg";
 }
 
+const TEXT_EXTENSIONS = new Set([
+  // Plain text
+  "txt", "log", "env", "ini", "cfg", "conf", "properties",
+  "gitignore", "gitattributes", "editorconfig", "dockerignore",
+  "npmrc", "nvmrc", "prettierrc", "eslintrc", "babelrc",
+  // Shell
+  "sh", "bash", "zsh", "fish",
+  // Config
+  "toml", "lock",
+  // Data
+  "graphql", "gql", "prisma",
+  // Misc text
+  "diff", "patch", "rtf",
+]);
+
+export function isTextEditable(filePath: string): boolean {
+  const ext = getExtension(filePath);
+  const name = getFileName(filePath);
+  if (ext === "") return name !== "";
+  return LANGUAGE_MAP[ext] !== undefined || TEXT_EXTENSIONS.has(ext) || FILENAME_LANGUAGE_MAP[name] !== undefined;
+}
+
 export function isBinaryViewer(filePath: string): boolean {
-  return isImage(filePath) || isPdf(filePath);
+  return !isMarkdown(filePath) && !isTextEditable(filePath) && !isCsv(filePath) && !isSvg(filePath);
 }
 
 export async function getLanguageSupport(filePath: string): Promise<LanguageSupport | null> {

@@ -4,7 +4,8 @@ import { ImageViewer } from "@/components/viewer/image-viewer";
 import { PdfViewer } from "@/components/viewer/pdf-viewer";
 import { CsvViewer } from "@/components/viewer/csv-viewer";
 import { SvgViewer } from "@/components/viewer/svg-viewer";
-import { isMarkdown, isImage, isPdf, isCsv, isSvg } from "@/lib/file-type";
+import { UnsupportedViewer } from "@/components/viewer/unsupported-viewer";
+import { isMarkdown, isImage, isPdf, isCsv, isSvg, isTextEditable } from "@/lib/file-type";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
 
@@ -82,6 +83,8 @@ export function FileViewer({
       />
     );
   }
+
+  if (!isTextEditable(filePath)) return <UnsupportedViewer key={filePath} filePath={filePath} />;
 
   return (
     <CodeEditor

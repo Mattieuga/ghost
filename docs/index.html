@@ -9,12 +9,12 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline'; img-src 'self'">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      background: #09090b;
+      background: #08080a;
       color: #a1a1aa;
       font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
       -webkit-font-smoothing: antialiased;
@@ -26,268 +26,206 @@
       position: relative;
     }
 
-    /* ── TRON background canvas ── */
-    .tron-bg {
+    /* ── Ghost companion that follows cursor ── */
+    .cursor-ghost {
       position: fixed;
-      inset: 0;
-      z-index: 0;
-      overflow: hidden;
       pointer-events: none;
+      z-index: 9999;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.6);
+      text-shadow: 0 0 8px rgba(255, 255, 255, 0.3), 0 0 25px rgba(255, 255, 255, 0.1);
+      white-space: pre;
+      line-height: 1;
+      letter-spacing: 0;
+      transition: opacity 0.3s;
     }
 
-    /* ── Deep parallax grid — larger cells, shifts on scroll ── */
-    .tron-deep-grid {
+    /* ── Ghost trail ── */
+    .trail-ghost {
       position: fixed;
-      inset: -300px;
-      z-index: 0;
       pointer-events: none;
-      overflow: hidden;
-      will-change: transform;
-      transform: translate(30px, 30px);
+      z-index: 9998;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      white-space: pre;
+      line-height: 1;
+      letter-spacing: 0;
+      transition: none;
     }
 
-    .tron-deep-grid::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background:
-        repeating-linear-gradient(
-          90deg,
-          transparent,
-          transparent 237px,
-          rgba(245, 124, 0, 0.06) 237px,
-          rgba(245, 124, 0, 0.15) 239px,
-          rgba(245, 124, 0, 0.06) 241px,
-          transparent 243px
-        ),
-        repeating-linear-gradient(
-          0deg,
-          transparent,
-          transparent 237px,
-          rgba(245, 124, 0, 0.06) 237px,
-          rgba(245, 124, 0, 0.15) 239px,
-          rgba(245, 124, 0, 0.06) 241px,
-          transparent 243px
-        );
-    }
-
-    /* Vignette — fades all grid layers toward edges */
-    .tron-vignette {
+    /* ── Floating ASCII ghosts ── */
+    .floating-ghost {
       position: fixed;
-      inset: 0;
-      z-index: 0;
       pointer-events: none;
-      background: radial-gradient(ellipse 55% 45% at 50% 40%, transparent 0%, #09090b 100%);
-    }
-
-    /* ── Intersection node pulses ── */
-    .tron-nodes {
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      pointer-events: none;
-    }
-
-    .node {
-      position: absolute;
-      width: 5px;
-      height: 5px;
-      margin-left: -2px;
-      margin-top: -2px;
-      border-radius: 50%;
-      background: rgba(245, 124, 0, 0.8);
-      box-shadow: 0 0 8px 2px rgba(245, 124, 0, 0.4), 0 0 20px 4px rgba(245, 124, 0, 0.15);
-      animation: node-pulse ease-in-out infinite;
+      z-index: 1;
+      font-family: 'JetBrains Mono', monospace;
+      white-space: pre;
+      line-height: 1.1;
+      letter-spacing: 0;
       opacity: 0;
+      animation: ghost-float linear infinite;
     }
 
-    @keyframes node-pulse {
-      0%, 100% { opacity: 0; transform: scale(0.5); }
-      50%      { opacity: 1; transform: scale(1.2); }
+    @keyframes ghost-float {
+      0% { opacity: 0; transform: translateY(100vh) rotate(0deg); }
+      5% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { opacity: 0; transform: translateY(-150px) rotate(5deg); }
     }
 
-    /* Vertical grid lines — faint static structure */
-    .tron-bg::before {
-      content: '';
-      position: absolute;
+    /* ── Ambient particles ── */
+    .particle {
+      position: fixed;
+      pointer-events: none;
+      z-index: 0;
+      width: 2px;
+      height: 2px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.15);
+      animation: particle-drift linear infinite;
+    }
+
+    @keyframes particle-drift {
+      0% { opacity: 0; transform: translateY(100vh); }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { opacity: 0; transform: translateY(-20px); }
+    }
+
+    /* ── Scanlines ── */
+    .scanlines {
+      position: fixed;
       inset: 0;
-      background: repeating-linear-gradient(
-        90deg,
-        transparent,
-        transparent 59px,
-        rgba(245, 124, 0, 0.06) 59px,
-        rgba(245, 124, 0, 0.06) 60px
-      );
-    }
-
-    /* Horizontal grid lines */
-    .tron-bg::after {
-      content: '';
-      position: absolute;
-      inset: 0;
+      z-index: 2;
+      pointer-events: none;
       background: repeating-linear-gradient(
         0deg,
         transparent,
-        transparent 59px,
-        rgba(113, 113, 122, 0.07) 59px,
-        rgba(113, 113, 122, 0.07) 60px
+        transparent 2px,
+        rgba(0, 0, 0, 0.03) 2px,
+        rgba(0, 0, 0, 0.03) 4px
       );
     }
 
-    /* ── Streaking lines — ghosts in the machine ── */
-    .tron-streaks {
+    /* ── Vignette ── */
+    .vignette {
       position: fixed;
       inset: 0;
-      z-index: 0;
-      overflow: hidden;
+      z-index: 2;
       pointer-events: none;
+      background: radial-gradient(ellipse 70% 60% at 50% 50%, transparent 0%, #08080a 100%);
     }
 
-    /* Each streak is a thin line that flies across the viewport */
-    .streak {
-      position: absolute;
-      border-radius: 2px;
-    }
-
-    /* Vertical streaks */
-    .streak--v { width: 1px; animation-timing-function: linear; animation-iteration-count: infinite; }
-    .streak--v.down { animation-name: streak-down; }
-    .streak--v.up   { animation-name: streak-up;   }
-
-    /* Horizontal streaks */
-    .streak--h { height: 1px; animation-timing-function: linear; animation-iteration-count: infinite; }
-    .streak--h.right { animation-name: streak-right; }
-    .streak--h.left  { animation-name: streak-left;  }
-
-    @keyframes streak-down {
-      0%   { transform: translateY(-100%); opacity: 0; }
-      5%   { opacity: 1; }
-      90%  { opacity: 1; }
-      100% { transform: translateY(calc(100vh + 100%)); opacity: 0; }
-    }
-
-    @keyframes streak-up {
-      0%   { transform: translateY(calc(100vh + 100%)); opacity: 0; }
-      5%   { opacity: 1; }
-      90%  { opacity: 1; }
-      100% { transform: translateY(-100%); opacity: 0; }
-    }
-
-    @keyframes streak-right {
-      0%   { transform: translateX(-100%); opacity: 0; }
-      5%   { opacity: 1; }
-      90%  { opacity: 1; }
-      100% { transform: translateX(calc(100vw + 100%)); opacity: 0; }
-    }
-
-    @keyframes streak-left {
-      0%   { transform: translateX(calc(100vw + 100%)); opacity: 0; }
-      5%   { opacity: 1; }
-      90%  { opacity: 1; }
-      100% { transform: translateX(-100%); opacity: 0; }
-    }
-
-    /* Vertical streaks — snapped to grid lines at 59, 119, 179… */
-    .streak--v1  { left: 59px;   height: 120px; background: linear-gradient(180deg, transparent, #52525b, transparent); animation-duration: 7s;  animation-delay: -3s;   }
-    .streak--v2  { left: 239px;  height: 160px; background: linear-gradient(180deg, transparent, #3f3f46, transparent); animation-duration: 9s;  animation-delay: -7s;   }
-    .streak--v3  { left: 479px;  height: 90px;  background: linear-gradient(180deg, transparent, rgba(245,124,0,0.6), transparent); animation-duration: 5s;  animation-delay: -2s;   }
-    .streak--v4  { left: 719px;  height: 140px; background: linear-gradient(180deg, transparent, #52525b, transparent); animation-duration: 11s; animation-delay: -9s;   }
-    .streak--v5  { left: 959px;  height: 100px; background: linear-gradient(180deg, transparent, #3f3f46, transparent); animation-duration: 8s;  animation-delay: -5s;   }
-    .streak--v6  { left: 359px;  height: 70px;  background: linear-gradient(180deg, transparent, rgba(245,124,0,0.45), transparent); animation-duration: 6s;  animation-delay: -1s;   }
-    .streak--v7  { left: 599px;  height: 130px; background: linear-gradient(180deg, transparent, #3f3f46, transparent); animation-duration: 10s; animation-delay: -6s;   }
-    .streak--v8  { left: 179px;  height: 60px;  background: linear-gradient(180deg, transparent, rgba(245,124,0,0.35), transparent); animation-duration: 7.5s; animation-delay: -4s;   }
-    .streak--v9  { left: 839px;  height: 150px; background: linear-gradient(180deg, transparent, #52525b, transparent); animation-duration: 12s; animation-delay: -10s;  }
-    .streak--v10 { left: 1139px; height: 80px;  background: linear-gradient(180deg, transparent, #3f3f46, transparent); animation-duration: 6.5s; animation-delay: -3.5s; }
-
-    /* Horizontal streaks — snapped to grid lines at 59, 119, 179… */
-    .streak--h1  { top: 115px;  width: 220px; background: linear-gradient(90deg, transparent, #3f3f46, transparent); animation-duration: 8s;  animation-delay: -6s;   }
-    .streak--h2  { top: 295px;  width: 280px; background: linear-gradient(90deg, transparent, rgba(245,124,0,0.5), transparent); animation-duration: 6s;  animation-delay: -2s;   }
-    .streak--h3  { top: 475px;  width: 180px; background: linear-gradient(90deg, transparent, #52525b, transparent); animation-duration: 10s; animation-delay: -8s;   }
-    .streak--h4  { top: 655px;  width: 240px; background: linear-gradient(90deg, transparent, #3f3f46, transparent); animation-duration: 9s;  animation-delay: -4s;   }
-    .streak--h5  { top: 775px;  width: 150px; background: linear-gradient(90deg, transparent, rgba(245,124,0,0.4), transparent); animation-duration: 7s;  animation-delay: -5.5s; }
-    .streak--h6  { top: 415px;  width: 200px; background: linear-gradient(90deg, transparent, #3f3f46, transparent); animation-duration: 11s; animation-delay: -1s;   }
-
-    /* Mouse-reactive grid — brighter grid revealed by cursor */
-    .tron-mouse-grid {
+    /* ── Noise texture ── */
+    .noise {
       position: fixed;
       inset: 0;
-      z-index: 0;
+      z-index: 2;
       pointer-events: none;
-      background:
-        repeating-linear-gradient(
-          90deg,
-          transparent,
-          transparent 59px,
-          rgba(250, 250, 250, 0.25) 59px,
-          rgba(250, 250, 250, 0.25) 60px
-        ),
-        repeating-linear-gradient(
-          0deg,
-          transparent,
-          transparent 59px,
-          rgba(250, 250, 250, 0.25) 59px,
-          rgba(250, 250, 250, 0.25) 60px
-        );
-      -webkit-mask-image: radial-gradient(circle 300px at var(--mx, -500px) var(--my, -500px), rgba(0,0,0,0.9) 0%, transparent 100%);
-      mask-image: radial-gradient(circle 300px at var(--mx, -500px) var(--my, -500px), rgba(0,0,0,0.9) 0%, transparent 100%);
+      opacity: 0.025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      background-repeat: repeat;
+      background-size: 256px 256px;
     }
 
-    /* Ambient glow behind the hero — subtle amber haze */
-    .tron-glow {
-      position: fixed;
-      top: -10%;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 600px;
-      height: 600px;
-      background: radial-gradient(ellipse, rgba(245, 124, 0, 0.04) 0%, transparent 70%);
-      z-index: 0;
-      pointer-events: none;
-    }
-
-    /* All content above the background */
-    .hero, .screenshot-wrapper, .footer {
-      position: relative;
-      z-index: 1;
-    }
-
+    /* ── Hero section ── */
     .hero {
+      position: relative;
+      z-index: 3;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 80px 24px 48px;
-      max-width: 720px;
+      padding: 32px 24px 36px;
+      max-width: 800px;
       text-align: center;
     }
 
+    /* ── Big ASCII ghost art ── */
+    .ascii-hero {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.2;
+      letter-spacing: 1px;
+      color: rgba(255, 255, 255, 0.18);
+      white-space: pre;
+      margin-bottom: 16px;
+      position: relative;
+      user-select: none;
+      transition: transform 0.3s ease-out;
+    }
+
     .icon {
-      width: 96px;
-      height: 96px;
-      border-radius: 20px;
-      margin-bottom: 32px;
+      width: 80px;
+      height: 80px;
+      border-radius: 18px;
+      margin-bottom: 20px;
+      filter: drop-shadow(0 0 30px rgba(255, 255, 255, 0.08));
+      transition: transform 0.3s ease;
+    }
+
+    .icon:hover {
+      transform: scale(1.1) rotate(-5deg);
+      filter: drop-shadow(0 0 40px rgba(255, 255, 255, 0.15));
     }
 
     h1 {
-      font-size: 48px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 80px;
       font-weight: 700;
       color: #fafafa;
-      letter-spacing: -0.5px;
-      margin-bottom: 16px;
+      letter-spacing: -2px;
+      margin-bottom: 20px;
+      position: relative;
+      text-shadow: 0 0 60px rgba(255, 255, 255, 0.08), 0 0 120px rgba(255, 255, 255, 0.04);
+    }
+
+    h1::after {
+      content: '_';
+      animation: blink 1s step-end infinite;
+      color: rgba(255, 255, 255, 0.3);
+      font-weight: 300;
+    }
+
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+
+    /* Glow orb behind the title */
+    .hero-glow {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -40%);
+      width: 500px;
+      height: 400px;
+      background: radial-gradient(ellipse, rgba(255, 255, 255, 0.03) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: -1;
     }
 
     .subtitle {
-      font-size: 20px;
-      line-height: 1.5;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #52525b;
+      margin-bottom: 12px;
+      font-weight: 300;
+    }
+
+    .subtitle .accent {
       color: #71717a;
-      margin-bottom: 8px;
     }
 
     .subtitle-secondary {
-      font-size: 20px;
-      color: #52525b;
-      margin-bottom: 40px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: #3f3f46;
+      margin-bottom: 32px;
+      font-weight: 300;
     }
 
+    /* ── Buttons ── */
     .buttons {
       display: flex;
       gap: 16px;
@@ -300,13 +238,13 @@
       align-items: center;
       gap: 10px;
       padding: 14px 28px;
-      border-radius: 10px;
-      font-size: 16px;
+      border-radius: 8px;
+      font-size: 14px;
       font-weight: 500;
-      font-family: inherit;
+      font-family: 'JetBrains Mono', monospace;
       text-decoration: none;
-      transition: all 0.15s ease;
-      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
     }
 
     .btn-primary {
@@ -316,153 +254,403 @@
     }
 
     .btn-primary:hover {
-      background: #e4e4e7;
-      border-color: #e4e4e7;
+      background: #ffffff;
+      border-color: #ffffff;
+      box-shadow: 0 0 40px rgba(255, 255, 255, 0.2), 0 0 80px rgba(255, 255, 255, 0.08);
+      transform: translateY(-2px);
     }
 
     .btn-secondary {
       background: transparent;
-      color: #a1a1aa;
+      color: #71717a;
       border: 1px solid #27272a;
     }
 
     .btn-secondary:hover {
-      border-color: #3f3f46;
-      color: #e4e4e7;
+      border-color: #52525b;
+      color: #fafafa;
+      background: rgba(255, 255, 255, 0.05);
+      box-shadow: 0 0 30px rgba(255, 255, 255, 0.05);
+      transform: translateY(-2px);
     }
 
     .btn svg {
-      width: 18px;
-      height: 18px;
+      width: 16px;
+      height: 16px;
     }
 
+    /* ── Screenshot ── */
     .screenshot-wrapper {
+      position: relative;
+      z-index: 3;
       width: 100%;
       max-width: 920px;
       padding: 0 24px;
-      margin: 48px 0 64px;
+      margin: 56px 0 64px;
     }
 
     .screenshot {
       width: 100%;
       border-radius: 12px;
-      border: 1px solid #1c1c20;
-      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+      border: 1px solid #1a1a1e;
+      box-shadow:
+        0 24px 48px rgba(0, 0, 0, 0.6),
+        0 0 0 1px rgba(255, 255, 255, 0.02),
+        0 0 100px rgba(255, 255, 255, 0.02);
     }
 
+    /* ── Footer ── */
     .footer {
+      position: relative;
+      z-index: 3;
       padding: 32px 24px 48px;
-      color: #3f3f46;
-      font-size: 15px;
-      letter-spacing: 0.3px;
+      font-family: 'JetBrains Mono', monospace;
+      color: #27272a;
+      font-size: 13px;
+      letter-spacing: 0.5px;
     }
 
     .footer span {
-      margin: 0 8px;
+      margin: 0 10px;
+      color: #1c1c1e;
     }
 
-    /* Reduce motion for accessibility */
+    /* ── ASCII decoration lines ── */
+    .ascii-decoration {
+      position: relative;
+      z-index: 3;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #1a1a1e;
+      white-space: pre;
+      letter-spacing: 1px;
+      text-align: center;
+      margin: 8px 0 0;
+      user-select: none;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .cursor-ghost, .trail-ghost { display: none; }
+      h1 { font-size: 48px; }
+      .ascii-hero { font-size: 6px; }
+      .hero { padding: 64px 16px 32px; }
+      .subtitle { font-size: 14px; }
+    }
+
+    /* ── Reduced motion ── */
     @media (prefers-reduced-motion: reduce) {
-      .streak { animation: none !important; opacity: 0.3; }
+      .floating-ghost { animation: none !important; opacity: 0.05 !important; }
+      .particle { animation: none !important; opacity: 0.1 !important; }
+      .trail-ghost { display: none; }
+      h1::after { animation: none; }
     }
   </style>
 </head>
 <body>
-  <!-- Deep parallax grid (behind everything) -->
-  <div class="tron-deep-grid" id="deepGrid"></div>
+  <!-- Overlays -->
+  <div class="scanlines"></div>
+  <div class="vignette"></div>
+  <div class="noise"></div>
 
-  <!-- TRON grid + mouse spotlight + ambient glow -->
-  <div class="tron-bg"></div>
-  <div class="tron-nodes" id="tronNodes"></div>
-  <div class="tron-mouse-grid" id="mouseGrid"></div>
-  <div class="tron-glow"></div>
+  <!-- Custom ghost cursor (hidden on mobile) -->
+  <div class="cursor-ghost" id="cursorGhost"></div>
 
-  <!-- Streaking lines — ghosts in the machine -->
-  <div class="tron-streaks">
-    <div class="streak streak--v down  streak--v1"></div>
-    <div class="streak streak--v up    streak--v2"></div>
-    <div class="streak streak--v down  streak--v3"></div>
-    <div class="streak streak--v up    streak--v4"></div>
-    <div class="streak streak--v down  streak--v5"></div>
-    <div class="streak streak--v up    streak--v6"></div>
-    <div class="streak streak--v down  streak--v7"></div>
-    <div class="streak streak--v up    streak--v8"></div>
-    <div class="streak streak--v down  streak--v9"></div>
-    <div class="streak streak--v up    streak--v10"></div>
-    <div class="streak streak--h right streak--h1"></div>
-    <div class="streak streak--h left  streak--h2"></div>
-    <div class="streak streak--h right streak--h3"></div>
-    <div class="streak streak--h left  streak--h4"></div>
-    <div class="streak streak--h right streak--h5"></div>
-    <div class="streak streak--h left  streak--h6"></div>
-  </div>
-
-  <!-- Vignette overlay — darkens edges -->
-  <div class="tron-vignette"></div>
-
+  <!-- Content -->
   <div class="hero">
+    <div class="hero-glow"></div>
+    <div class="ascii-hero" id="asciiHero" aria-hidden="true"></div>
     <img src="icon.png" alt="Ghost" class="icon">
-    <h1>Ghost</h1>
-    <p class="subtitle">A simple, beautiful markdown editor for Mac.</p>
-    <p class="subtitle-secondary">Free and open source.</p>
+    <h1>ghost</h1>
+    <p class="subtitle"><span class="accent">a markdown editor</span> that stays out of your way</p>
+    <p class="subtitle-secondary">// free &middot; open source &middot; macOS</p>
     <div class="buttons">
       <a href="https://github.com/Mattieuga/ghost/releases/download/v0.8.0/Ghost_0.8.0_aarch64.dmg" class="btn btn-primary">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Download for Mac
+        download .dmg
       </a>
       <a href="https://github.com/Mattieuga/ghost" class="btn btn-secondary">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-        View on GitHub
+        view source
       </a>
     </div>
   </div>
+
+  <div class="ascii-decoration" aria-hidden="true">- - - - - - - - - - - - - - - - -<(o_o)>- - - - - - - - - - - - - - - - -</div>
 
   <div class="screenshot-wrapper">
     <img src="screenshot.png" alt="Ghost editor screenshot" class="screenshot">
   </div>
 
   <div class="footer">
-    Free forever <span>&middot;</span> macOS only <span>&middot;</span> Open source
+    free forever <span>&middot;</span> macOS only <span>&middot;</span> open source
   </div>
+
   <script>
-    // Mouse spotlight
-    const grid = document.getElementById('mouseGrid');
+    // ── ASCII ghost shapes ──
+    const GHOSTS = [
+      `  .-.
+ (o o)
+ | O |
+ |   |
+ '~~~'`,
+      ` .--.
+(    )
+ |  |
+ |  |
+  \\/`,
+      `   _
+  ( )
+ (   )
+  | |
+  ^^^`,
+      `  ___
+ /   \\
+| o o |
+|  ^  |
+ \\___/
+  |||`,
+      `  ,_,
+ (O.O)
+ (> <)
+ /|~|\\`,
+      ` .-.
+(o.o)
+ |=|
+ d b`,
+      `  __
+ /oo\\
+( -- )
+ \\__/
+  ][`,
+      `  ..
+ (  )
+ |''|
+ |  |
+ ~~~~`,
+    ];
+
+    const MINI_GHOSTS = [
+      ` .
+(o)
+ ~`,
+      `.-.
+(*)
+ v`,
+      ` o
+(~)
+ |`,
+      `(.)
+ |
+ ^`,
+    ];
+
+    // ── Cursor ghost ──
+    const cursorEl = document.getElementById('cursorGhost');
+    const cursorArt = ` .-.
+(o o)
+ ~~~`;
+
+    cursorEl.textContent = cursorArt;
+
+    let mouseX = -100, mouseY = -100;
+    let cursorX = -100, cursorY = -100;
+
     document.addEventListener('mousemove', (e) => {
-      grid.style.setProperty('--mx', e.clientX + 'px');
-      grid.style.setProperty('--my', e.clientY + 'px');
+      mouseX = e.clientX;
+      mouseY = e.clientY;
     });
 
-    // Parallax deep grid on scroll
-    const deepGrid = document.getElementById('deepGrid');
-    window.addEventListener('scroll', () => {
-      const y = window.scrollY;
-      deepGrid.style.transform = `translate(30px, ${30 + y * -0.5}px)`;
-    }, { passive: true });
+    // Smooth follow offset to the right of the cursor
+    const OFFSET_X = 20;
+    const OFFSET_Y = -10;
 
-    // Generate pulsing intersection nodes
-    const nodesContainer = document.getElementById('tronNodes');
-    const GRID = 60;
-    const cols = Math.ceil(window.innerWidth / GRID);
-    const rows = Math.ceil(window.innerHeight / GRID);
-    const count = 18;
-    const used = new Set();
-    for (let i = 0; i < count; i++) {
-      let key;
-      do {
-        const c = Math.floor(Math.random() * (cols - 1)) + 1;
-        const r = Math.floor(Math.random() * (rows - 1)) + 1;
-        key = `${c},${r}`;
-      } while (used.has(key));
-      used.add(key);
-      const [c, r] = key.split(',').map(Number);
-      const dot = document.createElement('div');
-      dot.className = 'node';
-      dot.style.left = (c * GRID - 1) + 'px';
-      dot.style.top = (r * GRID - 1) + 'px';
-      dot.style.animationDuration = (3 + Math.random() * 4) + 's';
-      dot.style.animationDelay = (-Math.random() * 6) + 's';
-      nodesContainer.appendChild(dot);
+    function animateCursor() {
+      cursorX += (mouseX + OFFSET_X - cursorX) * 0.12;
+      cursorY += (mouseY + OFFSET_Y - cursorY) * 0.12;
+      // Gentle bob
+      const bob = Math.sin(Date.now() * 0.003) * 3;
+      cursorEl.style.left = cursorX + 'px';
+      cursorEl.style.top = (cursorY + bob) + 'px';
+      requestAnimationFrame(animateCursor);
     }
+    animateCursor();
+
+    // ── Ghost trail ──
+    const TRAIL_COUNT = 6;
+    const trailEls = [];
+    const trailPositions = [];
+
+    for (let i = 0; i < TRAIL_COUNT; i++) {
+      const el = document.createElement('div');
+      el.className = 'trail-ghost';
+      el.textContent = MINI_GHOSTS[i % MINI_GHOSTS.length];
+      const scale = 1 - (i * 0.1);
+      const opacity = 0.3 - (i * 0.04);
+      el.style.color = `rgba(255, 255, 255, ${opacity})`;
+      el.style.transform = `scale(${scale})`;
+      document.body.appendChild(el);
+      trailEls.push(el);
+      trailPositions.push({ x: -100, y: -100 });
+    }
+
+    function animateTrail() {
+      for (let i = trailEls.length - 1; i > 0; i--) {
+        trailPositions[i].x += (trailPositions[i - 1].x - trailPositions[i].x) * (0.08 - i * 0.008);
+        trailPositions[i].y += (trailPositions[i - 1].y - trailPositions[i].y) * (0.08 - i * 0.008);
+      }
+      trailPositions[0].x += (cursorX - trailPositions[0].x) * 0.1;
+      trailPositions[0].y += (cursorY - trailPositions[0].y) * 0.1;
+
+      for (let i = 0; i < trailEls.length; i++) {
+        const offsetX = Math.sin(Date.now() * 0.002 + i) * (5 + i * 3);
+        const offsetY = Math.cos(Date.now() * 0.0015 + i) * (3 + i * 2);
+        trailEls[i].style.left = (trailPositions[i].x + offsetX) + 'px';
+        trailEls[i].style.top = (trailPositions[i].y + offsetY - 20 - i * 15) + 'px';
+      }
+      requestAnimationFrame(animateTrail);
+    }
+    animateTrail();
+
+    // ── Floating background ghosts ──
+    function spawnFloatingGhost() {
+      const el = document.createElement('div');
+      el.className = 'floating-ghost';
+      el.textContent = GHOSTS[Math.floor(Math.random() * GHOSTS.length)];
+
+      const size = 8 + Math.random() * 6;
+      const x = Math.random() * window.innerWidth;
+      const duration = 20 + Math.random() * 25;
+      const delay = Math.random() * -duration;
+      const opacity = 0.03 + Math.random() * 0.06;
+      const drift = (Math.random() - 0.5) * 100;
+
+      el.style.fontSize = size + 'px';
+      el.style.left = x + 'px';
+      el.style.color = `rgba(255, 255, 255, ${opacity})`;
+      el.style.animationDuration = duration + 's';
+      el.style.animationDelay = delay + 's';
+      el.style.setProperty('--drift', drift + 'px');
+
+      document.body.appendChild(el);
+
+      el.addEventListener('animationiteration', () => {
+        el.style.left = (Math.random() * window.innerWidth) + 'px';
+      });
+    }
+
+    for (let i = 0; i < 16; i++) spawnFloatingGhost();
+
+    // ── Ambient particles ──
+    function spawnParticles() {
+      for (let i = 0; i < 40; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        p.style.left = (Math.random() * 100) + 'vw';
+        p.style.animationDuration = (15 + Math.random() * 25) + 's';
+        p.style.animationDelay = (Math.random() * -30) + 's';
+        p.style.width = (1 + Math.random() * 2) + 'px';
+        p.style.height = p.style.width;
+        p.style.opacity = (0.05 + Math.random() * 0.15).toString();
+        document.body.appendChild(p);
+      }
+    }
+    spawnParticles();
+
+    // ── Big ASCII ghost hero art ──
+    const asciiGhost = `
+                           .::::::::::.
+                        .::            ::.
+                      ::    ::    ::     ::
+                     :   @@    @@          :
+                     :   @@    @@          :
+                     :                     :
+                     :        __           :
+                     :      /    \\         :
+                      :     \\___/        ::
+                       ::              ::
+                         ::          ::
+                       :::::::::::::::::::
+                      :                   :
+                     :                     :
+                    :                       :
+                    :                       :
+                    :                       :
+                    :                       :
+                     :                     :
+                      :                   :
+                       :                 :
+                      : :   :       :   : :
+                     :   : :         : :   :
+                    :     :           :     :`;
+
+    document.getElementById('asciiHero').textContent = asciiGhost;
+
+    // ── Glitch effect on the ASCII art ──
+    const heroEl = document.getElementById('asciiHero');
+    const originalText = heroEl.textContent;
+    const glitchChars = '░▒▓█▄▀▐▌│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬';
+
+    function glitch() {
+      const chars = originalText.split('');
+      const numGlitches = 3 + Math.floor(Math.random() * 5);
+
+      for (let i = 0; i < numGlitches; i++) {
+        const idx = Math.floor(Math.random() * chars.length);
+        if (chars[idx] !== ' ' && chars[idx] !== '\n') {
+          chars[idx] = glitchChars[Math.floor(Math.random() * glitchChars.length)];
+        }
+      }
+
+      heroEl.textContent = chars.join('');
+      setTimeout(() => { heroEl.textContent = originalText; }, 80);
+    }
+
+    setInterval(() => {
+      if (Math.random() > 0.6) glitch();
+    }, 3000);
+
+    // ── Interactive: ghosts scatter away from cursor near the hero ──
+    heroEl.addEventListener('mousemove', (e) => {
+      const rect = heroEl.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width - 0.5) * 8;
+      const y = ((e.clientY - rect.top) / rect.height - 0.5) * 8;
+      heroEl.style.transform = `translate(${x}px, ${y}px)`;
+    });
+
+    heroEl.addEventListener('mouseleave', () => {
+      heroEl.style.transform = '';
+    });
+
+    // ── Click to spawn a ghost that floats away ──
+    document.addEventListener('click', (e) => {
+      const ghost = document.createElement('div');
+      ghost.style.cssText = `
+        position: fixed;
+        left: ${e.clientX}px;
+        top: ${e.clientY}px;
+        pointer-events: none;
+        z-index: 9997;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.6);
+        white-space: pre;
+        line-height: 1;
+        transform: translate(-50%, -50%);
+        transition: all 1.5s ease-out;
+      `;
+      ghost.textContent = GHOSTS[Math.floor(Math.random() * GHOSTS.length)];
+      document.body.appendChild(ghost);
+
+      requestAnimationFrame(() => {
+        ghost.style.top = (e.clientY - 150) + 'px';
+        ghost.style.opacity = '0';
+        ghost.style.transform = 'translate(-50%, -50%) scale(1.5)';
+      });
+
+      setTimeout(() => ghost.remove(), 1600);
+    });
+
   </script>
 </body>
 </html>

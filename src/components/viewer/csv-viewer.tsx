@@ -195,14 +195,15 @@ export function CsvViewer({ filePath, content, onContentChange, searchTerm, repl
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-auto min-h-0 px-4 pb-4 pt-14">
-        <table className="w-full border-collapse text-[13px]" style={{ tableLayout: "fixed" }}>
+        <table className="border-collapse text-[13px]">
           <thead className="sticky top-0 z-10">
             <tr>
               <th className="bg-muted text-muted-foreground text-[11px] font-medium px-3 py-2 text-right border-b border-border" style={{ width: 48 }}>#</th>
               {header.map((cell, i) => (
                 <th
                   key={i}
-                  className="bg-muted text-left text-card-foreground font-semibold px-3 py-2 border-b border-border cursor-pointer hover:bg-accent/50 overflow-hidden"
+                  className="bg-muted text-left text-card-foreground font-semibold px-3 py-2 border-b border-border cursor-pointer hover:bg-accent/50 whitespace-nowrap"
+                  style={{ minWidth: 80 }}
                   onDoubleClick={() => startEdit(0, i)}
                 >
                   {renderCell(0, i, cell, true)}
@@ -219,7 +220,8 @@ export function CsvViewer({ filePath, content, onContentChange, searchTerm, repl
                   {Array.from({ length: colCount }, (_, ci) => (
                     <td
                       key={ci}
-                      className="px-3 py-1.5 text-card-foreground border-b border-border/50 cursor-pointer hover:bg-accent/30 overflow-hidden"
+                      className="px-3 py-1.5 text-card-foreground border-b border-border/50 cursor-pointer hover:bg-accent/30 whitespace-nowrap"
+                      style={{ minWidth: 80 }}
                       onDoubleClick={() => startEdit(globalRow, ci)}
                     >
                       {renderCell(globalRow, ci, row[ci] ?? "", false)}

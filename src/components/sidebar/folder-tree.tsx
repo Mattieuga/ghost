@@ -19,7 +19,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useMemo, useState, useCallback, useRef, useEffect } from "react";
+import React, { useMemo, useState, useCallback, useRef, useEffect, useSyncExternalStore } from "react";
+import { useActiveFileStore } from "./sidebar-context";
 
 const INDENT_BASE = 16;
 const INDENT_STEP = 14;
@@ -100,7 +101,6 @@ interface FolderTreeProps {
   entries: FileEntry[];
   error: string | null;
   onRefreshFolder: () => void;
-  activeFile: string | null;
   activeDropFolder: string | null;
   onFileSelect: (path: string) => void;
 
@@ -119,6 +119,8 @@ interface FolderTreeProps {
   folderCount?: number;
   onReorderProject?: (fromIndex: number, toIndex: number) => void;
   defaultOpen?: boolean;
+  onExpandFolder?: (path: string) => void;
+  isSkippedDir?: (name: string) => boolean;
 }
 
 export function FolderTree({
@@ -126,7 +128,6 @@ export function FolderTree({
   entries,
   error,
   onRefreshFolder,
-  activeFile,
   onFileSelect,
 
   onRemoveFolder,
@@ -145,6 +146,8 @@ export function FolderTree({
   folderCount,
   onReorderProject,
   defaultOpen: rootDefaultOpen = true,
+  onExpandFolder,
+  isSkippedDir,
 }: FolderTreeProps) {
   const refresh = onRefreshFolder;
 
@@ -199,7 +202,11 @@ export function FolderTree({
     );
   }
 
-  const hasActiveFile = activeFile ? activeFile.startsWith(path + "/") : false;
+  const activeFileStore = useActiveFileStore();
+  const hasActiveFile = useSyncExternalStore(
+    useCallback((cb) => activeFileStore.subscribe(cb), [activeFileStore]),
+    () => { const af = activeFileStore.get(); return !!af && af.startsWith(path + "/"); },
+  );
 
   return (
     <DroppableFolder
@@ -223,11 +230,10 @@ export function FolderTree({
     >
       <FileTree
         entries={entries}
-        activeFile={activeFile}
 
         activeDropFolder={activeDropFolder}
         onFileSelect={onFileSelect}
-  
+
         onFileRenamed={onFileRenamed}
         onFileDeleted={onFileDeleted}
         onCreateFile={handleCreateFile}
@@ -239,6 +245,8 @@ export function FolderTree({
         onNewFolderRenamed={onNewFolderRenamed}
         onAddProject={onAddProject}
         depth={0}
+        onExpandFolder={onExpandFolder}
+        isSkippedDir={isSkippedDir}
       />
     </DroppableFolder>
   );
@@ -248,7 +256,6 @@ function DroppableFolder({
   id,
   folderName,
   activeDropFolder,
-  activeFile,
   onRemoveFolder,
   onCreateFile,
   onCreateFolder,
@@ -269,7 +276,6 @@ function DroppableFolder({
   id: string;
   folderName: string;
   activeDropFolder: string | null;
-  activeFile?: string | null;
   onRemoveFolder?: (path: string) => void;
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
@@ -300,8 +306,11 @@ function DroppableFolder({
   }, [folderName]);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const isHighlighted = activeDropFolder === id;
-  // For non-root folders: highlight when closed and containing the active file
-  const containsActiveFile = !isRoot && !open && !!activeFile && activeFile.startsWith(id + "/");
+  const activeFileStore = useActiveFileStore();
+  const containsActiveFile = useSyncExternalStore(
+    useCallback((cb) => activeFileStore.subscribe(cb), [activeFileStore]),
+    () => { const af = activeFileStore.get(); return !isRoot && !open && !!af && af.startsWith(id + "/"); },
+  );
   const { setNodeRef } = useDroppable({
     id: `folder:${id}`,
     data: { folderPath: id },
@@ -607,9 +616,8 @@ function DroppableFolder({
   );
 }
 
-function FileTree({
+const FileTree = React.memo(function FileTree({
   entries,
-  activeFile,
 
   activeDropFolder,
   onFileSelect,
@@ -625,9 +633,10 @@ function FileTree({
   onNewFolderRenamed,
   onAddProject,
   depth,
+  onExpandFolder,
+  isSkippedDir,
 }: {
   entries: FileEntry[];
-  activeFile: string | null;
 
   activeDropFolder: string | null;
   onFileSelect: (path: string) => void;
@@ -643,17 +652,37 @@ function FileTree({
   newlyCreatedFolder: string | null;
   onNewFolderRenamed: () => void;
   depth: number;
+  onExpandFolder?: (path: string) => void;
+  isSkippedDir?: (name: string) => boolean;
 }) {
+  const PAGE_SIZE = 100;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [entries]);
+
+  useEffect(() => {
+    if (visibleCount >= entries.length || !sentinelRef.current) return;
+    const observer = new IntersectionObserver((items) => {
+      if (items[0]?.isIntersecting) {
+        setVisibleCount((v) => Math.min(v + PAGE_SIZE, entries.length));
+      }
+    }, { rootMargin: "200px" });
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [visibleCount, entries.length]);
+
   return (
     <>
-      {entries.map((entry, index) =>
+      {entries.slice(0, visibleCount).map((entry, index) =>
         entry.is_directory ? (
           <DroppableFolder
             key={`dir-${index}`}
             id={entry.path}
             folderName={entry.name}
             activeDropFolder={activeDropFolder}
-            activeFile={activeFile}
             onCreateFile={onCreateFile}
             onCreateFolder={onCreateFolder}
             onRefresh={onRefresh}
@@ -661,15 +690,15 @@ function FileTree({
             depth={depth + 1}
             autoRename={entry.path === newlyCreatedFolder}
             onAutoRenameDone={onNewFolderRenamed}
-
+            onOpenChange={(isOpen) => { if (isOpen) onExpandFolder?.(entry.path); }}
+            defaultOpen={entry.children !== null && (entry.children?.length ?? 0) > 0 ? undefined : false}
           >
             <FileTree
               entries={entry.children ?? []}
-              activeFile={activeFile}
-      
+
               activeDropFolder={activeDropFolder}
               onFileSelect={onFileSelect}
-        
+
               onFileRenamed={onFileRenamed}
               onFileDeleted={onFileDeleted}
               onCreateFile={onCreateFile}
@@ -681,14 +710,14 @@ function FileTree({
               onNewFolderRenamed={onNewFolderRenamed}
               onAddProject={onAddProject}
               depth={depth + 1}
-  
+              onExpandFolder={onExpandFolder}
+              isSkippedDir={isSkippedDir}
             />
           </DroppableFolder>
         ) : (
           <FileItem
             key={entry.path}
             entry={entry}
-            isActive={activeFile === entry.path}
             onSelect={() => onFileSelect(entry.path)}
             onRenamed={(newPath) => onFileRenamed(entry.path, newPath)}
             onDeleted={() => onFileDeleted(entry.path)}
@@ -697,11 +726,24 @@ function FileTree({
             indent={INDENT_BASE + (depth + 1) * INDENT_STEP + FILE_EXTRA}
             autoRename={entry.path === newlyCreatedFile}
             onAutoRenameDone={onNewFileRenamed}
-
             onAddProject={onAddProject}
+            disableDnd={entries.length > 200}
           />
         )
       )}
+      {visibleCount < entries.length && (
+        <div ref={sentinelRef} className="px-4 py-1 text-[11px] text-ring">
+          {entries.length - visibleCount} more items...
+        </div>
+      )}
     </>
   );
-}
+// Callbacks excluded: all are stable useCallback refs or passed through
+// unchanged from parent. See FileItem comparator for the same rationale.
+}, (prev, next) =>
+  prev.entries === next.entries &&
+  prev.depth === next.depth &&
+  prev.activeDropFolder === next.activeDropFolder &&
+  prev.newlyCreatedFile === next.newlyCreatedFile &&
+  prev.newlyCreatedFolder === next.newlyCreatedFolder
+);

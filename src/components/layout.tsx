@@ -32,6 +32,7 @@ import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
 import { isMarkdown, isBinaryViewer } from "@/lib/file-type";
 import { OpenExternalButton } from "@/components/viewer/open-external-button";
+import { ActiveFileStore, ActiveFileProvider } from "@/components/sidebar/sidebar-context";
 import { applyContentInPlace } from "@/lib/editor-utils";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { useTrackedFolders } from "@/hooks/use-tracked-folders";
@@ -62,7 +63,12 @@ export function GhostLayout() {
   const { folders, loading, addFolder, addFolderByPath, removeFolder, reorderFolders, setFolderOpen, isFolderOpen } = useTrackedFolders();
   const { settings, updateSettings, saveTheme, deleteTheme } = useSettings();
   const updater = useUpdater();
-  const [activeFile, setActiveFile] = useState<string | null>(null);
+  const [activeFileStore] = useState(() => new ActiveFileStore());
+  const [activeFile, _setActiveFile] = useState<string | null>(null);
+  const setActiveFile = useCallback((path: string | null) => {
+    _setActiveFile(path);
+    activeFileStore.set(path);
+  }, [activeFileStore]);
   const [fileContent, setFileContent] = useState<string>("");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
@@ -131,7 +137,7 @@ export function GhostLayout() {
     [settings.showAllFiles]
   );
 
-  const { flatFiles: allFiles, getEntries, getError } = useFileTree(folders, extensions, refreshTrigger);
+  const { flatFiles: allFiles, getEntries, getError, expandFolder, isSkippedDir } = useFileTree(folders, extensions, refreshTrigger);
 
   // Auto-remove folders that no longer exist (e.g. deleted in Finder).
   // Batch all removals to avoid cascading re-renders (one per removed folder).
@@ -199,15 +205,15 @@ export function GhostLayout() {
       addRecentFile(path);
 
       if (isBinaryViewer(path)) {
+        fileContentRef.current = "";
         setActiveFile(path);
         setFileContent("");
-        fileContentRef.current = "";
         setLiveText("");
       } else {
         const content = await invoke<string>("read_file", { path });
+        fileContentRef.current = content;
         setActiveFile(path);
         setFileContent(content);
-        fileContentRef.current = content;
         setLiveText(content);
       }
     } catch (err) {
@@ -762,6 +768,7 @@ export function GhostLayout() {
         <ContextMenuTrigger asChild>
         <div className="flex-1 relative overflow-hidden">
         <div ref={treeAreaRef} data-tree-area className="h-full overscroll-contain px-1 pb-12 overflow-y-auto">
+          <ActiveFileProvider value={activeFileStore}>
           <DndContext
             sensors={sensors}
             onDragStart={handleDragStart}
@@ -794,7 +801,6 @@ export function GhostLayout() {
                     entries={getEntries(folder)}
                     error={getError(folder)}
                     onRefreshFolder={handleFsChange}
-                    activeFile={activeFile}
                     onFileSelect={handleFileSelect}
                     onRemoveFolder={(path) => {
                       removeFolder(path);
@@ -815,6 +821,8 @@ export function GhostLayout() {
                     onAddProject={addFolder}
                     defaultOpen={isFolderOpen(folder)}
                     onRootOpenChange={setFolderOpen}
+                    onExpandFolder={expandFolder}
+                    isSkippedDir={isSkippedDir}
                   />
                 ))}
               </div>
@@ -827,6 +835,7 @@ export function GhostLayout() {
               ) : null}
             </DragOverlay>
           </DndContext>
+          </ActiveFileProvider>
         </div>
         <SidebarGuide treeAreaRef={treeAreaRef} />
         </div>

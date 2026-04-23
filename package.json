@@ -60,6 +60,7 @@
     "class-variance-authority": "^0.7",
     "clsx": "^2",
     "lucide-react": "^0.500",
+    "pdfjs-dist": "^4.10.38",
     "radix-ui": "^1.4.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

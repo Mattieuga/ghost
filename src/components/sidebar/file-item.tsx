@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import {
@@ -22,10 +22,10 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import type { FileEntry } from "@/types";
+import { useIsActiveFile } from "./sidebar-context";
 
 interface FileItemProps {
   entry: FileEntry;
-  isActive: boolean;
   indent: number;
   onSelect: () => void;
   onDeleted?: () => void;
@@ -35,11 +35,11 @@ interface FileItemProps {
   autoRename?: boolean;
   onAutoRenameDone?: () => void;
   onAddProject?: () => void;
+  disableDnd?: boolean;
 }
 
-export function FileItem({
+export const FileItem = React.memo(function FileItem({
   entry,
-  isActive,
   indent,
   onSelect,
   onDeleted,
@@ -49,7 +49,9 @@ export function FileItem({
   autoRename,
   onAutoRenameDone,
   onAddProject,
+  disableDnd,
 }: FileItemProps) {
+  const isActive = useIsActiveFile(entry.path);
   const [isRenaming, setIsRenaming] = useState(false);
   const [displayName, setDisplayName] = useState(entry.name);
   const [renameName, setRenameName] = useState(entry.name);
@@ -64,16 +66,19 @@ export function FileItem({
   const parentDir = entry.path.substring(0, entry.path.lastIndexOf("/"));
 
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
-    id: entry.path,
+    id: disableDnd ? `disabled-drag:${entry.path}` : entry.path,
     data: { name: entry.name, path: entry.path, type: "file" },
+    disabled: disableDnd,
   });
 
   const { setNodeRef: setDropRef } = useDroppable({
-    id: `file-drop:${entry.path}`,
+    id: disableDnd ? `disabled-drop:${entry.path}` : `file-drop:${entry.path}`,
     data: { folderPath: parentDir },
+    disabled: disableDnd,
   });
 
   const setRefs = (el: HTMLElement | null) => {
+    if (disableDnd) return;
     setDragRef(el);
     setDropRef(el);
   };
@@ -331,4 +336,14 @@ export function FileItem({
       </Dialog>
     </div>
   );
-}
+// Callbacks are excluded: they are inline closures but always derive from
+// stable useCallback refs or the entry path (which IS compared). Adding
+// new callbacks that close over mutable unrelated state would need to be
+// included here.
+}, (prev, next) =>
+  prev.entry.path === next.entry.path &&
+  prev.entry.name === next.entry.name &&
+  prev.indent === next.indent &&
+  prev.autoRename === next.autoRename &&
+  prev.disableDnd === next.disableDnd
+);

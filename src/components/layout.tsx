@@ -25,13 +25,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { FolderTree } from "@/components/sidebar/folder-tree";
 import { EmptyState } from "@/components/sidebar/empty-state";
-import { MarkdownEditor } from "@/components/editor/markdown-editor";
-import { CodeEditor } from "@/components/editor/code-editor";
 import { HeadingMinimap } from "@/components/editor/heading-minimap";
+import { FileViewer } from "@/components/editor/file-viewer";
 import { TextStats } from "@/components/editor/text-stats";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
-import { isMarkdown } from "@/lib/file-type";
+import { isMarkdown, isBinaryViewer } from "@/lib/file-type";
+import { OpenExternalButton } from "@/components/viewer/open-external-button";
+import { ActiveFileStore, ActiveFileProvider } from "@/components/sidebar/sidebar-context";
 import { applyContentInPlace } from "@/lib/editor-utils";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { useTrackedFolders } from "@/hooks/use-tracked-folders";
@@ -62,7 +63,12 @@ export function GhostLayout() {
   const { folders, loading, addFolder, addFolderByPath, removeFolder, reorderFolders, setFolderOpen, isFolderOpen } = useTrackedFolders();
   const { settings, updateSettings, saveTheme, deleteTheme } = useSettings();
   const updater = useUpdater();
-  const [activeFile, setActiveFile] = useState<string | null>(null);
+  const [activeFileStore] = useState(() => new ActiveFileStore());
+  const [activeFile, _setActiveFile] = useState<string | null>(null);
+  const setActiveFile = useCallback((path: string | null) => {
+    _setActiveFile(path);
+    activeFileStore.set(path);
+  }, [activeFileStore]);
   const [fileContent, setFileContent] = useState<string>("");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
@@ -131,7 +137,7 @@ export function GhostLayout() {
     [settings.showAllFiles]
   );
 
-  const { flatFiles: allFiles, getEntries, getError } = useFileTree(folders, extensions, refreshTrigger);
+  const { flatFiles: allFiles, getEntries, getError, expandFolder, isSkippedDir } = useFileTree(folders, extensions, refreshTrigger);
 
   // Auto-remove folders that no longer exist (e.g. deleted in Finder).
   // Batch all removals to avoid cascading re-renders (one per removed folder).
@@ -194,14 +200,22 @@ export function GhostLayout() {
     }
 
     try {
-      const content = await invoke<string>("read_file", { path });
-      setActiveFile(path);
-      setFileContent(content);
-      fileContentRef.current = content;
       setShowSettings(false);
       closeSearch();
       addRecentFile(path);
-      setLiveText(content);
+
+      if (isBinaryViewer(path)) {
+        fileContentRef.current = "";
+        setActiveFile(path);
+        setFileContent("");
+        setLiveText("");
+      } else {
+        const content = await invoke<string>("read_file", { path });
+        fileContentRef.current = content;
+        setActiveFile(path);
+        setFileContent(content);
+        setLiveText(content);
+      }
     } catch (err) {
       console.error("Failed to read file:", err);
     }
@@ -754,6 +768,7 @@ export function GhostLayout() {
         <ContextMenuTrigger asChild>
         <div className="flex-1 relative overflow-hidden">
         <div ref={treeAreaRef} data-tree-area className="h-full overscroll-contain px-1 pb-12 overflow-y-auto">
+          <ActiveFileProvider value={activeFileStore}>
           <DndContext
             sensors={sensors}
             onDragStart={handleDragStart}
@@ -786,7 +801,6 @@ export function GhostLayout() {
                     entries={getEntries(folder)}
                     error={getError(folder)}
                     onRefreshFolder={handleFsChange}
-                    activeFile={activeFile}
                     onFileSelect={handleFileSelect}
                     onRemoveFolder={(path) => {
                       removeFolder(path);
@@ -807,6 +821,8 @@ export function GhostLayout() {
                     onAddProject={addFolder}
                     defaultOpen={isFolderOpen(folder)}
                     onRootOpenChange={setFolderOpen}
+                    onExpandFolder={expandFolder}
+                    isSkippedDir={isSkippedDir}
                   />
                 ))}
               </div>
@@ -819,6 +835,7 @@ export function GhostLayout() {
               ) : null}
             </DragOverlay>
           </DndContext>
+          </ActiveFileProvider>
         </div>
         <SidebarGuide treeAreaRef={treeAreaRef} />
         </div>
@@ -948,11 +965,15 @@ export function GhostLayout() {
                 ) : null}
               </div>
               {activeFile && (
-                <TextStats
-                  text={liveText}
-                  countMode={settings.countMode}
-                  onCountModeChange={(countMode) => updateSettings({ countMode })}
-                />
+                isBinaryViewer(activeFile) ? (
+                  <OpenExternalButton filePath={activeFile} />
+                ) : (
+                  <TextStats
+                    text={liveText}
+                    countMode={settings.countMode}
+                    onCountModeChange={(countMode) => updateSettings({ countMode })}
+                  />
+                )
               )}
             </>
           )}
@@ -961,31 +982,18 @@ export function GhostLayout() {
         {/* Editor — scrolls behind the floating header */}
         <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative">
           {activeFile ? (
-            isMarkdown(activeFile) ? (
-              <MarkdownEditor
-                key={activeFile}
-                content={fileContent}
-                onContentChange={handleContentChange}
-                searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
-                replaceTerm={search.searchOpen ? search.replaceTerm : ""}
-                onSearchResults={search.handleSearchResults}
-                activeFile={activeFile}
-                showStyleBar={settings.showStyleBar}
-                onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
-                onEditorReady={setEditorInstance}
-              />
-            ) : (
-              <CodeEditor
-                key={activeFile}
-                content={fileContent}
-                onContentChange={handleContentChange}
-                searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
-                replaceTerm={search.searchOpen ? search.replaceTerm : ""}
-                onSearchResults={search.handleSearchResults}
-                activeFile={activeFile}
-                onEditorReady={setCmView}
-              />
-            )
+            <FileViewer
+              filePath={activeFile}
+              content={fileContent}
+              onContentChange={handleContentChange}
+              searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
+              replaceTerm={search.searchOpen ? search.replaceTerm : ""}
+              onSearchResults={search.handleSearchResults}
+              onTiptapReady={setEditorInstance}
+              onCmReady={setCmView}
+              showStyleBar={settings.showStyleBar}
+              onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
+            />
           ) : (
             <div className="flex h-full items-center justify-center">
               <p className="text-muted-foreground/40 text-sm">

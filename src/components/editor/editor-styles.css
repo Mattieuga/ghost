@@ -256,7 +256,6 @@
   list-style-type: decimal;
   padding-left: 1.5rem;
   margin-bottom: 1rem;
-  color: var(--foreground);
 }
 
 .ghost-editor ol > li::marker {

@@ -21,7 +21,7 @@ pub struct FileEntry {
 }
 
 #[tauri::command]
-pub async fn read_directory(path: String, extensions: Vec<String>) -> Result<Vec<FileEntry>, String> {
+pub async fn read_directory(path: String, extensions: Vec<String>, max_depth: Option<usize>) -> Result<Vec<FileEntry>, String> {
     let dir_path = Path::new(&path);
     if !dir_path.exists() {
         return Err(format!("Directory does not exist: {}", path));
@@ -30,13 +30,12 @@ pub async fn read_directory(path: String, extensions: Vec<String>) -> Result<Vec
         return Err(format!("Path is not a directory: {}", path));
     }
 
-    read_dir_recursive(dir_path, &extensions, 0).map_err(|e| e.to_string())
+    let limit = max_depth.unwrap_or(32);
+    read_dir_recursive(dir_path, &extensions, 0, limit).map_err(|e| e.to_string())
 }
 
-const MAX_DIR_DEPTH: usize = 32;
-
-fn read_dir_recursive(dir: &Path, extensions: &[String], depth: usize) -> Result<Vec<FileEntry>, std::io::Error> {
-    if depth >= MAX_DIR_DEPTH {
+fn read_dir_recursive(dir: &Path, extensions: &[String], depth: usize, max_depth: usize) -> Result<Vec<FileEntry>, std::io::Error> {
+    if depth >= max_depth {
         return Ok(Vec::new());
     }
     let mut entries = Vec::new();
@@ -67,7 +66,7 @@ fn read_dir_recursive(dir: &Path, extensions: &[String], depth: usize) -> Result
         let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
 
         if is_dir {
-            let children = read_dir_recursive(&path, extensions, depth + 1)?;
+            let children = read_dir_recursive(&path, extensions, depth + 1, max_depth)?;
             // Always show directories (even empty ones)
             entries.push(FileEntry {
                 name,
@@ -433,4 +432,17 @@ pub async fn list_system_fonts() -> Result<Vec<String>, String> {
         .collect();
 
     Ok(names)
+}
+
+#[tauri::command]
+pub async fn open_with_default_app(path: String) -> Result<(), String> {
+    let meta = fs::metadata(&path).map_err(|e| format!("File not found: {}", e))?;
+    if !meta.is_file() {
+        return Err("Path is not a file".to_string());
+    }
+    std::process::Command::new("open")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+    Ok(())
 }

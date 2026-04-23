@@ -1,6 +1,9 @@
 import type { LanguageSupport } from "@codemirror/language";
 
 const MARKDOWN_EXTENSIONS = new Set(["md", "mdx", "markdown"]);
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "heic", "heif", "tiff", "tif"]);
+const PDF_EXTENSIONS = new Set(["pdf"]);
+const CSV_EXTENSIONS = new Set(["csv", "tsv"]);
 
 const LANGUAGE_MAP: Record<string, () => Promise<LanguageSupport>> = {
   js: () => import("@codemirror/lang-javascript").then((m) => m.javascript({ jsx: false })),
@@ -59,6 +62,48 @@ function getExtension(filePath: string): string {
 
 export function isMarkdown(filePath: string): boolean {
   return MARKDOWN_EXTENSIONS.has(getExtension(filePath));
+}
+
+export function isImage(filePath: string): boolean {
+  return IMAGE_EXTENSIONS.has(getExtension(filePath));
+}
+
+export function isPdf(filePath: string): boolean {
+  return PDF_EXTENSIONS.has(getExtension(filePath));
+}
+
+export function isCsv(filePath: string): boolean {
+  return CSV_EXTENSIONS.has(getExtension(filePath));
+}
+
+export function isSvg(filePath: string): boolean {
+  return getExtension(filePath) === "svg";
+}
+
+const TEXT_EXTENSIONS = new Set([
+  // Plain text
+  "txt", "log", "env", "ini", "cfg", "conf", "properties",
+  "gitignore", "gitattributes", "editorconfig", "dockerignore",
+  "npmrc", "nvmrc", "prettierrc", "eslintrc", "babelrc",
+  // Shell
+  "sh", "bash", "zsh", "fish",
+  // Config
+  "toml", "lock",
+  // Data
+  "graphql", "gql", "prisma",
+  // Misc text
+  "diff", "patch", "rtf",
+]);
+
+export function isTextEditable(filePath: string): boolean {
+  const ext = getExtension(filePath);
+  const name = getFileName(filePath);
+  if (ext === "") return name !== "";
+  return LANGUAGE_MAP[ext] !== undefined || TEXT_EXTENSIONS.has(ext) || FILENAME_LANGUAGE_MAP[name] !== undefined;
+}
+
+export function isBinaryViewer(filePath: string): boolean {
+  return !isMarkdown(filePath) && !isTextEditable(filePath) && !isCsv(filePath) && !isSvg(filePath);
 }
 
 export async function getLanguageSupport(filePath: string): Promise<LanguageSupport | null> {

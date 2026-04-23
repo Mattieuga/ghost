@@ -248,7 +248,7 @@ export function CodeEditor({
   return (
     <div
       ref={containerRef}
-      className="h-full min-h-full"
+      className="h-full"
     />
   );
 }

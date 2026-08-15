@@ -105,3 +105,33 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           args: "--target aarch64-apple-darwin"
+
+      - name: Notarize and staple disk image
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          DMG_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle/dmg"
+          DMG_COUNT="$(find "$DMG_DIR" -maxdepth 1 -type f -name '*.dmg' -print | wc -l | tr -d ' ')"
+
+          if [[ "$DMG_COUNT" != "1" ]]; then
+            echo "Expected exactly one disk image in $DMG_DIR, found $DMG_COUNT." >&2
+            exit 1
+          fi
+
+          DMG_PATH="$(find "$DMG_DIR" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          xcrun notarytool submit "$DMG_PATH" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$DMG_PATH"
+          xcrun stapler validate "$DMG_PATH"
+
+          gh release upload "$GITHUB_REF_NAME" "$DMG_PATH" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

@@ -24,6 +24,10 @@ Thumbs.db
 # Signing keys
 *.key
 *.key.pub
+*.cer
+*.p12
+*.p8
+certificate-base64.txt
 
 # Claude Code
 .claude/

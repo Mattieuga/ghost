@@ -105,6 +105,7 @@ interface FolderTreeProps {
   onFileSelect: (path: string) => void;
 
   onRemoveFolder: (path: string) => void;
+  onRootRenamed?: (oldPath: string, newPath: string) => void;
   onFileRenamed: (oldPath: string, newPath: string) => void;
   onFileDeleted: (path: string) => void;
   newlyCreatedFile: string | null;
@@ -131,6 +132,7 @@ export function FolderTree({
   onFileSelect,
 
   onRemoveFolder,
+  onRootRenamed,
   onFileRenamed,
   onFileDeleted,
   activeDropFolder,
@@ -194,6 +196,12 @@ export function FolderTree({
     [refresh, onNewFolderCreated]
   );
 
+  const activeFileStore = useActiveFileStore();
+  const hasActiveFile = useSyncExternalStore(
+    useCallback((cb) => activeFileStore.subscribe(cb), [activeFileStore]),
+    () => { const af = activeFileStore.get(); return !!af && af.startsWith(path + "/"); },
+  );
+
   if (error) {
     return (
       <div className="px-4 py-1 text-xs text-destructive truncate">
@@ -202,12 +210,6 @@ export function FolderTree({
     );
   }
 
-  const activeFileStore = useActiveFileStore();
-  const hasActiveFile = useSyncExternalStore(
-    useCallback((cb) => activeFileStore.subscribe(cb), [activeFileStore]),
-    () => { const af = activeFileStore.get(); return !!af && af.startsWith(path + "/"); },
-  );
-
   return (
     <DroppableFolder
       id={path}
@@ -215,6 +217,7 @@ export function FolderTree({
       activeDropFolder={activeDropFolder}
 
       onRemoveFolder={onRemoveFolder}
+      onRenamed={onRootRenamed}
       onCreateFile={handleCreateFile}
       onCreateFolder={handleCreateFolder}
       onRefresh={refresh}
@@ -257,6 +260,7 @@ function DroppableFolder({
   folderName,
   activeDropFolder,
   onRemoveFolder,
+  onRenamed,
   onCreateFile,
   onCreateFolder,
   onRefresh,
@@ -277,6 +281,7 @@ function DroppableFolder({
   folderName: string;
   activeDropFolder: string | null;
   onRemoveFolder?: (path: string) => void;
+  onRenamed?: (oldPath: string, newPath: string) => void;
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
   onRefresh: () => void;
@@ -344,7 +349,8 @@ function DroppableFolder({
     setDisplayFolderName(renameName);
     setIsRenaming(false);
     try {
-      await invoke<string>("rename_file", { oldPath: id, newName: renameName });
+      const newPath = await invoke<string>("rename_file", { oldPath: id, newName: renameName });
+      onRenamed?.(id, newPath);
     } catch (err) {
       console.error("Failed to rename folder:", err);
       setDisplayFolderName(folderName);
@@ -686,6 +692,7 @@ const FileTree = React.memo(function FileTree({
             onCreateFile={onCreateFile}
             onCreateFolder={onCreateFolder}
             onRefresh={onRefresh}
+            onRenamed={onFileRenamed}
             onAddProject={onAddProject}
             depth={depth + 1}
             autoRename={entry.path === newlyCreatedFolder}

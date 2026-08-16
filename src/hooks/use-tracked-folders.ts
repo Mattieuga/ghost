@@ -71,6 +71,25 @@ export function useTrackedFolders() {
     [persistFolders, persistCollapsed]
   );
 
+  const renameFolder = useCallback(
+    (oldPath: string, newPath: string) => {
+      setFolders((prev) => {
+        const next = prev.map((folder) => folder === oldPath ? newPath : folder);
+        persistFolders(next);
+        return next;
+      });
+      setCollapsedFolders((prev) => {
+        if (!prev.has(oldPath)) return prev;
+        const next = new Set(prev);
+        next.delete(oldPath);
+        next.add(newPath);
+        persistCollapsed(next);
+        return next;
+      });
+    },
+    [persistFolders, persistCollapsed]
+  );
+
   const setFolderOpen = useCallback(
     (path: string, isOpen: boolean) => {
       setCollapsedFolders((prev) => {
@@ -102,5 +121,5 @@ export function useTrackedFolders() {
     [collapsedFolders]
   );
 
-  return { folders, loading, addFolder, addFolderByPath, removeFolder, reorderFolders, setFolderOpen, isFolderOpen };
+  return { folders, loading, addFolder, addFolderByPath, removeFolder, renameFolder, reorderFolders, setFolderOpen, isFolderOpen };
 }

@@ -60,7 +60,7 @@ import { UpdateBanner } from "@/components/ui/update-banner";
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"]);
 
 export function GhostLayout() {
-  const { folders, loading, addFolder, addFolderByPath, removeFolder, reorderFolders, setFolderOpen, isFolderOpen } = useTrackedFolders();
+  const { folders, loading, addFolder, addFolderByPath, removeFolder, renameFolder, reorderFolders, setFolderOpen, isFolderOpen } = useTrackedFolders();
   const { settings, updateSettings, saveTheme, deleteTheme } = useSettings();
   const updater = useUpdater();
   const [activeFileStore] = useState(() => new ActiveFileStore());
@@ -272,12 +272,22 @@ export function GhostLayout() {
 
   const handleFileRenamed = useCallback(
     (oldPath: string, newPath: string) => {
-      if (activeFile === oldPath) setActiveFile(newPath);
+      if (activeFile && (activeFile === oldPath || activeFile.startsWith(oldPath + "/"))) {
+        setActiveFile(newPath + activeFile.slice(oldPath.length));
+      }
       handleFsChange();
       // Notify accessory windows
       invoke("emit_file_renamed", { oldPath, newPath }).catch(() => {});
     },
     [activeFile, handleFsChange]
+  );
+
+  const handleRootRenamed = useCallback(
+    (oldPath: string, newPath: string) => {
+      renameFolder(oldPath, newPath);
+      handleFileRenamed(oldPath, newPath);
+    },
+    [renameFolder, handleFileRenamed]
   );
 
   const handleFileDeleted = useCallback(
@@ -809,6 +819,7 @@ export function GhostLayout() {
                         setFileContent("");
                       }
                     }}
+                    onRootRenamed={handleRootRenamed}
                     onFileRenamed={handleFileRenamed}
                     onFileDeleted={handleFileDeleted}
                     newlyCreatedFile={newlyCreatedFile}

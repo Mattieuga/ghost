@@ -770,6 +770,15 @@ export function GhostLayout() {
           className="h-12 shrink-0 flex items-center justify-end gap-3 px-3"
           data-tauri-drag-region
         >
+          {__GHOST_DEV_BUILD__ && (
+            <span
+              data-sidebar-chrome
+              className="pointer-events-none rounded border border-ghost-amber/40 bg-ghost-amber/10 px-1.5 py-0.5 text-[9px] font-semibold leading-none tracking-[0.12em] text-ghost-amber"
+              title="Development build"
+            >
+              DEV
+            </span>
+          )}
           <button
             data-sidebar-chrome
             onClick={() => setCommandPaletteOpen(true)}

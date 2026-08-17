@@ -30,7 +30,7 @@ import { FileViewer } from "@/components/editor/file-viewer";
 import { TextStats } from "@/components/editor/text-stats";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
-import { isMarkdown, isBinaryViewer } from "@/lib/file-type";
+import { isMarkdown, isBinaryViewer, shouldProbeTextContent } from "@/lib/file-type";
 import { OpenExternalButton } from "@/components/viewer/open-external-button";
 import { ActiveFileStore, ActiveFileProvider } from "@/components/sidebar/sidebar-context";
 import { applyContentInPlace } from "@/lib/editor-utils";
@@ -70,6 +70,7 @@ export function GhostLayout() {
     activeFileStore.set(path);
   }, [activeFileStore]);
   const [fileContent, setFileContent] = useState<string>("");
+  const [isContentDetectedText, setIsContentDetectedText] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [isRenamingHeader, setIsRenamingHeader] = useState(false);
@@ -204,14 +205,24 @@ export function GhostLayout() {
       closeSearch();
       addRecentFile(path);
 
-      if (isBinaryViewer(path)) {
+      if (shouldProbeTextContent(path)) {
+        const content = await invoke<string | null>("read_file_if_text", { path });
+        const detectedText = content !== null;
+        fileContentRef.current = content ?? "";
+        setIsContentDetectedText(detectedText);
+        setActiveFile(path);
+        setFileContent(content ?? "");
+        setLiveText(content ?? "");
+      } else if (isBinaryViewer(path)) {
         fileContentRef.current = "";
+        setIsContentDetectedText(false);
         setActiveFile(path);
         setFileContent("");
         setLiveText("");
       } else {
         const content = await invoke<string>("read_file", { path });
         fileContentRef.current = content;
+        setIsContentDetectedText(false);
         setActiveFile(path);
         setFileContent(content);
         setLiveText(content);
@@ -273,13 +284,16 @@ export function GhostLayout() {
   const handleFileRenamed = useCallback(
     (oldPath: string, newPath: string) => {
       if (activeFile && (activeFile === oldPath || activeFile.startsWith(oldPath + "/"))) {
-        setActiveFile(newPath + activeFile.slice(oldPath.length));
+        const renamedPath = newPath + activeFile.slice(oldPath.length);
+        const wasText = isContentDetectedText || !isBinaryViewer(activeFile);
+        setIsContentDetectedText(wasText && shouldProbeTextContent(renamedPath));
+        setActiveFile(renamedPath);
       }
       handleFsChange();
       // Notify accessory windows
       invoke("emit_file_renamed", { oldPath, newPath }).catch(() => {});
     },
-    [activeFile, handleFsChange]
+    [activeFile, isContentDetectedText, handleFsChange]
   );
 
   const handleRootRenamed = useCallback(
@@ -294,6 +308,7 @@ export function GhostLayout() {
     (path: string) => {
       if (activeFile === path) {
         setActiveFile(null);
+        setIsContentDetectedText(false);
         setFileContent("");
       }
       handleFsChange();
@@ -816,6 +831,7 @@ export function GhostLayout() {
                       removeFolder(path);
                       if (activeFile?.startsWith(path)) {
                         setActiveFile(null);
+                        setIsContentDetectedText(false);
                         setFileContent("");
                       }
                     }}
@@ -976,7 +992,7 @@ export function GhostLayout() {
                 ) : null}
               </div>
               {activeFile && (
-                isBinaryViewer(activeFile) ? (
+                isBinaryViewer(activeFile) && !isContentDetectedText ? (
                   <OpenExternalButton filePath={activeFile} />
                 ) : (
                   <TextStats
@@ -1004,6 +1020,7 @@ export function GhostLayout() {
               onCmReady={setCmView}
               showStyleBar={settings.showStyleBar}
               onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
+              forceText={isContentDetectedText}
             />
           ) : (
             <div className="flex h-full items-center justify-center">

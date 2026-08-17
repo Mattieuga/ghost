@@ -14,23 +14,36 @@ export function ImageViewer({ filePath }: ImageViewerProps) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<{ w: number; h: number } | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const urlRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    invoke<number[]>("read_file_bytes", { path: filePath }).then((data) => {
-      const ext = filePath.split(".").pop()?.toLowerCase() ?? "png";
-      const blob = new Blob([new Uint8Array(data)], { type: MIME_MAP[ext] || "image/png" });
-      const url = URL.createObjectURL(blob);
-      if (cancelled) {
-        URL.revokeObjectURL(url);
-        return;
-      }
-      setFileSize(blob.size);
-      urlRef.current = url;
-      setBlobUrl(url);
-    });
+    setBlobUrl(null);
+    setDimensions(null);
+    setError(null);
+
+    Promise.all([
+      invoke<number[]>("read_image_preview", { path: filePath }),
+      invoke<{ size_bytes: number }>("get_file_metadata", { path: filePath }),
+    ])
+      .then(([data, metadata]) => {
+        const ext = filePath.split(".").pop()?.toLowerCase() ?? "png";
+        const mimeType = ext === "icns" ? "image/png" : MIME_MAP[ext] || "image/png";
+        const blob = new Blob([new Uint8Array(data)], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        setFileSize(metadata.size_bytes);
+        urlRef.current = url;
+        setBlobUrl(url);
+      })
+      .catch((reason) => {
+        if (!cancelled) setError(String(reason));
+      });
 
     return () => {
       cancelled = true;
@@ -50,7 +63,9 @@ export function ImageViewer({ filePath }: ImageViewerProps) {
     <div className="flex flex-col h-full">
       {/* Image */}
       <div className="flex-1 flex items-center justify-center p-8 pt-16 min-h-0">
-        {blobUrl ? (
+        {error ? (
+          <span className="text-sm text-destructive">Unable to preview image: {error}</span>
+        ) : blobUrl ? (
           <img
             src={blobUrl}
             alt={fileName}

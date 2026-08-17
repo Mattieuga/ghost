@@ -13,7 +13,7 @@ import { useSettings } from "@/hooks/use-settings";
 import { useSearch } from "@/hooks/use-search";
 import { useReloadOnFocus } from "@/hooks/use-reload-on-focus";
 import { applyTheme } from "@/lib/theme-engine";
-import { isMarkdown, isBinaryViewer } from "@/lib/file-type";
+import { isMarkdown, isBinaryViewer, shouldProbeTextContent } from "@/lib/file-type";
 import { OpenExternalButton } from "@/components/viewer/open-external-button";
 
 interface EditorWindowProps {
@@ -25,6 +25,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   const search = useSearch();
   const [filePath, setFilePath] = useState(initialFilePath);
   const [fileContent, setFileContent] = useState<string | null>(null);
+  const [isContentDetectedText, setIsContentDetectedText] = useState(false);
   const [liveText, setLiveText] = useState("");
   const lastSaveTimestamp = useRef(0);
   const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
@@ -56,19 +57,41 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
 
   // Load file content on mount
   useEffect(() => {
-    if (isBinaryViewer(filePath)) {
-      setFileContent("");
-      fileContentRef.current = "";
-      setLiveText("");
-      return;
-    }
-    invoke<string>("read_file", { path: filePath })
-      .then((content) => {
+    let cancelled = false;
+
+    const loadFile = async () => {
+      try {
+        if (shouldProbeTextContent(filePath)) {
+          const content = await invoke<string | null>("read_file_if_text", { path: filePath });
+          if (cancelled) return;
+          setIsContentDetectedText(content !== null);
+          setFileContent(content ?? "");
+          fileContentRef.current = content ?? "";
+          setLiveText(content ?? "");
+          return;
+        }
+
+        if (isBinaryViewer(filePath)) {
+          setIsContentDetectedText(false);
+          setFileContent("");
+          fileContentRef.current = "";
+          setLiveText("");
+          return;
+        }
+
+        const content = await invoke<string>("read_file", { path: filePath });
+        if (cancelled) return;
+        setIsContentDetectedText(false);
         setFileContent(content);
         fileContentRef.current = content;
         setLiveText(content);
-      })
-      .catch((err) => console.error("Failed to read file:", err));
+      } catch (err) {
+        if (!cancelled) console.error("Failed to read file:", err);
+      }
+    };
+
+    loadFile();
+    return () => { cancelled = true; };
   }, [filePath]);
 
   // Listen for file rename events
@@ -216,7 +239,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
                 </span>
               </div>
             </div>
-            {isBinaryViewer(filePath) ? (
+            {isBinaryViewer(filePath) && !isContentDetectedText ? (
               <OpenExternalButton filePath={filePath} />
             ) : (
               <TextStats
@@ -243,6 +266,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
             onCmReady={setCmView}
             showStyleBar={settings.showStyleBar}
             onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
+            forceText={isContentDetectedText}
           />
         </main>
         {mdFile && editorInstance && mainEl && (

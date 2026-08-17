@@ -2,10 +2,11 @@ import { MarkdownEditor } from "@/components/editor/markdown-editor";
 import { CodeEditor } from "@/components/editor/code-editor";
 import { ImageViewer } from "@/components/viewer/image-viewer";
 import { PdfViewer } from "@/components/viewer/pdf-viewer";
+import { FontViewer } from "@/components/viewer/font-viewer";
 import { CsvViewer } from "@/components/viewer/csv-viewer";
 import { SvgViewer } from "@/components/viewer/svg-viewer";
 import { UnsupportedViewer } from "@/components/viewer/unsupported-viewer";
-import { isMarkdown, isImage, isPdf, isCsv, isSvg, isTextEditable } from "@/lib/file-type";
+import { isMarkdown, isImage, isPdf, isFont, isCsv, isSvg, isTextEditable } from "@/lib/file-type";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
 
@@ -20,6 +21,7 @@ interface FileViewerProps {
   onCmReady?: (view: EditorView | null) => void;
   showStyleBar?: boolean;
   onToggleStyleBar?: () => void;
+  forceText?: boolean;
 }
 
 export function FileViewer({
@@ -33,6 +35,7 @@ export function FileViewer({
   onCmReady,
   showStyleBar,
   onToggleStyleBar,
+  forceText = false,
 }: FileViewerProps) {
   if (isMarkdown(filePath)) {
     return (
@@ -53,6 +56,7 @@ export function FileViewer({
 
   if (isImage(filePath)) return <ImageViewer key={filePath} filePath={filePath} />;
   if (isPdf(filePath)) return <PdfViewer key={filePath} filePath={filePath} />;
+  if (isFont(filePath)) return <FontViewer key={filePath} filePath={filePath} />;
 
   if (isSvg(filePath)) {
     return (
@@ -84,7 +88,9 @@ export function FileViewer({
     );
   }
 
-  if (!isTextEditable(filePath)) return <UnsupportedViewer key={filePath} filePath={filePath} />;
+  if (!forceText && !isTextEditable(filePath)) {
+    return <UnsupportedViewer key={filePath} filePath={filePath} />;
+  }
 
   return (
     <CodeEditor

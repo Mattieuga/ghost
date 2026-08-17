@@ -106,6 +106,46 @@ pub async fn read_file(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))
 }
 
+/// Read an otherwise-unknown file only when its contents look like UTF-8 text.
+///
+/// Returning `None` for binary data lets the frontend keep using the
+/// unsupported-file viewer without treating arbitrary bytes as editable text.
+#[tauri::command]
+pub async fn read_file_if_text(path: String) -> Result<Option<String>, String> {
+    let bytes = fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
+    Ok(decode_text_bytes(&bytes))
+}
+
+fn decode_text_bytes(bytes: &[u8]) -> Option<String> {
+    let content = std::str::from_utf8(bytes).ok()?;
+    if !looks_like_text(content) {
+        return None;
+    }
+    Some(content.to_string())
+}
+
+fn looks_like_text(content: &str) -> bool {
+    let mut character_count = 0usize;
+    let mut suspicious_controls = 0usize;
+
+    for character in content.chars() {
+        character_count += 1;
+
+        // NUL bytes are a particularly strong binary-file signal.
+        if character == '\0' {
+            return false;
+        }
+
+        if character.is_control() && !matches!(character, '\n' | '\r' | '\t' | '\u{000C}') {
+            suspicious_controls += 1;
+        }
+    }
+
+    // Permit an occasional control character (for example, ANSI escape codes
+    // in a log) but reject control-heavy content.
+    suspicious_controls == 0 || suspicious_controls.saturating_mul(100) <= character_count
+}
+
 /// List filenames in a directory (non-recursive, files only)
 #[tauri::command]
 pub async fn list_directory_files(path: String) -> Result<Vec<String>, String> {
@@ -128,6 +168,62 @@ pub async fn list_directory_files(path: String) -> Result<Vec<String>, String> {
 #[tauri::command]
 pub async fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
     fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))
+}
+
+#[tauri::command]
+pub async fn read_image_preview(path: String) -> Result<Vec<u8>, String> {
+    let bytes = fs::read(&path).map_err(|e| format!("Failed to read image: {}", e))?;
+    let is_icns = Path::new(&path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("icns"));
+
+    if is_icns {
+        return render_icns_preview(&bytes);
+    }
+
+    Ok(bytes)
+}
+
+#[cfg(target_os = "macos")]
+fn render_icns_preview(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    use objc2::runtime::AnyObject;
+    use objc2::AnyThread;
+    use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSImage};
+    use objc2_foundation::{NSData, NSDictionary};
+
+    let data = NSData::with_bytes(bytes);
+    let image = NSImage::initWithData(NSImage::alloc(), &data)
+        .ok_or_else(|| "macOS could not decode this ICNS file".to_string())?;
+    let tiff = image
+        .TIFFRepresentation()
+        .ok_or_else(|| "macOS could not render this ICNS file".to_string())?;
+    let representations = NSBitmapImageRep::imageRepsWithData(&tiff).to_vec();
+    let largest = representations
+        .iter()
+        .filter_map(|representation| {
+            let object: &AnyObject = representation;
+            object.downcast_ref::<NSBitmapImageRep>()
+        })
+        .max_by_key(|representation| {
+            representation
+                .pixelsWide()
+                .saturating_mul(representation.pixelsHigh())
+        })
+        .ok_or_else(|| "The ICNS file does not contain a renderable image".to_string())?;
+
+    let properties = NSDictionary::dictionary();
+    let png = unsafe {
+        largest.representationUsingType_properties(NSBitmapImageFileType::PNG, &properties)
+    }
+    .ok_or_else(|| "macOS could not create an ICNS preview".to_string())?;
+
+    Ok(png.to_vec())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn render_icns_preview(_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    Err("ICNS previews are currently supported on macOS only".to_string())
 }
 
 #[tauri::command]
@@ -445,4 +541,65 @@ pub async fn open_with_default_app(path: String) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("Failed to open file: {}", e))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decode_text_bytes;
+
+    #[test]
+    fn accepts_utf8_text() {
+        let content = br#"{"version": 3, "pins": []}"#;
+        assert_eq!(
+            decode_text_bytes(content),
+            Some("{\"version\": 3, \"pins\": []}".to_string())
+        );
+    }
+
+    #[test]
+    fn accepts_unicode_and_empty_text() {
+        assert_eq!(
+            decode_text_bytes("Hello, 世界".as_bytes()),
+            Some("Hello, 世界".to_string())
+        );
+        assert_eq!(decode_text_bytes(b""), Some(String::new()));
+    }
+
+    #[test]
+    fn preserves_a_utf8_bom() {
+        let content = b"\xEF\xBB\xBFhello";
+        assert_eq!(
+            decode_text_bytes(content),
+            Some("\u{FEFF}hello".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_utf8_and_nul_bytes() {
+        assert_eq!(decode_text_bytes(&[0xFF, 0xFE, 0x00, 0x01]), None);
+        assert_eq!(decode_text_bytes(b"plain\0text"), None);
+    }
+
+    #[test]
+    fn rejects_control_heavy_content_but_allows_an_occasional_control() {
+        assert_eq!(decode_text_bytes(b"a\x01b\x02c"), None);
+
+        let occasional_control = format!("\u{001B}{}", "x".repeat(100));
+        assert_eq!(
+            decode_text_bytes(occasional_control.as_bytes()),
+            Some(occasional_control)
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn renders_the_largest_icns_representation_as_png() {
+        let icns = include_bytes!("../../icons/icon-prod.icns");
+        let png = super::render_icns_preview(icns).expect("ICNS preview should render");
+
+        assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+        let width = u32::from_be_bytes(png[16..20].try_into().unwrap());
+        let height = u32::from_be_bytes(png[20..24].try_into().unwrap());
+        assert_eq!((width, height), (1024, 1024));
+    }
 }

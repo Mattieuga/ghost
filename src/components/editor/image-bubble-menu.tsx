@@ -1,4 +1,5 @@
-import { BubbleMenu, type Editor } from "@tiptap/react";
+import type { Editor } from "@tiptap/react";
+import { BubbleMenu } from "@tiptap/react/menus";
 import { useState, useRef, useCallback, useEffect } from "react";
 
 interface ImageBubbleMenuProps {
@@ -38,11 +39,9 @@ export function ImageBubbleMenu({ editor }: ImageBubbleMenuProps) {
       editor={editor}
       updateDelay={0}
       shouldShow={({ editor }) => editor.isActive("image")}
-      tippyOptions={{
+      options={{
         placement: "bottom-start",
-        offset: [0, 8],
-        duration: 0,
-        moveTransition: "",
+        offset: 8,
         onShow: () => {
           syncFromEditor();
         },

@@ -1,93 +1,24 @@
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import TaskList from "@tiptap/extension-task-list";
-import TaskItem from "@tiptap/extension-task-item";
+import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import Link from "@tiptap/extension-link";
-import Focus from "@tiptap/extension-focus";
+import { Focus } from "@tiptap/extensions";
 import Underline from "@tiptap/extension-underline";
 import Highlight from "@tiptap/extension-highlight";
-import Table from "@tiptap/extension-table";
-import TableRow from "@tiptap/extension-table-row";
-import TableHeader from "@tiptap/extension-table-header";
-import TableCell from "@tiptap/extension-table-cell";
-
-// Override table markdown serialization: use HTML when columns have custom widths
-const ResizableTable = Table.extend({
-  addStorage() {
-    return {
-      markdown: {
-        serialize(state: any, node: any) {
-          // Check if any cell has custom column widths (short-circuit on first match)
-          let hasCustomWidths = false;
-          node.forEach((row: any) => {
-            if (hasCustomWidths) return;
-            row.forEach((cell: any) => {
-              if (hasCustomWidths) return;
-              if (cell.attrs.colwidth && cell.attrs.colwidth.some((w: number | null) => w !== null && w > 0)) {
-                hasCustomWidths = true;
-              }
-            });
-          });
-
-          if (hasCustomWidths) {
-            // Serialize as HTML to preserve widths
-            state.write(serializeTableToHtml(node));
-            state.closeBlock(node);
-          } else {
-            // Standard GFM pipe table
-            state.inTable = true;
-            node.forEach((row: any, _p: number, i: number) => {
-              state.write("| ");
-              row.forEach((col: any, _p2: number, j: number) => {
-                if (j) state.write(" | ");
-                const cellContent = col.firstChild;
-                if (cellContent?.textContent.trim()) {
-                  state.renderInline(cellContent);
-                }
-              });
-              state.write(" |");
-              state.ensureNewLine();
-              if (!i) {
-                const delimiterRow = Array.from({ length: row.childCount }).map(() => "---").join(" | ");
-                state.write(`| ${delimiterRow} |`);
-                state.ensureNewLine();
-              }
-            });
-            state.closeBlock(node);
-            state.inTable = false;
-          }
-        },
-        parse: {},
-      },
-    };
-  },
-});
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-function serializeTableToHtml(node: any): string {
-  let html = "<table>\n";
-  node.forEach((row: any) => {
-    html += "  <tr>\n";
-    row.forEach((cell: any) => {
-      const tag = cell.type.name === "tableHeader" ? "th" : "td";
-      const widthAttr = cell.attrs.colwidth ? ` colwidth="${cell.attrs.colwidth.join(",")}"` : "";
-      const content = escapeHtml(cell.textContent || "");
-      html += `    <${tag}${widthAttr}>${content}</${tag}>\n`;
-    });
-    html += "  </tr>\n";
-  });
-  html += "</table>\n\n";
-  return html;
-}
+import {
+  TableCell,
+  TableHeader,
+  TableRow,
+} from "@tiptap/extension-table";
+import { FindAndReplace } from "@tiptap/extension-find-and-replace";
+import { Markdown } from "@tiptap/markdown";
 
 import { ResizableImage } from "./image-extension";
-import { Markdown } from "tiptap-markdown";
-import { SearchAndReplace } from "./search-and-replace";
+import { ResizableTable } from "./table-extension";
+import { Frontmatter } from "./frontmatter-extension";
+import { parseMarkdownDocument } from "./frontmatter";
 import { CollapsibleHeadings } from "./collapsible-headings";
 import { useEffect, useRef, useCallback } from "react";
 import { DOMSerializer } from "@tiptap/pm/model";
@@ -188,9 +119,15 @@ export function MarkdownEditor({
   );
 
   const editor = useEditor({
+    // Preserve the v2 behavior expected by the existing toolbar components.
+    // They read editor.isActive() during render to update button state.
+    shouldRerenderOnTransaction: true,
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3, 4, 5, 6] },
+        link: false,
+        trailingNode: false,
+        underline: false,
       }),
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -210,11 +147,8 @@ export function MarkdownEditor({
         mode: "deepest",
       }),
       Markdown.configure({
-        html: true,
-        tightLists: true,
-        bulletListMarker: "-",
-        transformPastedText: true,
-        transformCopiedText: false,
+        indentation: { style: "space", size: 2 },
+        markedOptions: { gfm: true },
       }),
       Underline,
       Highlight,
@@ -222,18 +156,23 @@ export function MarkdownEditor({
       TableRow,
       TableHeader,
       TableCell,
-      SearchAndReplace,
+      Frontmatter,
+      FindAndReplace.configure({
+        injectCSS: false,
+        searchDebounceMs: 0,
+      }),
       CollapsibleHeadings,
     ],
     content: "",
     onUpdate: ({ editor }) => {
-      const markdown = editor.storage.markdown.getMarkdown();
+      const markdown = editor.getMarkdown();
       debouncedSave(markdown);
     },
     onTransaction: ({ editor }) => {
       if (!onSearchResults) return;
-      const { results, resultIndex } = editor.storage.searchAndReplace;
+      const { results, currentIndex } = editor.storage.findAndReplace;
       const count = results.length;
+      const resultIndex = currentIndex ?? 0;
       if (count !== lastSearchResults.current.count || resultIndex !== lastSearchResults.current.index) {
         lastSearchResults.current = { count, index: resultIndex };
         onSearchResults(count, resultIndex);
@@ -307,7 +246,8 @@ export function MarkdownEditor({
             const slice = view.state.doc.slice(from, to);
             const tempDoc = view.state.schema.topNodeType.create(null, slice.content);
             try {
-              const md = editor?.storage.markdown.serializer.serialize(tempDoc);
+              const md = editor?.markdown?.serialize(tempDoc.toJSON());
+              if (md === undefined) throw new Error("Markdown serializer unavailable");
               writeText(md);
             } catch {
               writeText(view.state.doc.textBetween(from, to, "\n"));
@@ -321,7 +261,7 @@ export function MarkdownEditor({
           if (saveTimeout.current) {
             clearTimeout(saveTimeout.current);
           }
-          const md = editor?.storage.markdown.getMarkdown();
+          const md = editor?.getMarkdown();
           if (md !== undefined) {
             onContentChange(md);
           }
@@ -338,7 +278,7 @@ export function MarkdownEditor({
       if (saveTimeout.current) {
         clearTimeout(saveTimeout.current);
         saveTimeout.current = null;
-        const md = editor?.storage.markdown?.getMarkdown();
+        const md = editor?.getMarkdown();
         if (md !== undefined) {
           onContentChange(md);
         }
@@ -366,7 +306,9 @@ export function MarkdownEditor({
   const contentSet = useRef(false);
   useEffect(() => {
     if (editor && !contentSet.current) {
-      editor.commands.setContent(content);
+      editor.commands.setContent(parseMarkdownDocument(editor, content), {
+        emitUpdate: false,
+      });
       contentSet.current = true;
     }
   }, [editor]);
@@ -384,7 +326,7 @@ export function MarkdownEditor({
         clearTimeout(saveTimeout.current);
         saveTimeout.current = null;
       }
-      const md = editor?.storage.markdown.getMarkdown();
+      const md = editor?.getMarkdown();
       if (md !== undefined) {
         await onContentChange(md);
       }
@@ -401,7 +343,7 @@ export function MarkdownEditor({
         clearTimeout(saveTimeout.current);
         saveTimeout.current = null;
       }
-      const md = editor?.storage.markdown.getMarkdown();
+      const md = editor?.getMarkdown();
       if (md !== undefined) {
         onContentChange(md);
       }
@@ -435,8 +377,8 @@ export function MarkdownEditor({
   // Expose search commands for top bar and native menu
   useEffect(() => {
     window.__ghostSearch = {
-      next: () => editor?.commands.nextSearchResult(),
-      previous: () => editor?.commands.previousSearchResult(),
+      next: () => editor?.commands.goToNextResult(),
+      previous: () => editor?.commands.goToPreviousResult(),
       replace: () => editor?.commands.replace(),
       replaceAll: () => editor?.commands.replaceAll(),
     };
@@ -458,7 +400,8 @@ export function MarkdownEditor({
         const slice = editor.state.doc.slice(from, to);
         const tempDoc = editor.schema.topNodeType.create(null, slice.content);
         try {
-          const selectedMd = editor.storage.markdown.serializer.serialize(tempDoc);
+          const selectedMd = editor.markdown?.serialize(tempDoc.toJSON());
+          if (selectedMd === undefined) throw new Error("Markdown serializer unavailable");
           await writeText(selectedMd);
         } catch {
           // Fallback to full markdown if serializer fails on slice

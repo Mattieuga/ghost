@@ -484,15 +484,72 @@
 }
 
 /* Search and replace highlights */
-.search-result {
+.find-and-replace-result {
   background-color: oklch(0.8 0.15 75);
   border-radius: 2px;
 }
 
-.search-result-current {
+.find-and-replace-result-current {
   background-color: var(--ghost-amber);
   color: #000;
   border-radius: 2px;
+}
+
+/* Lossless YAML frontmatter block */
+.ghost-frontmatter {
+  margin: 0 0 1.25rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--border) 78%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--muted) 32%, transparent);
+}
+
+.ghost-frontmatter.selected {
+  border-color: color-mix(in oklch, var(--ghost-amber) 65%, var(--border));
+}
+
+.ghost-frontmatter-header {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  padding: 7px 10px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ghost-frontmatter-header:hover {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--muted) 55%, transparent);
+}
+
+.ghost-frontmatter-count {
+  margin-left: auto;
+  font-weight: 400;
+  opacity: 0.72;
+}
+
+.ghost-frontmatter-source {
+  display: block;
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  border: 0;
+  border-top: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+  padding: 10px 12px;
+  outline: none;
+  background: color-mix(in oklch, var(--background) 64%, transparent);
+  color: var(--foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
 }
 
 /* Collapsible headings — chevron toggle */

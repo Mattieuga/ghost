@@ -1,6 +1,7 @@
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
 import { TextSelection } from "@tiptap/pm/state";
+import { parseMarkdownDocument } from "../components/editor/frontmatter";
 
 export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
@@ -20,7 +21,7 @@ export function applyContentInPlace(
     const { from, to } = editor.state.selection;
     editor
       .chain()
-      .setContent(content, false)
+      .setContent(parseMarkdownDocument(editor, content), { emitUpdate: false })
       .command(({ tr, dispatch }) => {
         if (!dispatch) return true;
         const docSize = tr.doc.content.size;

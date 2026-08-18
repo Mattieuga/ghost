@@ -74,25 +74,18 @@ export const ResizableImage = Image.extend({
     };
   },
 
-  addStorage() {
-    return {
-      markdown: {
-        serialize(state: any, node: any) {
-          const { src, alt, title, width } = node.attrs;
-          if (width) {
-            const safeSrc = escapeAttr(src || "");
-            const altAttr = alt ? ` alt="${escapeAttr(alt)}"` : "";
-            const titleAttr = title ? ` title="${escapeAttr(title)}"` : "";
-            state.write(`<img src="${safeSrc}"${altAttr}${titleAttr} width="${Math.round(width)}">\n\n`);
-          } else {
-            state.write(`![${state.esc(alt || "")}](${src}${title ? ` "${state.esc(title)}"` : ""})\n\n`);
-          }
-        },
-        parse: {
-          // handled by markdown-it (parses both ![](src) and <img> tags)
-        },
-      },
-    };
+  renderMarkdown: (node) => {
+    const { src, alt, title, width } = node.attrs ?? {};
+    if (width) {
+      const safeSrc = escapeAttr(src || "");
+      const altAttr = alt ? ` alt="${escapeAttr(alt)}"` : "";
+      const titleAttr = title ? ` title="${escapeAttr(title)}"` : "";
+      return `<img src="${safeSrc}"${altAttr}${titleAttr} width="${Math.round(width)}">`;
+    }
+
+    const escapedAlt = String(alt || "").replace(/([\\\]])/g, "\\$1");
+    const escapedTitle = String(title || "").replace(/([\\"])/g, "\\$1");
+    return `![${escapedAlt}](${src || ""}${title ? ` "${escapedTitle}"` : ""})`;
   },
 
   addNodeView() {

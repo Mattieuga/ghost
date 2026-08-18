@@ -1,4 +1,5 @@
-import { BubbleMenu, type Editor } from "@tiptap/react";
+import type { Editor } from "@tiptap/react";
+import { BubbleMenu } from "@tiptap/react/menus";
 import { useState, useRef, useCallback } from "react";
 import { ExternalLink, Unlink } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -97,11 +98,9 @@ export function LinkBubbleMenu({ editor }: LinkBubbleMenuProps) {
       shouldShow={({ editor }) => {
         try { return editor.isActive("link"); } catch { return false; }
       }}
-      tippyOptions={{
+      options={{
         placement: "bottom-start",
-        offset: [0, 4],
-        duration: 0,
-        moveTransition: "",
+        offset: 4,
         onShow: () => {
           showRef.current = true;
           requestAnimationFrame(syncFromEditor);

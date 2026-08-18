@@ -538,17 +538,42 @@
 .ghost-frontmatter-source {
   display: block;
   width: 100%;
-  min-height: 72px;
-  resize: vertical;
   border: 0;
   border-top: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
-  padding: 10px 12px;
-  outline: none;
   background: color-mix(in oklch, var(--background) 64%, transparent);
   color: var(--foreground);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
   line-height: 1.55;
+  white-space: pre;
+}
+
+.ghost-frontmatter-delimiter {
+  padding: 3px 12px;
+  color: var(--muted-foreground);
+  user-select: none;
+}
+
+.ghost-frontmatter-delimiter:first-child {
+  padding-top: 9px;
+}
+
+.ghost-frontmatter-delimiter:last-child {
+  padding-bottom: 9px;
+}
+
+.ghost-frontmatter-yaml {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  resize: vertical;
+  border: 0;
+  padding: 1px 12px;
+  outline: none;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  line-height: inherit;
   white-space: pre;
 }
 

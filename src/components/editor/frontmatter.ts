@@ -9,6 +9,14 @@ export interface SplitFrontmatter {
   body: string;
 }
 
+export interface FrontmatterSource {
+  opening: string;
+  openingEol: "\n" | "\r\n";
+  yaml: string;
+  closingEol: "\n" | "\r\n" | "";
+  closing: string;
+}
+
 export function splitFrontmatter(markdown: string): SplitFrontmatter | null {
   const match = markdown.match(FRONTMATTER_PATTERN);
   if (!match) return null;
@@ -18,6 +26,43 @@ export function splitFrontmatter(markdown: string): SplitFrontmatter | null {
     // block and the body. Do not turn the source separator into empty nodes.
     body: markdown.slice(match[0].length).replace(/^(?:(?:\r\n|\n)[ \t]*)+/, ""),
   };
+}
+
+/**
+ * Split a validated raw frontmatter node into its structural delimiters and
+ * editable YAML. Keeping those pieces separate prevents the editor UI from
+ * accidentally turning the block into ordinary Markdown.
+ */
+export function parseFrontmatterSource(raw: string): FrontmatterSource | null {
+  const match = raw.match(
+    /^(\uFEFF?---[ \t]*)(\r\n|\n)([\s\S]*?)(?:(\r\n|\n))?((?:---|\.\.\.)[ \t]*)$/,
+  );
+  if (!match) return null;
+
+  return {
+    opening: match[1],
+    openingEol: match[2] as "\n" | "\r\n",
+    yaml: match[3],
+    closingEol: (match[4] ?? "") as "\n" | "\r\n" | "",
+    closing: match[5],
+  };
+}
+
+/** Replace only the YAML payload while retaining the source block's format. */
+export function replaceFrontmatterYaml(raw: string, yaml: string): string {
+  const source = parseFrontmatterSource(raw);
+  if (!source) return raw;
+
+  const normalizedYaml = yaml.replace(/\r\n|\r|\n/g, source.openingEol);
+  const closingEol = normalizedYaml ? source.closingEol || source.openingEol : "";
+
+  return (
+    source.opening +
+    source.openingEol +
+    normalizedYaml +
+    closingEol +
+    source.closing
+  );
 }
 
 /**

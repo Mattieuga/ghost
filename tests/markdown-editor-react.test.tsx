@@ -66,5 +66,16 @@ describe("MarkdownEditor React integration", () => {
     expect(host.querySelector(".ghost-editor")?.textContent).toContain("Recipe");
     expect(host.querySelector(".floating-toolbar")).not.toBeNull();
     expect(onContentChange).not.toHaveBeenCalled();
+
+    await act(async () => {
+      (host.querySelector(".ghost-frontmatter-header") as HTMLButtonElement).click();
+    });
+
+    const yamlEditor = host.querySelector(
+      'textarea[aria-label="YAML frontmatter content"]',
+    ) as HTMLTextAreaElement;
+    expect(yamlEditor.value).toBe("title: Chili");
+    expect(host.querySelectorAll(".ghost-frontmatter-delimiter")[0]?.textContent).toBe("---");
+    expect(host.querySelectorAll(".ghost-frontmatter-delimiter")[1]?.textContent).toBe("---");
   });
 });

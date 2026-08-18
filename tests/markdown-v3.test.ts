@@ -9,7 +9,11 @@ import { TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import { FindAndReplace } from "@tiptap/extension-find-and-replace";
 import { Markdown } from "@tiptap/markdown";
 import { Frontmatter } from "../src/components/editor/frontmatter-extension";
-import { parseMarkdownDocument } from "../src/components/editor/frontmatter";
+import {
+  parseFrontmatterSource,
+  parseMarkdownDocument,
+  replaceFrontmatterYaml,
+} from "../src/components/editor/frontmatter";
 import { ResizableImage } from "../src/components/editor/image-extension";
 import { ResizableTable } from "../src/components/editor/table-extension";
 
@@ -77,6 +81,22 @@ describe("Tiptap 3 Markdown", () => {
     const editor = createEditor(frontmatter);
     expect(editor.getJSON().content?.[0]?.attrs?.raw).toBe(frontmatter);
     expect(editor.getMarkdown()).toBe(frontmatter);
+  });
+
+  it("edits only YAML while preserving frontmatter delimiters and line endings", () => {
+    const raw = "\uFEFF---  \r\ntitle: Chili\r\n...  ";
+
+    expect(parseFrontmatterSource(raw)).toEqual({
+      opening: "\uFEFF---  ",
+      openingEol: "\r\n",
+      yaml: "title: Chili",
+      closingEol: "\r\n",
+      closing: "...  ",
+    });
+    expect(replaceFrontmatterYaml(raw, "title: Soup\n# keep comment")).toBe(
+      "\uFEFF---  \r\ntitle: Soup\r\n# keep comment\r\n...  ",
+    );
+    expect(replaceFrontmatterYaml(raw, "")).toBe("\uFEFF---  \r\n...  ");
   });
 
   it("does not reinterpret a delimiter block in the middle of a document as frontmatter", () => {

@@ -2,6 +2,7 @@ import { Node, mergeAttributes } from "@tiptap/core";
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from "@tiptap/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { parseFrontmatterSource, replaceFrontmatterYaml } from "./frontmatter";
 
 /**
  * YAML frontmatter is deliberately kept as raw source. Ghost does not parse or
@@ -10,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
  */
 function FrontmatterView({ node, updateAttributes, selected }: NodeViewProps) {
   const raw = String(node.attrs.raw ?? "---\n---");
+  const source = parseFrontmatterSource(raw) ?? parseFrontmatterSource("---\n---")!;
   const [expanded, setExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -18,9 +20,9 @@ function FrontmatterView({ node, updateAttributes, selected }: NodeViewProps) {
     const textarea = textareaRef.current;
     textarea.style.height = "0px";
     textarea.style.height = `${textarea.scrollHeight}px`;
-  }, [expanded, raw]);
+  }, [expanded, source.yaml]);
 
-  const lineCount = raw.split(/\r?\n/).length;
+  const lineCount = source.yaml ? source.yaml.split(/\r?\n/).length : 0;
 
   return (
     <NodeViewWrapper
@@ -36,18 +38,30 @@ function FrontmatterView({ node, updateAttributes, selected }: NodeViewProps) {
       >
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         <span>Frontmatter</span>
-        <span className="ghost-frontmatter-count">{lineCount} lines</span>
+        <span className="ghost-frontmatter-count">
+          {lineCount} YAML {lineCount === 1 ? "line" : "lines"}
+        </span>
       </button>
       {expanded && (
-        <textarea
-          ref={textareaRef}
-          className="ghost-frontmatter-source"
-          value={raw}
-          spellCheck={false}
-          aria-label="YAML frontmatter source"
-          onChange={(event) => updateAttributes({ raw: event.target.value })}
-          onKeyDown={(event) => event.stopPropagation()}
-        />
+        <div className="ghost-frontmatter-source">
+          <div className="ghost-frontmatter-delimiter" aria-hidden="true">
+            {source.opening.replace(/^\uFEFF/, "")}
+          </div>
+          <textarea
+            ref={textareaRef}
+            className="ghost-frontmatter-yaml"
+            value={source.yaml}
+            spellCheck={false}
+            aria-label="YAML frontmatter content"
+            onChange={(event) =>
+              updateAttributes({ raw: replaceFrontmatterYaml(raw, event.target.value) })
+            }
+            onKeyDown={(event) => event.stopPropagation()}
+          />
+          <div className="ghost-frontmatter-delimiter" aria-hidden="true">
+            {source.closing}
+          </div>
+        </div>
       )}
     </NodeViewWrapper>
   );

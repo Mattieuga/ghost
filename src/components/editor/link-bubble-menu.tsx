@@ -1,6 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import { ExternalLink, Unlink } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { ensureProtocol } from "./floating-toolbar";
@@ -91,24 +91,28 @@ export function LinkBubbleMenu({ editor }: LinkBubbleMenuProps) {
   const btnClass =
     "flex-shrink-0 p-0.5 rounded hover:bg-muted/50 text-muted-foreground transition-colors";
 
+  const shouldShow = useCallback(({ editor: currentEditor }: { editor: Editor }) => {
+    try { return currentEditor.isActive("link"); } catch { return false; }
+  }, []);
+
+  const menuOptions = useMemo(() => ({
+    placement: "bottom-start" as const,
+    offset: 4,
+    onShow: () => {
+      showRef.current = true;
+      requestAnimationFrame(syncFromEditor);
+    },
+    onHide: () => {
+      showRef.current = false;
+    },
+  }), [syncFromEditor]);
+
   return (
     <BubbleMenu
       editor={editor}
       updateDelay={0}
-      shouldShow={({ editor }) => {
-        try { return editor.isActive("link"); } catch { return false; }
-      }}
-      options={{
-        placement: "bottom-start",
-        offset: 4,
-        onShow: () => {
-          showRef.current = true;
-          requestAnimationFrame(syncFromEditor);
-        },
-        onHide: () => {
-          showRef.current = false;
-        },
-      }}
+      shouldShow={shouldShow}
+      options={menuOptions}
     >
       <div
         className="flex items-center gap-1 rounded-lg border border-border bg-popover px-2 py-1.5 shadow-lg"

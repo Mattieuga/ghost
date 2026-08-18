@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
-import type { Editor } from "@tiptap/react";
+import { useEditorState, type Editor } from "@tiptap/react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { handleImageFromPath } from "./image-extension";
 
@@ -84,6 +84,12 @@ function DropdownItem({ label, shortcut, active, icon, onSelect }: {
 // --- Main toolbar ---
 
 export function FloatingToolbar({ editor, onHide }: ToolbarProps) {
+  // Tiptap 3 no longer rerenders the parent React tree for every transaction.
+  // Subscribe only this stateful toolbar so active buttons still stay current.
+  useEditorState({
+    editor,
+    selector: ({ transactionNumber }) => transactionNumber,
+  });
   const isActive = (name: string, attrs?: Record<string, any>) => editor.isActive(name, attrs);
   const [centerX, setCenterX] = useState<number | null>(null);
 

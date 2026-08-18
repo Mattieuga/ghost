@@ -1,6 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 
 interface ImageBubbleMenuProps {
   editor: Editor;
@@ -34,21 +34,26 @@ export function ImageBubbleMenu({ editor }: ImageBubbleMenuProps) {
     editor.chain().focus().updateAttributes("image", { alt, src }).run();
   }, [editor, alt, src]);
 
+  const shouldShow = useCallback(
+    ({ editor: currentEditor }: { editor: Editor }) => currentEditor.isActive("image"),
+    [],
+  );
+
+  const menuOptions = useMemo(() => ({
+    placement: "bottom-start" as const,
+    offset: 8,
+    onShow: syncFromEditor,
+    onHide: () => {
+      showRef.current = false;
+    },
+  }), [syncFromEditor]);
+
   return (
     <BubbleMenu
       editor={editor}
       updateDelay={0}
-      shouldShow={({ editor }) => editor.isActive("image")}
-      options={{
-        placement: "bottom-start",
-        offset: 8,
-        onShow: () => {
-          syncFromEditor();
-        },
-        onHide: () => {
-          showRef.current = false;
-        },
-      }}
+      shouldShow={shouldShow}
+      options={menuOptions}
     >
       <div
         className="flex items-center gap-1 rounded-lg border border-border bg-popover px-2 py-1.5 shadow-lg"

@@ -119,9 +119,6 @@ export function MarkdownEditor({
   );
 
   const editor = useEditor({
-    // Preserve the v2 behavior expected by the existing toolbar components.
-    // They read editor.isActive() during render to update button state.
-    shouldRerenderOnTransaction: true,
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3, 4, 5, 6] },

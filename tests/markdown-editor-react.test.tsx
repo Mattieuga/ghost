@@ -3,6 +3,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Editor } from "@tiptap/core";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async () => undefined),
@@ -77,5 +78,65 @@ describe("MarkdownEditor React integration", () => {
     expect(yamlEditor.value).toBe("title: Chili");
     expect(host.querySelectorAll(".ghost-frontmatter-delimiter")[0]?.textContent).toBe("---");
     expect(host.querySelectorAll(".ghost-frontmatter-delimiter")[1]?.textContent).toBe("---");
+
+    await act(async () => {
+      yamlEditor.focus();
+      yamlEditor.setSelectionRange(5, 5);
+      const setTextareaValue = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+      setTextareaValue?.call(yamlEditor, "titleX: Chili");
+      yamlEditor.setSelectionRange(6, 6);
+      yamlEditor.dispatchEvent(new Event("input", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const updatedYamlEditor = host.querySelector(
+      'textarea[aria-label="YAML frontmatter content"]',
+    ) as HTMLTextAreaElement;
+    expect(updatedYamlEditor.value).toBe("titleX: Chili");
+    expect(document.activeElement).toBe(updatedYamlEditor);
+    expect(updatedYamlEditor.selectionStart).toBe(6);
+    expect(updatedYamlEditor.selectionEnd).toBe(6);
+  });
+
+  it("flushes a pending edit when the editor unmounts before the debounce", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const onContentChange = vi.fn(async () => undefined);
+    let editor: Editor | null = null;
+
+    await act(async () => {
+      root.render(
+        <MarkdownEditor
+          content="# Before"
+          onContentChange={onContentChange}
+          activeFile="/tmp/pending.md"
+          onEditorReady={(readyEditor) => {
+            editor = readyEditor;
+          }}
+        />,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(editor).not.toBeNull();
+    act(() => {
+      (editor as Editor).commands.insertContentAt((editor as Editor).state.doc.content.size, " After");
+    });
+    expect(onContentChange).not.toHaveBeenCalled();
+
+    mounted.pop();
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+    host.remove();
+
+    expect(onContentChange).toHaveBeenCalledTimes(1);
+    expect(onContentChange.mock.calls[0][0]).toContain("After");
   });
 });

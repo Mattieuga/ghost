@@ -204,8 +204,13 @@ export function FolderTree({
 
   if (error) {
     return (
-      <div className="px-4 py-1 text-xs text-destructive truncate">
-        {folderName}
+      <div
+        className="flex items-center gap-2 px-4 py-1 text-xs text-destructive"
+        title={error}
+      >
+        <span className="min-w-0 flex-1 truncate">{folderName} unavailable</span>
+        <button className="text-ring hover:text-foreground" onClick={refresh}>Retry</button>
+        <button className="text-ring hover:text-foreground" onClick={() => onRemoveFolder(path)}>Close</button>
       </div>
     );
   }
@@ -261,6 +266,7 @@ function DroppableFolder({
   activeDropFolder,
   onRemoveFolder,
   onRenamed,
+  onDeleted,
   onCreateFile,
   onCreateFolder,
   onRefresh,
@@ -282,6 +288,7 @@ function DroppableFolder({
   activeDropFolder: string | null;
   onRemoveFolder?: (path: string) => void;
   onRenamed?: (oldPath: string, newPath: string) => void;
+  onDeleted?: (path: string) => void;
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
   onRefresh: () => void;
@@ -349,6 +356,7 @@ function DroppableFolder({
     setDisplayFolderName(renameName);
     setIsRenaming(false);
     try {
+      await window.__ghostFlushSave?.();
       const newPath = await invoke<string>("rename_file", { oldPath: id, newName: renameName });
       onRenamed?.(id, newPath);
     } catch (err) {
@@ -393,7 +401,9 @@ function DroppableFolder({
 
   const handleDelete = async () => {
     try {
+      await window.__ghostFlushSave?.();
       await invoke("delete_file", { path: id });
+      onDeleted?.(id);
       onRefresh();
     } catch (err) {
       console.error("Failed to delete:", err);
@@ -479,7 +489,7 @@ function DroppableFolder({
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => setShowDeleteDialog(true)} className="text-destructive">
-          Delete Folder
+          Move Folder to Trash
         </ContextMenuItem>
       </ContextMenuContent>
     );
@@ -603,9 +613,9 @@ function DroppableFolder({
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent onKeyDown={(e) => { if (e.key === "Enter") { handleDelete(); setShowDeleteDialog(false); } }}>
           <DialogHeader>
-            <DialogTitle>Delete folder</DialogTitle>
+            <DialogTitle>Move folder to Trash?</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{displayFolderName}" and all its contents? This cannot be undone.
+              “{displayFolderName}” and its contents can be recovered from the macOS Trash.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -613,7 +623,7 @@ function DroppableFolder({
               Cancel
             </Button>
             <Button variant="destructive" onClick={() => { handleDelete(); setShowDeleteDialog(false); }}>
-              Delete
+              Move to Trash
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -682,10 +692,10 @@ const FileTree = React.memo(function FileTree({
 
   return (
     <>
-      {entries.slice(0, visibleCount).map((entry, index) =>
+      {entries.slice(0, visibleCount).map((entry) =>
         entry.is_directory ? (
           <DroppableFolder
-            key={`dir-${index}`}
+            key={entry.path}
             id={entry.path}
             folderName={entry.name}
             activeDropFolder={activeDropFolder}
@@ -693,6 +703,7 @@ const FileTree = React.memo(function FileTree({
             onCreateFolder={onCreateFolder}
             onRefresh={onRefresh}
             onRenamed={onFileRenamed}
+            onDeleted={onFileDeleted}
             onAddProject={onAddProject}
             depth={depth + 1}
             autoRename={entry.path === newlyCreatedFolder}
@@ -745,12 +756,14 @@ const FileTree = React.memo(function FileTree({
       )}
     </>
   );
-// Callbacks excluded: all are stable useCallback refs or passed through
-// unchanged from parent. See FileItem comparator for the same rationale.
+// Rename/delete callbacks affect which open document subsequent saves target,
+// so they must never be hidden behind a stale memoized tree.
 }, (prev, next) =>
   prev.entries === next.entries &&
   prev.depth === next.depth &&
   prev.activeDropFolder === next.activeDropFolder &&
   prev.newlyCreatedFile === next.newlyCreatedFile &&
-  prev.newlyCreatedFolder === next.newlyCreatedFolder
+  prev.newlyCreatedFolder === next.newlyCreatedFolder &&
+  prev.onFileRenamed === next.onFileRenamed &&
+  prev.onFileDeleted === next.onFileDeleted
 );

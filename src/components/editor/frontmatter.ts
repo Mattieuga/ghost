@@ -17,6 +17,104 @@ export interface FrontmatterSource {
   closing: string;
 }
 
+type TableCellWidth = Array<number | null> | null;
+type TableWidthMatrix = TableCellWidth[][];
+
+interface PreparedTableWidths {
+  markdown: string;
+  widthsByMarker: Map<string, TableWidthMatrix>;
+}
+
+function isTableWidthMatrix(value: unknown): value is TableWidthMatrix {
+  return Array.isArray(value) && value.every((row) =>
+    Array.isArray(row) && row.every((cell) =>
+      cell === null || (Array.isArray(cell) && cell.every((width) =>
+        width === null || (typeof width === "number" && Number.isFinite(width) && width > 0)
+      ))
+    )
+  );
+}
+
+function prepareTableWidthMetadata(markdown: string): PreparedTableWidths {
+  const eol = markdown.includes("\r\n") ? "\r\n" : "\n";
+  const lines = markdown.split(/\r\n|\n/);
+  const widthsByMarker = new Map<string, TableWidthMatrix>();
+  let fence: { character: "`" | "~"; length: number } | null = null;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const fenceMatch = lines[index].match(/^\s{0,3}(`{3,}|~{3,})/);
+    if (fenceMatch) {
+      const character = fenceMatch[1][0] as "`" | "~";
+      if (!fence) {
+        fence = { character, length: fenceMatch[1].length };
+      } else if (fence.character === character && fenceMatch[1].length >= fence.length) {
+        fence = null;
+      }
+      continue;
+    }
+    if (fence) continue;
+
+    const metadata = lines[index].match(/^\s*<!--\s*ghost-table-widths:(\[.*\])\s*-->\s*$/);
+    let headerIndex = index + 1;
+    while (headerIndex < lines.length && lines[headerIndex].trim() === "") headerIndex += 1;
+    const header = lines[headerIndex] ?? "";
+    const delimiter = lines[headerIndex + 1] ?? "";
+    if (!metadata || !header.includes("|") || !/^\s*\|?\s*:?-{3,}/.test(delimiter)) continue;
+
+    try {
+      const widths = JSON.parse(metadata[1]);
+      if (!isTableWidthMatrix(widths)) continue;
+      const marker = `GHOSTTABLEWIDTHSMARKER${widthsByMarker.size}END`;
+      widthsByMarker.set(marker, widths);
+      lines[index] = marker;
+    } catch {
+      // Leave malformed metadata untouched and let source-mode detection keep it safe.
+    }
+  }
+
+  return { markdown: lines.join(eol), widthsByMarker };
+}
+
+function restoreTableWidths(document: JSONContent, widthsByMarker: Map<string, TableWidthMatrix>): JSONContent {
+  if (widthsByMarker.size === 0 || !document.content) return document;
+
+  const content: JSONContent[] = [];
+  for (let index = 0; index < document.content.length; index += 1) {
+    const node = document.content[index];
+    const marker = node.type === "paragraph" && node.content?.length === 1
+      && node.content[0].type === "text" ? node.content[0].text : null;
+    const widths = marker ? widthsByMarker.get(marker) : undefined;
+    const table = document.content[index + 1];
+
+    if (widths && table?.type === "table") {
+      content.push({
+        ...table,
+        content: table.content?.map((row, rowIndex) => ({
+          ...row,
+          content: row.content?.map((cell, cellIndex) => ({
+            ...cell,
+            attrs: {
+              ...cell.attrs,
+              colwidth: widths[rowIndex]?.[cellIndex] ?? null,
+            },
+          })),
+        })),
+      });
+      index += 1;
+      continue;
+    }
+
+    content.push(node);
+  }
+
+  return { ...document, content };
+}
+
+function parseMarkdownBody(editor: Editor, markdown: string): JSONContent {
+  const prepared = prepareTableWidthMetadata(markdown);
+  return restoreTableWidths(editor.markdown!.parse(prepared.markdown), prepared.widthsByMarker);
+}
+
 export function splitFrontmatter(markdown: string): SplitFrontmatter | null {
   const match = markdown.match(FRONTMATTER_PATTERN);
   if (!match) return null;
@@ -76,9 +174,9 @@ export function parseMarkdownDocument(editor: Editor, markdown: string): JSONCon
   }
 
   const frontmatter = splitFrontmatter(markdown);
-  if (!frontmatter) return editor.markdown.parse(markdown);
+  if (!frontmatter) return parseMarkdownBody(editor, markdown);
 
-  const bodyDocument = editor.markdown.parse(frontmatter.body);
+  const bodyDocument = parseMarkdownBody(editor, frontmatter.body);
   return {
     type: "doc",
     content: [

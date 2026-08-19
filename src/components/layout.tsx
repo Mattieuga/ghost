@@ -26,8 +26,10 @@ import { Button } from "@/components/ui/button";
 import { FolderTree } from "@/components/sidebar/folder-tree";
 import { EmptyState } from "@/components/sidebar/empty-state";
 import { HeadingMinimap } from "@/components/editor/heading-minimap";
+import { fontFamilyValue } from "@/lib/fonts";
 import { FileViewer } from "@/components/editor/file-viewer";
 import { TextStats } from "@/components/editor/text-stats";
+import { SaveStatus } from "@/components/editor/save-status";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
 import { isMarkdown, isBinaryViewer, shouldProbeTextContent } from "@/lib/file-type";
@@ -55,6 +57,8 @@ import { useSearch } from "@/hooks/use-search";
 import { useFileTree } from "@/hooks/use-file-tree";
 import { useReloadOnFocus } from "@/hooks/use-reload-on-focus";
 import { useUpdater } from "@/hooks/use-updater";
+import { useDocumentSave } from "@/hooks/use-document-save";
+import { retargetPath } from "@/lib/file-path";
 import { UpdateBanner } from "@/components/ui/update-banner";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"]);
@@ -65,7 +69,9 @@ export function GhostLayout() {
   const updater = useUpdater();
   const [activeFileStore] = useState(() => new ActiveFileStore());
   const [activeFile, _setActiveFile] = useState<string | null>(null);
+  const activeFileRef = useRef<string | null>(null);
   const setActiveFile = useCallback((path: string | null) => {
+    activeFileRef.current = path;
     _setActiveFile(path);
     activeFileStore.set(path);
   }, [activeFileStore]);
@@ -95,8 +101,6 @@ export function GhostLayout() {
   const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   const [cmView, setCmView] = useState<EditorView | null>(null);
-  const activeFileRef = useRef<string | null>(null);
-  activeFileRef.current = activeFile;
   // Last known on-disk content. Used by useReloadOnFocus to detect genuine
   // external changes. Updated on initial load, on successful saves, and when
   // we apply an external change. Deliberately NOT bound to fileContent state
@@ -109,6 +113,9 @@ export function GhostLayout() {
   const mainElRef = useRef<HTMLElement | null>(null);
   mainElRef.current = mainEl;
   const lastSaveTimestamp = useRef(0);
+  const retargetPromiseRef = useRef<Promise<void> | null>(null);
+  const isContentDetectedTextRef = useRef(isContentDetectedText);
+  isContentDetectedTextRef.current = isContentDetectedText;
   const styleBarRef = useRef(settings.showStyleBar);
   styleBarRef.current = settings.showStyleBar;
   const { recentFiles, addRecentFile } = useRecentFiles();
@@ -126,10 +133,9 @@ export function GhostLayout() {
   // Apply font settings directly on :root for reliable cascade in WKWebView
   useEffect(() => {
     const root = document.documentElement;
-    const sanitize = (s: string) => s.replace(/[";{}\\]/g, "");
-    root.style.setProperty("--editor-text-font", `"${sanitize(settings.textFont)}"`);
-    root.style.setProperty("--editor-heading-font", `"${sanitize(settings.headingFont)}"`);
-    root.style.setProperty("--editor-code-font", `"${sanitize(settings.codeFont)}"`);
+    root.style.setProperty("--editor-text-font", fontFamilyValue(settings.textFont));
+    root.style.setProperty("--editor-heading-font", fontFamilyValue(settings.headingFont));
+    root.style.setProperty("--editor-code-font", fontFamilyValue(settings.codeFont));
   }, [settings.textFont, settings.headingFont, settings.codeFont]);
 
 
@@ -140,64 +146,16 @@ export function GhostLayout() {
 
   const { flatFiles: allFiles, getEntries, getError, expandFolder, isSkippedDir } = useFileTree(folders, extensions, refreshTrigger);
 
-  // Auto-remove folders that no longer exist (e.g. deleted in Finder).
-  // Batch all removals to avoid cascading re-renders (one per removed folder).
-  useEffect(() => {
-    const broken = folders.filter((f) => getError(f));
-    if (broken.length === 0) return;
-    for (const folder of broken) {
-      removeFolder(folder);
-    }
-  }, [folders, getError, removeFolder]);
-
   const { closeSearch, openSearch } = search;
 
-  // Clean up orphaned assets when switching away from a file (fire-and-forget)
-  const cleanupOrphanedAssets = useCallback(async (filePath: string) => {
-    try {
-      const fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
-      const stem = fileName.replace(/\.[^.]+$/, "");
-      const dir = filePath.substring(0, filePath.lastIndexOf("/"));
-      const assetsDir = `${dir}/${stem}.assets`;
-      const assetsRef = `${stem}.assets/`;
-
-      // Read the current saved markdown content
-      const markdown = await invoke<string>("read_file", { path: filePath });
-
-      // Collect all referenced asset filenames (simple string matching, no regex)
-      const referenced = new Set<string>();
-      let idx = 0;
-      while ((idx = markdown.indexOf(assetsRef, idx)) !== -1) {
-        const start = idx + assetsRef.length;
-        // Extract filename until next whitespace, quote, or paren
-        let end = start;
-        while (end < markdown.length && !/[\s"')]/.test(markdown[end])) end++;
-        if (end > start) referenced.add(markdown.substring(start, end));
-        idx = end;
-      }
-
-      // List files on disk
-      const filesOnDisk = await invoke<string[]>("list_directory_files", { path: assetsDir });
-
-      // Delete unreferenced files in parallel
-      const orphans = filesOnDisk.filter((file) => !referenced.has(file));
-      await Promise.all(
-        orphans.map((file) => invoke("delete_file", { path: `${assetsDir}/${file}` }).catch(() => {}))
-      );
-
-      // If directory is now empty, remove it
-      if (orphans.length === filesOnDisk.length) {
-        await invoke("delete_file", { path: assetsDir }).catch(() => {});
-      }
-    } catch {
-      // Silently ignore — cleanup is best-effort
-    }
-  }, []);
-
   const handleFileSelect = useCallback(async (path: string) => {
-    // Fire-and-forget cleanup of the previous file's orphaned assets
     if (activeFileRef.current && activeFileRef.current !== path) {
-      cleanupOrphanedAssets(activeFileRef.current);
+      try {
+        await window.__ghostFlushSave?.();
+      } catch {
+        // Keep the current editor open; its save status explains the failure.
+        return;
+      }
     }
 
     try {
@@ -230,7 +188,7 @@ export function GhostLayout() {
     } catch (err) {
       console.error("Failed to read file:", err);
     }
-  }, [closeSearch, addRecentFile, cleanupOrphanedAssets]);
+  }, [closeSearch, addRecentFile]);
 
   // openSearch wrapper: only open if a file is active
   const openSearchIfFile = useCallback((mode: "find" | "replace") => {
@@ -239,26 +197,23 @@ export function GhostLayout() {
   }, [openSearch]);
 
 
+  const documentSave = useDocumentSave({
+    knownDiskContent: fileContentRef,
+    lastSaveTimestamp,
+  });
+
   const handleContentChange = useCallback(
     async (markdown: string) => {
-      if (!activeFile) return;
+      // A rename can rewrite companion asset references on disk. Wait for
+      // that fresh snapshot before checking expectedContent or choosing the
+      // destination path for this edit.
+      await retargetPromiseRef.current;
+      const path = activeFileRef.current;
+      if (!path) return;
       setLiveText(markdown);
-      // Update tracking state BEFORE the await. If we wait until after the
-      // write resolves, a focus event that fires during a slow write (iCloud
-      // sync, network home) will read the new disk content, compare against
-      // the still-stale ref, and trigger a spurious in-place reload. Rolling
-      // back on write failure keeps the ref honest.
-      const prevContent = fileContentRef.current;
-      fileContentRef.current = markdown;
-      lastSaveTimestamp.current = Date.now();
-      try {
-        await invoke("write_file", { path: activeFile, content: markdown });
-      } catch (err) {
-        fileContentRef.current = prevContent;
-        console.error("Failed to save file:", err);
-      }
+      await documentSave.save(path, markdown);
     },
-    [activeFile]
+    [documentSave.save]
   );
 
   const handleFsChange = useCallback(() => {
@@ -278,35 +233,82 @@ export function GhostLayout() {
     applyContent: applyContentRef,
     contentRef: fileContentRef,
     lastSaveTimestamp,
+    pendingSaveCount: documentSave.pendingSaveRef,
     onContentApplied: (content) => setLiveText(content),
   });
 
-  const handleFileRenamed = useCallback(
-    (oldPath: string, newPath: string) => {
-      if (activeFile && (activeFile === oldPath || activeFile.startsWith(oldPath + "/"))) {
-        const renamedPath = newPath + activeFile.slice(oldPath.length);
-        const wasText = isContentDetectedText || !isBinaryViewer(activeFile);
-        setIsContentDetectedText(wasText && shouldProbeTextContent(renamedPath));
-        setActiveFile(renamedPath);
+  const retargetActiveFile = useCallback((oldPath: string, newPath: string): Promise<string | null> => {
+    const currentFile = activeFileRef.current;
+    if (!currentFile) return Promise.resolve(null);
+
+    const renamedPath = retargetPath(currentFile, oldPath, newPath);
+    if (!renamedPath) return Promise.resolve(null);
+    const wasText = isContentDetectedTextRef.current || !isBinaryViewer(currentFile);
+
+    const retarget = (async () => {
+      // Saves must target the new path immediately, even while the rewritten
+      // Markdown is being read for the editor remount.
+      activeFileRef.current = renamedPath;
+      activeFileStore.set(renamedPath);
+
+      let content = fileContentRef.current ?? "";
+      let detectedText = false;
+      try {
+        if (shouldProbeTextContent(renamedPath)) {
+          const detected = await invoke<string | null>("read_file_if_text", { path: renamedPath });
+          detectedText = wasText && detected !== null;
+          content = detected ?? "";
+        } else if (isBinaryViewer(renamedPath)) {
+          content = "";
+        } else {
+          content = await invoke<string>("read_file", { path: renamedPath });
+        }
+      } catch (error) {
+        console.error("Failed to refresh renamed file:", error);
+        detectedText = wasText && shouldProbeTextContent(renamedPath);
       }
+
+      // rename_file can also rename <stem>.assets and rewrite image paths.
+      // Use its on-disk result so images stay resolved without a reopen.
+      fileContentRef.current = content;
+      lastSaveTimestamp.current = Date.now();
+      setFileContent(content);
+      setLiveText(content);
+      setIsContentDetectedText(detectedText);
+      setActiveFile(renamedPath);
+      return renamedPath;
+    })();
+
+    const barrier = retarget.then(() => undefined);
+    retargetPromiseRef.current = barrier;
+    void barrier.finally(() => {
+      if (retargetPromiseRef.current === barrier) retargetPromiseRef.current = null;
+    });
+    return retarget;
+  }, [activeFileStore, setActiveFile]);
+
+  const handleFileRenamed = useCallback(
+    async (oldPath: string, newPath: string) => {
+      await retargetActiveFile(oldPath, newPath);
       handleFsChange();
       // Notify accessory windows
       invoke("emit_file_renamed", { oldPath, newPath }).catch(() => {});
     },
-    [activeFile, isContentDetectedText, handleFsChange]
+    [retargetActiveFile, handleFsChange]
   );
 
   const handleRootRenamed = useCallback(
-    (oldPath: string, newPath: string) => {
+    async (oldPath: string, newPath: string) => {
       renameFolder(oldPath, newPath);
-      handleFileRenamed(oldPath, newPath);
+      await handleFileRenamed(oldPath, newPath);
     },
     [renameFolder, handleFileRenamed]
   );
 
   const handleFileDeleted = useCallback(
     (path: string) => {
-      if (activeFile === path) {
+      const currentFile = activeFileRef.current;
+      if (currentFile && (currentFile === path || currentFile.startsWith(path + "/"))) {
         setActiveFile(null);
         setIsContentDetectedText(false);
         setFileContent("");
@@ -315,7 +317,7 @@ export function GhostLayout() {
       // Notify accessory windows — they will auto-close
       invoke("emit_file_deleted", { path }).catch(() => {});
     },
-    [activeFile, handleFsChange]
+    [setActiveFile, handleFsChange]
   );
 
   // dnd-kit handlers
@@ -346,8 +348,9 @@ export function GhostLayout() {
       if (folderPath === parentDir) return;
 
       try {
+        await window.__ghostFlushSave?.();
         const newPath = await invoke<string>("move_file", { filePath, targetDir: folderPath });
-        if (activeFile === filePath) setActiveFile(newPath);
+        await retargetActiveFile(filePath, newPath);
         handleFsChange();
       } catch (err) {
         if (String(err) === "ALREADY_EXISTS") {
@@ -357,7 +360,7 @@ export function GhostLayout() {
         }
       }
     },
-    [activeFile, handleFsChange]
+    [retargetActiveFile, handleFsChange]
   );
 
   // Expose functions for Rust menu events
@@ -710,16 +713,22 @@ export function GhostLayout() {
     return () => window.removeEventListener("resize", handleResize);
   }, [sidebarWidth, sidebarCollapsed]);
 
-  const confirmForceMove = useCallback(() => {
+  const confirmForceMove = useCallback(async () => {
     if (!pendingMove) return;
-    invoke<string>("move_file", { filePath: pendingMove.filePath, targetDir: pendingMove.targetDir, force: true })
-      .then((newPath) => {
-        if (activeFile === pendingMove.filePath) setActiveFile(newPath);
-        handleFsChange();
-      })
-      .catch((err) => console.error("Failed to override:", err));
-    setPendingMove(null);
-  }, [pendingMove, activeFile, handleFsChange]);
+    try {
+      await window.__ghostFlushSave?.();
+      const newPath = await invoke<string>("move_file", {
+        filePath: pendingMove.filePath,
+        targetDir: pendingMove.targetDir,
+        force: true,
+      });
+      await retargetActiveFile(pendingMove.filePath, newPath);
+      handleFsChange();
+      setPendingMove(null);
+    } catch (err) {
+      console.error("Failed to override:", err);
+    }
+  }, [pendingMove, retargetActiveFile, handleFsChange]);
 
   const handleHeaderRename = useCallback(async () => {
     if (!activeFile || !headerRenameName || headerRenameName === activeFileName) {
@@ -727,19 +736,21 @@ export function GhostLayout() {
       return;
     }
     try {
+      await window.__ghostFlushSave?.();
       const newPath = await invoke<string>("rename_file", {
         oldPath: activeFile,
         newName: headerRenameName,
       });
-      setActiveFile(newPath);
+      await retargetActiveFile(activeFile, newPath);
       handleFsChange();
       // Notify accessory windows
       invoke("emit_file_renamed", { oldPath: activeFile, newPath }).catch(() => {});
     } catch (err) {
       console.error("Failed to rename:", err);
+      return;
     }
     setIsRenamingHeader(false);
-  }, [activeFile, headerRenameName, activeFileName, handleFsChange]);
+  }, [activeFile, headerRenameName, activeFileName, retargetActiveFile, handleFsChange]);
 
   return (
     <div
@@ -836,7 +847,12 @@ export function GhostLayout() {
                     error={getError(folder)}
                     onRefreshFolder={handleFsChange}
                     onFileSelect={handleFileSelect}
-                    onRemoveFolder={(path) => {
+                    onRemoveFolder={async (path) => {
+                      try {
+                        await window.__ghostFlushSave?.();
+                      } catch {
+                        return;
+                      }
                       removeFolder(path);
                       if (activeFile?.startsWith(path)) {
                         setActiveFile(null);
@@ -941,8 +957,9 @@ export function GhostLayout() {
           '--editor-font-size': `${settings.fontSize}px`,
           '--editor-line-height': `${settings.lineHeight}`,
           '--editor-max-width': `${settings.editorWidth}px`,
-          '--editor-paragraph-spacing': `${settings.paragraphSpacing}rem`,
+          '--editor-block-spacing': `${settings.blockSpacing}rem`,
           '--editor-heading-spacing': `${settings.headingSpacing}rem`,
+          '--editor-heading-after-spacing': `${settings.headingAfterSpacing}rem`,
         } as React.CSSProperties}
       >
         {/* Floating header overlay — semi-transparent, content scrolls behind */}
@@ -1001,15 +1018,24 @@ export function GhostLayout() {
                 ) : null}
               </div>
               {activeFile && (
-                isBinaryViewer(activeFile) && !isContentDetectedText ? (
-                  <OpenExternalButton filePath={activeFile} />
-                ) : (
-                  <TextStats
-                    text={liveText}
-                    countMode={settings.countMode}
-                    onCountModeChange={(countMode) => updateSettings({ countMode })}
-                  />
-                )
+                <div className="flex items-center gap-3">
+                  {isBinaryViewer(activeFile) && !isContentDetectedText ? (
+                    <OpenExternalButton filePath={activeFile} />
+                  ) : (
+                    <>
+                      <SaveStatus
+                        status={documentSave.status}
+                        error={documentSave.error}
+                        onRetry={documentSave.retry}
+                      />
+                      <TextStats
+                        text={liveText}
+                        countMode={settings.countMode}
+                        onCountModeChange={(countMode) => updateSettings({ countMode })}
+                      />
+                    </>
+                  )}
+                </div>
               )}
             </>
           )}

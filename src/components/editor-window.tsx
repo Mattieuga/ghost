@@ -1,10 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { HeadingMinimap } from "@/components/editor/heading-minimap";
+import { fontFamilyValue } from "@/lib/fonts";
 import { FileViewer } from "@/components/editor/file-viewer";
 import { TextStats } from "@/components/editor/text-stats";
+import { SaveStatus } from "@/components/editor/save-status";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
 import { applyContentInPlace } from "@/lib/editor-utils";
@@ -15,6 +17,8 @@ import { useReloadOnFocus } from "@/hooks/use-reload-on-focus";
 import { applyTheme } from "@/lib/theme-engine";
 import { isMarkdown, isBinaryViewer, shouldProbeTextContent } from "@/lib/file-type";
 import { OpenExternalButton } from "@/components/viewer/open-external-button";
+import { useDocumentSave } from "@/hooks/use-document-save";
+import { retargetCompanionAssetReferences, retargetPath } from "@/lib/file-path";
 
 interface EditorWindowProps {
   filePath: string;
@@ -24,8 +28,11 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   const { settings, updateSettings } = useSettings();
   const search = useSearch();
   const [filePath, setFilePath] = useState(initialFilePath);
+  const filePathRef = useRef(initialFilePath);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [isContentDetectedText, setIsContentDetectedText] = useState(false);
+  const isContentDetectedTextRef = useRef(false);
+  isContentDetectedTextRef.current = isContentDetectedText;
   const [liveText, setLiveText] = useState("");
   const lastSaveTimestamp = useRef(0);
   const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
@@ -40,6 +47,9 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   cmViewRef.current = cmView;
   const mainElRef = useRef<HTMLElement | null>(null);
   mainElRef.current = mainEl;
+  const closingRef = useRef(false);
+  const skipNextPathLoadRef = useRef(false);
+  const liveTextRef = useRef("");
 
   // Apply theme
   useEffect(() => {
@@ -49,14 +59,17 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   // Apply font settings
   useEffect(() => {
     const root = document.documentElement;
-    const sanitize = (s: string) => s.replace(/[";{}\\]/g, "");
-    root.style.setProperty("--editor-text-font", `"${sanitize(settings.textFont)}"`);
-    root.style.setProperty("--editor-heading-font", `"${sanitize(settings.headingFont)}"`);
-    root.style.setProperty("--editor-code-font", `"${sanitize(settings.codeFont)}"`);
+    root.style.setProperty("--editor-text-font", fontFamilyValue(settings.textFont));
+    root.style.setProperty("--editor-heading-font", fontFamilyValue(settings.headingFont));
+    root.style.setProperty("--editor-code-font", fontFamilyValue(settings.codeFont));
   }, [settings.textFont, settings.headingFont, settings.codeFont]);
 
   // Load file content on mount
   useEffect(() => {
+    if (skipNextPathLoadRef.current) {
+      skipNextPathLoadRef.current = false;
+      return;
+    }
     let cancelled = false;
 
     const loadFile = async () => {
@@ -68,6 +81,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
           setFileContent(content ?? "");
           fileContentRef.current = content ?? "";
           setLiveText(content ?? "");
+          liveTextRef.current = content ?? "";
           return;
         }
 
@@ -76,6 +90,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
           setFileContent("");
           fileContentRef.current = "";
           setLiveText("");
+          liveTextRef.current = "";
           return;
         }
 
@@ -85,6 +100,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
         setFileContent(content);
         fileContentRef.current = content;
         setLiveText(content);
+        liveTextRef.current = content;
       } catch (err) {
         if (!cancelled) console.error("Failed to read file:", err);
       }
@@ -94,52 +110,157 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
     return () => { cancelled = true; };
   }, [filePath]);
 
-  // Listen for file rename events
-  useEffect(() => {
-    const unlisten = listen<{ oldPath: string; newPath: string }>("file-renamed", (event) => {
-      if (event.payload.oldPath === filePath) {
-        setFilePath(event.payload.newPath);
-      }
-    });
-    return () => { unlisten.then((fn) => fn()); };
-  }, [filePath]);
-
   // Listen for file deletion — auto-close this window
   useEffect(() => {
     const unlisten = listen<string>("file-deleted", (event) => {
-      if (event.payload === filePath) {
-        getCurrentWindow().close();
+      const currentPath = filePathRef.current;
+      if (currentPath === event.payload || currentPath.startsWith(event.payload + "/")) {
+        closingRef.current = true;
+        void invoke("close_editor_window").catch((error) => {
+          closingRef.current = false;
+          console.error("Failed to close deleted file window:", error);
+        });
       }
     });
     return () => { unlisten.then((fn) => fn()); };
-  }, [filePath]);
+  }, []);
 
   const applyContentRef = useRef<((content: string) => boolean) | null>(null);
   applyContentRef.current = (content) =>
     applyContentInPlace(editorInstanceRef, cmViewRef, mainElRef, content);
 
+  const documentSave = useDocumentSave({
+    knownDiskContent: fileContentRef,
+    lastSaveTimestamp,
+  });
+
+  // Retarget detached editors after a file or containing folder rename. Read
+  // the renamed disk snapshot before saving so Ghost's companion .assets
+  // rewrite is treated as part of the rename, not an external conflict.
+  useEffect(() => {
+    const unlisten = listen<{ oldPath: string; newPath: string }>("file-renamed", async (event) => {
+      const { oldPath, newPath } = event.payload;
+      const currentPath = filePathRef.current;
+      const renamedPath = retargetPath(currentPath, oldPath, newPath);
+      if (!renamedPath) return;
+
+      const wasText = isContentDetectedTextRef.current || !isBinaryViewer(currentPath);
+      const knownBefore = fileContentRef.current ?? "";
+      const editorText = editorInstanceRef.current?.getMarkdown()
+        ?? cmViewRef.current?.state.doc.toString()
+        ?? liveTextRef.current;
+      const isDirectFileRename = currentPath === oldPath;
+      const renamedKnown = isDirectFileRename
+        ? retargetCompanionAssetReferences(knownBefore, oldPath, newPath)
+        : knownBefore;
+      const renamedEditorText = isDirectFileRename
+        ? retargetCompanionAssetReferences(editorText, oldPath, newPath)
+        : editorText;
+      const hadLocalChanges = editorText !== knownBefore;
+
+      filePathRef.current = renamedPath;
+      let diskContent = renamedKnown;
+      let detectedText = false;
+      try {
+        if (shouldProbeTextContent(renamedPath)) {
+          const detected = await invoke<string | null>("read_file_if_text", { path: renamedPath });
+          detectedText = wasText && detected !== null;
+          diskContent = detected ?? "";
+        } else if (isBinaryViewer(renamedPath)) {
+          diskContent = "";
+        } else {
+          diskContent = await invoke<string>("read_file", { path: renamedPath });
+        }
+      } catch (error) {
+        console.error("Failed to refresh renamed document:", error);
+        detectedText = wasText && shouldProbeTextContent(renamedPath);
+      }
+
+      let visibleContent = diskContent;
+      if (hadLocalChanges) {
+        fileContentRef.current = renamedKnown;
+        visibleContent = renamedEditorText;
+        try {
+          await documentSave.save(renamedPath, renamedEditorText);
+        } catch (error) {
+          // Keep the local edit visible. SaveStatus exposes conflict recovery.
+          console.error("Renamed document needs save recovery:", error);
+        }
+      } else {
+        fileContentRef.current = diskContent;
+      }
+
+      liveTextRef.current = visibleContent;
+      lastSaveTimestamp.current = Date.now();
+      skipNextPathLoadRef.current = true;
+      setFileContent(visibleContent);
+      setLiveText(visibleContent);
+      setIsContentDetectedText(detectedText);
+      setFilePath(renamedPath);
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [documentSave.save]);
+
+  // Native close requests are paused in Rust until the current editor has
+  // flushed its debounce and the write has actually completed. A failed save
+  // intentionally leaves the window open so the retry/overwrite UI remains
+  // available instead of discarding the edit.
+  useEffect(() => {
+    const unlisten = listen("request-editor-close", async () => {
+      if (closingRef.current) return;
+      closingRef.current = true;
+
+      try {
+        await window.__ghostFlushSave?.();
+        await invoke("close_editor_window");
+      } catch (error) {
+        closingRef.current = false;
+        console.error("Close paused because the document could not be saved:", error);
+      }
+    });
+
+    return () => { unlisten.then((fn) => fn()); };
+  }, []);
+
+  // The updater requires an acknowledgement from each accessory window after
+  // its actual disk write completes. This avoids relying on an arbitrary
+  // delay before relaunching on slow or synced filesystems.
+  useEffect(() => {
+    const label = getCurrentWindow().label;
+    const unlisten = listen<string>("request-save-flush", async (event) => {
+      const requestId = event.payload;
+      try {
+        await window.__ghostFlushSave?.();
+        await emitTo("main", "save-flush-result", { requestId, label, ok: true });
+      } catch (error) {
+        await emitTo("main", "save-flush-result", {
+          requestId,
+          label,
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    return () => { unlisten.then((fn) => fn()); };
+  }, []);
+
   useReloadOnFocus({
-    getPath: () => filePath,
+    getPath: () => filePathRef.current,
     applyContent: applyContentRef,
     contentRef: fileContentRef,
     lastSaveTimestamp,
+    pendingSaveCount: documentSave.pendingSaveRef,
     onContentApplied: (content) => setLiveText(content),
   });
 
   const handleContentChange = useCallback(
-    async (text: string) => {
+    (text: string) => {
+      liveTextRef.current = text;
       setLiveText(text);
-      const prevContent = fileContentRef.current;
-      fileContentRef.current = text;
-      lastSaveTimestamp.current = Date.now();
-      try {
-        await invoke("write_file", { path: filePath, content: text });
-      } catch (err) {
-        fileContentRef.current = prevContent;
-        console.error("Failed to save file:", err);
-      }
+      return documentSave.save(filePathRef.current, text);
     },
-    [filePath]
+    [documentSave.save]
   );
 
   // Register window globals for Rust menu events
@@ -196,8 +317,9 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
         '--editor-font-size': `${settings.fontSize}px`,
         '--editor-line-height': `${settings.lineHeight}`,
         '--editor-max-width': `${settings.editorWidth}px`,
-        '--editor-paragraph-spacing': `${settings.paragraphSpacing}rem`,
+        '--editor-block-spacing': `${settings.blockSpacing}rem`,
         '--editor-heading-spacing': `${settings.headingSpacing}rem`,
+        '--editor-heading-after-spacing': `${settings.headingAfterSpacing}rem`,
       } as React.CSSProperties}
     >
       {/* Title bar */}
@@ -239,15 +361,24 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
                 </span>
               </div>
             </div>
-            {isBinaryViewer(filePath) && !isContentDetectedText ? (
-              <OpenExternalButton filePath={filePath} />
-            ) : (
-              <TextStats
-                text={liveText}
-                countMode={settings.countMode}
-                onCountModeChange={(countMode) => updateSettings({ countMode })}
-              />
-            )}
+            <div className="flex items-center gap-3">
+              {isBinaryViewer(filePath) && !isContentDetectedText ? (
+                <OpenExternalButton filePath={filePath} />
+              ) : (
+                <>
+                  <SaveStatus
+                    status={documentSave.status}
+                    error={documentSave.error}
+                    onRetry={documentSave.retry}
+                  />
+                  <TextStats
+                    text={liveText}
+                    countMode={settings.countMode}
+                    onCountModeChange={(countMode) => updateSettings({ countMode })}
+                  />
+                </>
+              )}
+            </div>
           </>
         )}
       </div>

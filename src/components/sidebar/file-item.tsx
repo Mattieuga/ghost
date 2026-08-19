@@ -59,8 +59,13 @@ export const FileItem = React.memo(function FileItem({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const blurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleOpenInNewWindow = () => {
-    invoke("open_editor_window", { filePath: entry.path });
+  const handleOpenInNewWindow = async () => {
+    try {
+      await window.__ghostFlushSave?.();
+      await invoke("open_editor_window", { filePath: entry.path });
+    } catch (err) {
+      console.error("Failed to open editor window:", err);
+    }
   };
 
   const parentDir = entry.path.substring(0, entry.path.lastIndexOf("/"));
@@ -117,6 +122,7 @@ export const FileItem = React.memo(function FileItem({
     setDisplayName(renameName);
     setIsRenaming(false);
     try {
+      await window.__ghostFlushSave?.();
       const newPath = await invoke<string>("rename_file", {
         oldPath: entry.path,
         newName: renameName,
@@ -131,6 +137,7 @@ export const FileItem = React.memo(function FileItem({
 
   const handleDelete = async () => {
     try {
+      await window.__ghostFlushSave?.();
       await invoke("delete_file", { path: entry.path });
       setShowDeleteDialog(false);
       onDeleted?.();
@@ -307,7 +314,7 @@ export const FileItem = React.memo(function FileItem({
             onSelect={() => setShowDeleteDialog(true)}
             className="text-destructive"
           >
-            Delete
+            Move to Trash
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
@@ -315,10 +322,9 @@ export const FileItem = React.memo(function FileItem({
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent onKeyDown={(e) => { if (e.key === "Enter") handleDelete(); }}>
           <DialogHeader>
-            <DialogTitle>Delete file</DialogTitle>
+            <DialogTitle>Move file to Trash?</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{displayName}"? This cannot be
-              undone.
+              “{displayName}” can be recovered from the macOS Trash.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -329,7 +335,7 @@ export const FileItem = React.memo(function FileItem({
               Cancel
             </Button>
             <Button variant="destructive" onClick={handleDelete}>
-              Delete
+              Move to Trash
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,36 +1,17 @@
 import type { JSONContent } from "@tiptap/core";
 import { Table, renderTableToMarkdown } from "@tiptap/extension-table";
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+function tableWidths(node: JSONContent) {
+  return node.content?.map((row) =>
+    row.content?.map((cell) => Array.isArray(cell.attrs?.colwidth) ? cell.attrs.colwidth : null) ?? [],
+  ) ?? [];
 }
 
-function textContent(node: JSONContent): string {
-  if (node.type === "text") return node.text ?? "";
-  return node.content?.map(textContent).join("") ?? "";
-}
-
-function serializeTableToHtml(node: JSONContent): string {
-  let html = "<table>\n";
-  node.content?.forEach((row) => {
-    html += "  <tr>\n";
-    row.content?.forEach((cell) => {
-      const tag = cell.type === "tableHeader" ? "th" : "td";
-      const colwidth = cell.attrs?.colwidth;
-      const widthAttr = Array.isArray(colwidth) ? ` colwidth="${colwidth.join(",")}"` : "";
-      html += `    <${tag}${widthAttr}>${escapeHtml(textContent(cell))}</${tag}>\n`;
-    });
-    html += "  </tr>\n";
-  });
-  html += "</table>";
-  return html;
-}
-
-/** Pipe tables remain readable Markdown; resized tables use HTML to retain widths. */
+/**
+ * Keep table content in normal GFM Markdown so links and inline formatting
+ * survive. A small Ghost comment carries presentation-only column widths and
+ * is reapplied by parseMarkdownDocument when the file is reopened.
+ */
 export const ResizableTable = Table.extend({
   renderMarkdown(node, helpers) {
     const hasCustomWidths = node.content?.some((row) =>
@@ -41,8 +22,9 @@ export const ResizableTable = Table.extend({
       })
     );
 
-    return hasCustomWidths
-      ? serializeTableToHtml(node)
-      : renderTableToMarkdown(node, helpers);
+    const markdown = renderTableToMarkdown(node, helpers);
+    if (!hasCustomWidths) return markdown;
+
+    return `<!-- ghost-table-widths:${JSON.stringify(tableWidths(node))} -->\n${markdown}`;
   },
 });

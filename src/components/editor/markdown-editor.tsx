@@ -23,7 +23,6 @@ import { CollapsibleHeadings } from "./collapsible-headings";
 import { useEffect, useRef, useCallback } from "react";
 import { DOMSerializer } from "@tiptap/pm/model";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { writeText, writeHtml } from "@tauri-apps/plugin-clipboard-manager";
 import { LinkBubbleMenu } from "./link-bubble-menu";
 import { ensureProtocol } from "./floating-toolbar";
@@ -76,7 +75,7 @@ const BulletToTask = Extension.create({
 
 interface MarkdownEditorProps {
   content: string;
-  onContentChange: (markdown: string) => void;
+  onContentChange: (markdown: string) => void | Promise<void>;
   searchTerm?: string;
   replaceTerm?: string;
   onSearchResults?: (count: number, currentIndex: number) => void;
@@ -99,6 +98,8 @@ export function MarkdownEditor({
 }: MarkdownEditorProps) {
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSearchResults = useRef({ count: 0, index: 0 });
+  const onContentChangeRef = useRef(onContentChange);
+  onContentChangeRef.current = onContentChange;
 
   // Expose active file path for image save handler
   useEffect(() => {
@@ -106,17 +107,15 @@ export function MarkdownEditor({
     return () => { delete window.__ghostActiveFile; };
   }, [activeFile]);
 
-  const debouncedSave = useCallback(
-    (markdown: string) => {
-      if (saveTimeout.current) {
-        clearTimeout(saveTimeout.current);
-      }
-      saveTimeout.current = setTimeout(() => {
-        onContentChange(markdown);
-      }, 1000);
-    },
-    [onContentChange]
-  );
+  const debouncedSave = useCallback((markdown: string) => {
+    if (saveTimeout.current) {
+      clearTimeout(saveTimeout.current);
+    }
+    saveTimeout.current = setTimeout(() => {
+      saveTimeout.current = null;
+      void Promise.resolve(onContentChangeRef.current(markdown)).catch(() => {});
+    }, 1000);
+  }, []);
 
   const editor = useEditor({
     extensions: [
@@ -260,7 +259,7 @@ export function MarkdownEditor({
           }
           const md = editor?.getMarkdown();
           if (md !== undefined) {
-            onContentChange(md);
+            void Promise.resolve(onContentChangeRef.current(md)).catch(() => {});
           }
           return true;
         }
@@ -277,13 +276,13 @@ export function MarkdownEditor({
         saveTimeout.current = null;
         const md = editor?.getMarkdown();
         if (md !== undefined) {
-          onContentChange(md);
+          void Promise.resolve(onContentChangeRef.current(md)).catch(() => {});
         }
       }
     };
     window.addEventListener("blur", handleBlur);
     return () => window.removeEventListener("blur", handleBlur);
-  }, [editor, onContentChange]);
+  }, [editor]);
 
   // Sync search term from parent into editor extension
   useEffect(() => {
@@ -325,40 +324,25 @@ export function MarkdownEditor({
       }
       const md = editor?.getMarkdown();
       if (md !== undefined) {
-        await onContentChange(md);
+        await onContentChangeRef.current(md);
       }
     };
     return () => { delete window.__ghostFlushSave; };
-  }, [editor, onContentChange]);
-
-  // Listen for flush-saves event (broadcast to all windows before relaunch)
-  useEffect(() => {
-    let mounted = true;
-    const unlisten = listen("flush-saves", () => {
-      if (!mounted) return;
-      if (saveTimeout.current) {
-        clearTimeout(saveTimeout.current);
-        saveTimeout.current = null;
-      }
-      const md = editor?.getMarkdown();
-      if (md !== undefined) {
-        onContentChange(md);
-      }
-    });
-    return () => {
-      mounted = false;
-      unlisten.then((fn) => fn());
-    };
-  }, [editor, onContentChange]);
+  }, [editor]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
       if (saveTimeout.current) {
         clearTimeout(saveTimeout.current);
+        saveTimeout.current = null;
+        const md = editor?.getMarkdown();
+        if (md !== undefined) {
+          void Promise.resolve(onContentChangeRef.current(md)).catch(() => {});
+        }
       }
     };
-  }, []);
+  }, [editor]);
 
   // Listen for image insertions from external drag-drop
   useEffect(() => {

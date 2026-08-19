@@ -6,14 +6,14 @@ import { FontViewer } from "@/components/viewer/font-viewer";
 import { CsvViewer } from "@/components/viewer/csv-viewer";
 import { SvgViewer } from "@/components/viewer/svg-viewer";
 import { UnsupportedViewer } from "@/components/viewer/unsupported-viewer";
-import { isMarkdown, isImage, isPdf, isFont, isCsv, isSvg, isTextEditable } from "@/lib/file-type";
+import { isMarkdown, isImage, isPdf, isFont, isCsv, isSvg, isTextEditable, requiresMarkdownSourceMode } from "@/lib/file-type";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
 
 interface FileViewerProps {
   filePath: string;
   content: string;
-  onContentChange: (text: string) => void;
+  onContentChange: (text: string) => void | Promise<void>;
   searchTerm: string;
   replaceTerm: string;
   onSearchResults: (count: number, currentIndex: number) => void;
@@ -37,7 +37,7 @@ export function FileViewer({
   onToggleStyleBar,
   forceText = false,
 }: FileViewerProps) {
-  if (isMarkdown(filePath)) {
+  if (isMarkdown(filePath) && !requiresMarkdownSourceMode(filePath, content)) {
     return (
       <MarkdownEditor
         key={filePath}

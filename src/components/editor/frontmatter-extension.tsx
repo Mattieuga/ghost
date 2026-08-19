@@ -1,7 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from "@tiptap/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { parseFrontmatterSource, replaceFrontmatterYaml } from "./frontmatter";
 
 /**
@@ -14,6 +14,22 @@ function FrontmatterView({ node, updateAttributes, selected }: NodeViewProps) {
   const source = parseFrontmatterSource(raw) ?? parseFrontmatterSource("---\n---")!;
   const [expanded, setExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const pendingSelection = useRef<{
+    start: number;
+    end: number;
+    direction: "forward" | "backward" | "none";
+  } | null>(null);
+
+  // Updating the raw node attribute causes React to reapply the controlled
+  // textarea value. Browsers move the caret to the end when that happens, so
+  // restore the selection synchronously after Tiptap has rendered the update.
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    const selection = pendingSelection.current;
+    if (!textarea || !selection || document.activeElement !== textarea) return;
+    textarea.setSelectionRange(selection.start, selection.end, selection.direction);
+    pendingSelection.current = null;
+  }, [source.yaml]);
 
   useEffect(() => {
     if (!expanded || !textareaRef.current) return;
@@ -53,9 +69,15 @@ function FrontmatterView({ node, updateAttributes, selected }: NodeViewProps) {
             value={source.yaml}
             spellCheck={false}
             aria-label="YAML frontmatter content"
-            onChange={(event) =>
-              updateAttributes({ raw: replaceFrontmatterYaml(raw, event.target.value) })
-            }
+            onChange={(event) => {
+              const textarea = event.currentTarget;
+              pendingSelection.current = {
+                start: textarea.selectionStart,
+                end: textarea.selectionEnd,
+                direction: textarea.selectionDirection,
+              };
+              updateAttributes({ raw: replaceFrontmatterYaml(raw, textarea.value) });
+            }}
             onKeyDown={(event) => event.stopPropagation()}
           />
           <div className="ghost-frontmatter-delimiter" aria-hidden="true">

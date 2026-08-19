@@ -14,13 +14,8 @@ Type markdown, see rich text. Files live on your filesystem. No cloud, no databa
 
 Get the latest release at [ghosteditor.app](https://ghosteditor.app).
 
-The app is not code-signed, so macOS will block it on first launch. After dragging Ghost to `/Applications`, remove the quarantine flag:
-
-```sh
-xattr -d com.apple.quarantine /Applications/Ghost.app
-```
-
-Then open it normally.
+Release builds are signed with an Apple Developer ID and notarized by Apple,
+so they open normally under Gatekeeper after being copied to `/Applications`.
 
 ## Stack
 
@@ -38,6 +33,13 @@ pnpm install
 pnpm tauri dev
 ```
 
+Run the automated checks with:
+
+```bash
+pnpm test
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
 ## Build
 
 ```bash
@@ -45,6 +47,9 @@ pnpm tauri build
 ```
 
 Output: `src-tauri/target/release/bundle/macos/Ghost.app`
+
+Production releases are created by the tag-triggered GitHub Actions workflow;
+see [RELEASING.md](RELEASING.md) for the signed and notarized release process.
 
 ## License
 

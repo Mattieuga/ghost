@@ -5,13 +5,12 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { bracketMatching, indentOnInput, foldGutter, foldKeymap } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { search, searchKeymap, setSearchQuery, SearchQuery, findNext, findPrevious, replaceNext, replaceAll, SearchCursor } from "@codemirror/search";
-import { listen } from "@tauri-apps/api/event";
 import { getLanguageSupport } from "@/lib/file-type";
 import { ghostTheme } from "./codemirror-theme";
 
 interface CodeEditorProps {
   content: string;
-  onContentChange: (text: string) => void;
+  onContentChange: (text: string) => void | Promise<void>;
   searchTerm?: string;
   replaceTerm?: string;
   onSearchResults?: (count: number, currentIndex: number) => void;
@@ -55,14 +54,14 @@ export function CodeEditor({
   const matchCountRef = useRef(0);
   const currentIndexRef = useRef(0);
 
-  const flushSave = useCallback(() => {
+  const flushSave = useCallback(async () => {
     if (saveTimeout.current) {
       clearTimeout(saveTimeout.current);
       saveTimeout.current = null;
     }
     const view = viewRef.current;
     if (view) {
-      onContentChangeRef.current(view.state.doc.toString());
+      await onContentChangeRef.current(view.state.doc.toString());
     }
   }, []);
 
@@ -71,7 +70,8 @@ export function CodeEditor({
       clearTimeout(saveTimeout.current);
     }
     saveTimeout.current = setTimeout(() => {
-      onContentChangeRef.current(text);
+      saveTimeout.current = null;
+      void Promise.resolve(onContentChangeRef.current(text)).catch(() => {});
     }, 1000);
   }, []);
 
@@ -138,7 +138,7 @@ export function CodeEditor({
       if (saveTimeout.current) {
         clearTimeout(saveTimeout.current);
         saveTimeout.current = null;
-        onContentChangeRef.current(view.state.doc.toString());
+        void Promise.resolve(onContentChangeRef.current(view.state.doc.toString())).catch(() => {});
       }
       view.destroy();
       viewRef.current = null;
@@ -148,28 +148,15 @@ export function CodeEditor({
 
   // Flush on window blur
   useEffect(() => {
-    const handleBlur = () => flushSave();
+    const handleBlur = () => { void flushSave().catch(() => {}); };
     window.addEventListener("blur", handleBlur);
     return () => window.removeEventListener("blur", handleBlur);
   }, [flushSave]);
 
   // Expose flush function for updater
   useEffect(() => {
-    window.__ghostFlushSave = async () => flushSave();
+    window.__ghostFlushSave = flushSave;
     return () => { delete window.__ghostFlushSave; };
-  }, [flushSave]);
-
-  // Listen for flush-saves event
-  useEffect(() => {
-    let mounted = true;
-    const unlisten = listen("flush-saves", () => {
-      if (!mounted) return;
-      flushSave();
-    });
-    return () => {
-      mounted = false;
-      unlisten.then((fn) => fn());
-    };
   }, [flushSave]);
 
   // Search integration — recount matches only when searchTerm changes

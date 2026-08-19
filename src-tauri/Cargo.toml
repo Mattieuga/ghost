@@ -14,7 +14,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-store = "2"
 tauri-plugin-clipboard-manager = "2"
@@ -26,8 +25,12 @@ notify-debouncer-mini = "0.5"
 font-kit = "0.14"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+trash = "5"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = "0.3"
 objc2-app-kit = { version = "0.3", features = ["NSView", "NSMenu", "NSMenuItem", "NSEvent", "NSResponder", "NSPasteboard", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSApplication", "NSRunningApplication", "NSWindow", "NSButton", "NSControl"] }
+
+[target."cfg(unix)".dependencies]
+xattr = "1.6.1"

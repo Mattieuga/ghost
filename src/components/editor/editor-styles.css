@@ -1,14 +1,15 @@
 .ghost-editor {
+  box-sizing: content-box;
+  width: min(var(--editor-max-width, 730px), calc(100% - 101px));
   padding: 3.5rem 45px 2.5rem 56px;
-  max-width: var(--editor-max-width, 730px);
-  min-width: 300px;
+  min-width: 0;
   margin: 0 auto;
   min-height: 100%;
   outline: none;
   color: var(--card-foreground);
   caret-color: var(--ghost-amber);
   font-size: var(--editor-font-size, 16px);
-  line-height: var(--editor-line-height, 1.75);
+  line-height: var(--editor-line-height, 1.65);
   font-family: var(--editor-text-font, "Inter"), -apple-system, sans-serif;
 }
 
@@ -18,11 +19,11 @@
 }
 
 .ghost-editor h1 {
-  font-size: 34px;
+  font-size: 32px;
   font-weight: 700;
-  line-height: 42px;
+  line-height: 40px;
   margin-top: var(--editor-heading-spacing, 1rem);
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--editor-heading-after-spacing, 0.5rem);
   color: var(--foreground);
 }
 
@@ -35,7 +36,7 @@
   font-weight: 600;
   line-height: 1.3;
   margin-top: var(--editor-heading-spacing, 1rem);
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--editor-heading-after-spacing, 0.5rem);
   color: var(--card-foreground);
 }
 
@@ -44,7 +45,7 @@
   font-weight: 600;
   line-height: 1.4;
   margin-top: var(--editor-heading-spacing, 1rem);
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--editor-heading-after-spacing, 0.5rem);
   color: var(--card-foreground);
 }
 
@@ -55,7 +56,7 @@
   font-weight: 600;
   line-height: 1.5;
   margin-top: var(--editor-heading-spacing, 1rem);
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--editor-heading-after-spacing, 0.5rem);
   color: var(--card-foreground);
 }
 
@@ -123,8 +124,8 @@
 
 /* Paragraphs */
 .ghost-editor p {
-  margin-bottom: var(--editor-paragraph-spacing, 0.75rem);
-  line-height: var(--editor-line-height, 1.75);
+  margin: 0 0 var(--editor-block-spacing, 0rem);
+  line-height: var(--editor-line-height, 1.65);
   font-size: var(--editor-font-size, 16px);
 }
 
@@ -170,7 +171,7 @@
   background: var(--muted);
   padding: 16px 20px;
   border-radius: 8px;
-  margin-bottom: 1rem;
+  margin: 0 0 var(--editor-block-spacing, 0rem);
   overflow-x: auto;
   position: relative;
 }
@@ -187,8 +188,7 @@
 .ghost-editor blockquote {
   border-left: 2px solid var(--border);
   padding-left: 1.25rem;
-  margin-left: 0;
-  margin-bottom: 1rem;
+  margin: 0 0 var(--editor-block-spacing, 0rem);
   color: var(--sidebar-foreground);
 }
 
@@ -196,7 +196,7 @@
 .ghost-editor ul {
   list-style-type: none;
   padding-left: 0;
-  margin-bottom: 1rem;
+  margin: 0 0 var(--editor-block-spacing, 0rem);
 }
 
 .ghost-editor ul > li {
@@ -209,7 +209,7 @@
   content: "";
   position: absolute;
   left: 4px;
-  top: calc(var(--editor-font-size, 16px) * var(--editor-line-height, 1.75) / 2 - 3px);
+  top: calc(var(--editor-font-size, 16px) * var(--editor-line-height, 1.65) / 2 - 3px);
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -255,7 +255,7 @@
 .ghost-editor ol {
   list-style-type: decimal;
   padding-left: 1.5rem;
-  margin-bottom: 1rem;
+  margin: 0 0 var(--editor-block-spacing, 0rem);
 }
 
 .ghost-editor ol > li::marker {
@@ -264,7 +264,7 @@
 
 .ghost-editor li {
   margin-bottom: 0;
-  line-height: var(--editor-line-height, 1.75);
+  line-height: var(--editor-line-height, 1.65);
   font-size: var(--editor-font-size, 16px);
 }
 
@@ -362,7 +362,7 @@
 
 /* Images */
 .ghost-image-wrapper {
-  margin: 0.75rem 0;
+  margin: 0 0 var(--editor-block-spacing, 0rem);
 }
 
 .ghost-image-container {
@@ -497,7 +497,7 @@
 
 /* Lossless YAML frontmatter block */
 .ghost-frontmatter {
-  margin: 0 0 1.25rem;
+  margin: 0 0 var(--editor-block-spacing, 0rem);
   overflow: hidden;
   border: 1px solid color-mix(in oklch, var(--border) 78%, transparent);
   border-radius: 8px;
@@ -689,7 +689,7 @@
 /* Tables — wrapper for horizontal scroll on wide tables */
 .ghost-editor .tableWrapper {
   overflow-x: auto;
-  margin: 1rem 0;
+  margin: 0 0 var(--editor-block-spacing, 0rem);
   background:
     linear-gradient(to right, var(--background) 30%, transparent),
     linear-gradient(to left, var(--background) 30%, transparent),

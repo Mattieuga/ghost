@@ -151,9 +151,9 @@ describe("Tiptap 3 Markdown", () => {
     expect(output).not.toContain("<table>");
   });
 
-  it("uses HTML only for resized tables and restores the width", () => {
+  it("keeps resized tables in Markdown, preserves inline formatting, and restores widths", () => {
     const editor = createEditor(
-      "| Name | Value |\n" +
+      "| **Name** | [Value](https://example.com) |\n" +
       "| --- | --- |\n" +
       "| Alpha | 1 |\n",
     );
@@ -174,8 +174,10 @@ describe("Tiptap 3 Markdown", () => {
     );
 
     const output = editor.getMarkdown();
-    expect(output).toContain("<table>");
-    expect(output).toContain('colwidth="180"');
+    expect(output).toContain("<!-- ghost-table-widths:");
+    expect(output).toContain("| **Name**");
+    expect(output).toContain("[Value](https://example.com)");
+    expect(output).not.toContain("<table>");
 
     const reopened = createEditor(output);
     let restoredWidth: number[] | null = null;
@@ -186,6 +188,29 @@ describe("Tiptap 3 Markdown", () => {
       }
     });
     expect(restoredWidth).toEqual([180]);
+  });
+
+  it("migrates legacy resized HTML tables without losing rich cell content", () => {
+    const legacy =
+      '<table><thead><tr><th colwidth="180"><strong>Name</strong></th>' +
+      '<th><a href="https://example.com">Value</a></th></tr></thead>' +
+      '<tbody><tr><td>Alpha</td><td>1</td></tr></tbody></table>';
+    const editor = createEditor(legacy);
+
+    let restoredWidth: number[] | null = null;
+    editor.state.doc.descendants((node) => {
+      if (restoredWidth === null && node.type.name === "tableHeader") {
+        restoredWidth = node.attrs.colwidth;
+        return false;
+      }
+    });
+
+    expect(restoredWidth).toEqual([180]);
+    const output = editor.getMarkdown();
+    expect(output).toContain("<!-- ghost-table-widths:");
+    expect(output).toContain("**Name**");
+    expect(output).toContain("[Value](https://example.com)");
+    expect(output).not.toContain("<table>");
   });
 
   it("round-trips Markdown images and uses HTML when an image is resized", () => {

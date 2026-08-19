@@ -1,8 +1,51 @@
 use serde::Serialize;
 use std::fs;
-use std::path::Path;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
 use pulldown_cmark::{Parser, Options, html};
+use tauri::State;
+
+static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(unix)]
+fn copy_extended_attributes(source: &Path, destination: &Path) -> Result<(), std::io::Error> {
+    for name in xattr::list(source)? {
+        if let Some(value) = xattr::get(source, &name)? {
+            xattr::set(destination, &name, &value)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn copy_extended_attributes(_source: &Path, _destination: &Path) -> Result<(), std::io::Error> {
+    Ok(())
+}
+
+pub struct FileWriteState(pub Mutex<()>);
+
+impl FileWriteState {
+    pub fn new() -> Self {
+        Self(Mutex::new(()))
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum WriteFileError {
+    Conflict { message: String },
+    Io { message: String },
+}
+
+impl WriteFileError {
+    fn io(error: impl std::fmt::Display) -> Self {
+        Self::Io { message: error.to_string() }
+    }
+}
 
 /// Reject names containing path separators or traversal components
 fn validate_name(name: &str) -> Result<(), String> {
@@ -226,9 +269,101 @@ fn render_icns_preview(_bytes: &[u8]) -> Result<Vec<u8>, String> {
     Err("ICNS previews are currently supported on macOS only".to_string())
 }
 
+fn atomic_write_file(path: &Path, content: &str) -> Result<(), std::io::Error> {
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "File has no parent directory")
+    })?;
+    let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or("document");
+    let permissions = fs::metadata(path).ok().map(|metadata| metadata.permissions());
+
+    let mut temporary = None;
+    for _ in 0..100 {
+        let suffix = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let candidate = parent.join(format!(".ghost-{}-{}-{}.tmp", file_name, std::process::id(), suffix));
+        match OpenOptions::new().write(true).create_new(true).open(&candidate) {
+            Ok(file) => {
+                temporary = Some((candidate, file));
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+
+    let (temporary_path, mut temporary_file) = temporary.ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::AlreadyExists, "Could not create a temporary save file")
+    })?;
+
+    let result = (|| {
+        if let Some(permissions) = permissions {
+            temporary_file.set_permissions(permissions)?;
+        }
+        temporary_file.write_all(content.as_bytes())?;
+        if path.exists() {
+            // Atomic replacement creates a new inode. Copy Finder tags and
+            // other extended metadata before the rename so a save does not
+            // silently strip metadata from the user's file.
+            copy_extended_attributes(path, &temporary_path)?;
+        }
+        temporary_file.sync_all()?;
+        drop(temporary_file);
+        fs::rename(&temporary_path, path)?;
+
+        // Best effort: persist the directory entry as well as the file bytes.
+        if let Ok(directory) = fs::File::open(parent) {
+            let _ = directory.sync_all();
+        }
+        Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary_path);
+    }
+    result
+}
+
+fn write_file_checked(
+    path: &Path,
+    content: &str,
+    expected_content: Option<&str>,
+    force: bool,
+) -> Result<(), WriteFileError> {
+    if !force {
+        if let Some(expected) = expected_content {
+            let current = fs::read_to_string(path).map_err(|error| {
+                WriteFileError::io(format!("Failed to verify file before saving: {}", error))
+            })?;
+            if current != expected {
+                return Err(WriteFileError::Conflict {
+                    message: "The file changed on disk after Ghost opened it. Your edits have not been overwritten."
+                        .to_string(),
+                });
+            }
+        }
+    }
+
+    atomic_write_file(path, content)
+        .map_err(|error| WriteFileError::io(format!("Failed to save file: {}", error)))
+}
+
 #[tauri::command]
-pub async fn write_file(path: String, content: String) -> Result<(), String> {
-    fs::write(&path, &content).map_err(|e| format!("Failed to write file: {}", e))
+pub fn write_file(
+    state: State<'_, FileWriteState>,
+    path: String,
+    content: String,
+    expected_content: Option<String>,
+    force: Option<bool>,
+) -> Result<(), WriteFileError> {
+    let _write_guard = state
+        .0
+        .lock()
+        .map_err(|_| WriteFileError::io("The save queue is unavailable"))?;
+    write_file_checked(
+        Path::new(&path),
+        &content,
+        expected_content.as_deref(),
+        force.unwrap_or(false),
+    )
 }
 
 #[tauri::command]
@@ -253,38 +388,110 @@ pub async fn create_directory(parent: String, name: String) -> Result<String, St
     Ok(dir_path.to_string_lossy().to_string())
 }
 
+fn companion_assets_path_for_file_name(path: &Path) -> Option<PathBuf> {
+    let stem = path.file_stem()?.to_string_lossy();
+    Some(path.parent()?.join(format!("{}.assets", stem)))
+}
+
+fn companion_assets_path(path: &Path) -> Option<PathBuf> {
+    path.is_file()
+        .then(|| companion_assets_path_for_file_name(path))
+        .flatten()
+}
+
+fn unused_backup_path(path: &Path) -> Result<PathBuf, String> {
+    let parent = path.parent().ok_or("Cannot determine backup directory")?;
+    let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("item");
+    for _ in 0..100 {
+        let suffix = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let candidate = parent.join(format!(".ghost-backup-{}-{}-{}", name, std::process::id(), suffix));
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    Err("Could not reserve a safe backup path".to_string())
+}
+
+fn restore_backup(backup: &Option<PathBuf>, destination: &Path) {
+    if let Some(backup) = backup {
+        if backup.exists() && !destination.exists() {
+            let _ = fs::rename(backup, destination);
+        }
+    }
+}
+
+fn trash_backup(backup: Option<PathBuf>) {
+    if let Some(backup) = backup {
+        if backup.exists() {
+            if let Err(error) = trash::delete(&backup) {
+                // The replacement succeeded; retaining a hidden backup is safer
+                // than permanently deleting it when Trash is unavailable.
+                eprintln!("Warning: replacement backup retained at {}: {}", backup.display(), error);
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn move_file(file_path: String, target_dir: String, force: Option<bool>) -> Result<String, String> {
     let source = Path::new(&file_path);
+    if !source.exists() {
+        return Err("Source no longer exists".to_string());
+    }
     let file_name = source.file_name().ok_or("Cannot determine file name")?;
     let dest = Path::new(&target_dir).join(file_name);
-    if dest.exists() {
-        if force.unwrap_or(false) {
-            // Remove existing before move
-            if dest.is_dir() {
-                fs::remove_dir_all(&dest).map_err(|e| format!("Failed to remove existing: {}", e))?;
-            } else {
-                fs::remove_file(&dest).map_err(|e| format!("Failed to remove existing: {}", e))?;
-            }
-        } else {
-            return Err("ALREADY_EXISTS".to_string());
-        }
+    if source == dest {
+        return Ok(dest.to_string_lossy().to_string());
     }
-    fs::rename(&file_path, &dest).map_err(|e| format!("Failed to move file: {}", e))?;
 
-    // Move companion .assets/ folder if it exists (e.g., readme.assets/ for readme.md)
-    if let Some(file_stem) = source.file_stem() {
-        let assets_name = format!("{}.assets", file_stem.to_string_lossy());
-        let source_assets = source.parent().map(|p| p.join(&assets_name));
-        let dest_assets = Path::new(&target_dir).join(&assets_name);
-        if let Some(src_assets) = source_assets {
-            if src_assets.is_dir() {
-                if let Err(e) = fs::rename(&src_assets, &dest_assets) {
-                    eprintln!("Warning: failed to move assets folder: {}", e);
-                }
-            }
+    let source_assets_path = companion_assets_path(source);
+    let dest_assets = source_assets_path.as_ref().and_then(|assets| {
+        assets.file_name().map(|name| Path::new(&target_dir).join(name))
+    });
+    let source_assets = source_assets_path.filter(|path| path.is_dir());
+    let has_conflict = dest.exists() || dest_assets.as_ref().is_some_and(|path| path.exists());
+    if has_conflict && !force.unwrap_or(false) {
+        return Err("ALREADY_EXISTS".to_string());
+    }
+
+    let destination_backup = if dest.exists() {
+        let backup = unused_backup_path(&dest)?;
+        fs::rename(&dest, &backup).map_err(|error| format!("Failed to protect existing destination: {}", error))?;
+        Some(backup)
+    } else {
+        None
+    };
+
+    let assets_backup = if let Some(dest_assets) = dest_assets.as_ref().filter(|path| path.exists()) {
+        let backup = unused_backup_path(dest_assets)?;
+        if let Err(error) = fs::rename(dest_assets, &backup) {
+            restore_backup(&destination_backup, &dest);
+            return Err(format!("Failed to protect existing assets: {}", error));
+        }
+        Some(backup)
+    } else {
+        None
+    };
+
+    if let Err(error) = fs::rename(source, &dest) {
+        if let Some(dest_assets) = dest_assets.as_ref() {
+            restore_backup(&assets_backup, dest_assets);
+        }
+        restore_backup(&destination_backup, &dest);
+        return Err(format!("Failed to move file: {}", error));
+    }
+
+    if let (Some(source_assets), Some(dest_assets)) = (source_assets.as_ref(), dest_assets.as_ref()) {
+        if let Err(error) = fs::rename(source_assets, dest_assets) {
+            let _ = fs::rename(&dest, source);
+            restore_backup(&assets_backup, dest_assets);
+            restore_backup(&destination_backup, &dest);
+            return Err(format!("Failed to move companion assets: {}", error));
         }
     }
+
+    trash_backup(destination_backup);
+    trash_backup(assets_backup);
 
     Ok(dest.to_string_lossy().to_string())
 }
@@ -293,32 +500,47 @@ pub async fn move_file(file_path: String, target_dir: String, force: Option<bool
 pub async fn rename_file(old_path: String, new_name: String) -> Result<String, String> {
     validate_name(&new_name)?;
     let old = Path::new(&old_path);
+    let old_is_file = old.is_file();
     let parent = old.parent().ok_or("Cannot determine parent directory")?;
     let new_path = parent.join(&new_name);
     if new_path.exists() {
         return Err(format!("A file with that name already exists: {}", new_path.display()));
     }
-    fs::rename(&old_path, &new_path).map_err(|e| format!("Failed to rename: {}", e))?;
-
-    // Rename companion .assets/ folder and rewrite references in the markdown
-    if let (Some(old_stem), Some(new_stem)) = (old.file_stem(), Path::new(&new_name).file_stem()) {
-        let old_assets_name = format!("{}.assets", old_stem.to_string_lossy());
-        let new_assets_name = format!("{}.assets", new_stem.to_string_lossy());
-        let old_assets = parent.join(&old_assets_name);
-        if old_assets.is_dir() && old_stem != new_stem {
-            let new_assets = parent.join(&new_assets_name);
-            if let Err(e) = fs::rename(&old_assets, &new_assets) {
-                eprintln!("Warning: failed to rename assets folder: {}", e);
-            }
-            // Rewrite asset references inside the markdown file
-            if let Ok(content) = fs::read_to_string(&new_path) {
-                let updated = content.replace(&old_assets_name, &new_assets_name);
-                if updated != content {
-                    if let Err(e) = fs::write(&new_path, &updated) {
-                        eprintln!("Warning: failed to update asset references: {}", e);
+    let asset_rename = if old_is_file {
+        match (old.file_stem(), Path::new(&new_name).file_stem()) {
+            (Some(old_stem), Some(new_stem)) if old_stem != new_stem => {
+                let old_name = format!("{}.assets", old_stem.to_string_lossy());
+                let new_name = format!("{}.assets", new_stem.to_string_lossy());
+                let old_assets = parent.join(&old_name);
+                let new_assets = parent.join(&new_name);
+                if old_assets.is_dir() {
+                    if new_assets.exists() {
+                        return Err(format!("Companion assets already exist: {}", new_assets.display()));
                     }
+                    let content = fs::read_to_string(old)
+                        .map_err(|error| format!("Failed to prepare asset references: {}", error))?;
+                    Some((old_assets, new_assets, content.replace(&old_name, &new_name)))
+                } else {
+                    None
                 }
             }
+            _ => None,
+        }
+    } else {
+        None
+    };
+
+    fs::rename(old, &new_path).map_err(|error| format!("Failed to rename: {}", error))?;
+
+    if let Some((old_assets, new_assets, updated_content)) = asset_rename {
+        if let Err(error) = fs::rename(&old_assets, &new_assets) {
+            let _ = fs::rename(&new_path, old);
+            return Err(format!("Failed to rename companion assets: {}", error));
+        }
+        if let Err(error) = atomic_write_file(&new_path, &updated_content) {
+            let _ = fs::rename(&new_assets, &old_assets);
+            let _ = fs::rename(&new_path, old);
+            return Err(format!("Failed to update asset references: {}", error));
         }
     }
 
@@ -327,12 +549,12 @@ pub async fn rename_file(old_path: String, new_name: String) -> Result<String, S
 
 #[tauri::command]
 pub async fn delete_file(path: String) -> Result<(), String> {
-    let p = Path::new(&path);
-    if p.is_dir() {
-        fs::remove_dir_all(&path).map_err(|e| format!("Failed to delete directory: {}", e))
-    } else {
-        fs::remove_file(&path).map_err(|e| format!("Failed to delete file: {}", e))
+    let path = Path::new(&path);
+    let mut items = vec![path.to_path_buf()];
+    if let Some(assets) = companion_assets_path(path).filter(|assets| assets.is_dir()) {
+        items.push(assets);
     }
+    trash::delete_all(&items).map_err(|error| format!("Failed to move item to Trash: {}", error))
 }
 
 #[tauri::command]
@@ -351,7 +573,15 @@ pub async fn duplicate_file(path: String) -> Result<String, String> {
             dest_name = format!("{} copy {}", dir_name, counter);
             dest = parent.join(&dest_name);
         }
-        copy_dir_recursive(source, &dest)?;
+        let staging = unused_backup_path(&dest)?;
+        if let Err(error) = copy_dir_recursive(source, &staging) {
+            remove_staging_path(&staging);
+            return Err(error);
+        }
+        if let Err(error) = fs::rename(&staging, &dest) {
+            remove_staging_path(&staging);
+            return Err(format!("Failed to finish folder duplication: {}", error));
+        }
         Ok(dest.to_string_lossy().to_string())
     } else {
         let stem = source.file_stem()
@@ -364,13 +594,89 @@ pub async fn duplicate_file(path: String) -> Result<String, String> {
         let mut dest_name = format!("{} copy{}", stem, ext);
         let mut counter = 1;
         let mut dest = parent.join(&dest_name);
-        while dest.exists() {
+        let mut dest_assets = companion_assets_path_for_file_name(&dest);
+        while dest.exists() || dest_assets.as_ref().is_some_and(|assets| assets.exists()) {
             counter += 1;
             dest_name = format!("{} copy {}{}", stem, counter, ext);
             dest = parent.join(&dest_name);
+            dest_assets = companion_assets_path_for_file_name(&dest);
         }
-        fs::copy(&path, &dest).map_err(|e| format!("Failed to duplicate: {}", e))?;
+
+        let source_assets = companion_assets_path(source).filter(|assets| assets.is_dir());
+        let updated_content = if let (Some(source_assets), Some(dest_assets)) =
+            (source_assets.as_ref(), dest_assets.as_ref())
+        {
+            let old_name = source_assets.file_name().and_then(|name| name.to_str())
+                .ok_or("Cannot determine companion assets name")?;
+            let new_name = dest_assets.file_name().and_then(|name| name.to_str())
+                .ok_or("Cannot determine duplicated assets name")?;
+            let content = fs::read_to_string(source)
+                .map_err(|error| format!("Failed to prepare duplicated asset references: {}", error))?;
+            Some(content.replace(old_name, new_name))
+        } else {
+            None
+        };
+
+        let staging_file = unused_backup_path(&dest)?;
+        if let Err(error) = copy_file_with_metadata(source, &staging_file) {
+            remove_staging_path(&staging_file);
+            return Err(format!("Failed to duplicate file: {}", error));
+        }
+        if let Some(updated_content) = updated_content {
+            if let Err(error) = atomic_write_file(&staging_file, &updated_content) {
+                remove_staging_path(&staging_file);
+                return Err(format!("Failed to update duplicated asset references: {}", error));
+            }
+        }
+
+        let staging_assets = if let (Some(source_assets), Some(dest_assets)) =
+            (source_assets.as_ref(), dest_assets.as_ref())
+        {
+            let staging = unused_backup_path(dest_assets)?;
+            if let Err(error) = copy_dir_recursive(source_assets, &staging) {
+                remove_staging_path(&staging_file);
+                remove_staging_path(&staging);
+                return Err(error);
+            }
+            Some(staging)
+        } else {
+            None
+        };
+
+        if let Err(error) = fs::rename(&staging_file, &dest) {
+            remove_staging_path(&staging_file);
+            if let Some(staging_assets) = staging_assets.as_ref() {
+                remove_staging_path(staging_assets);
+            }
+            return Err(format!("Failed to finish file duplication: {}", error));
+        }
+
+        if let (Some(staging_assets), Some(dest_assets)) =
+            (staging_assets.as_ref(), dest_assets.as_ref())
+        {
+            if let Err(error) = fs::rename(staging_assets, dest_assets) {
+                let _ = fs::rename(&dest, &staging_file);
+                remove_staging_path(&staging_file);
+                remove_staging_path(staging_assets);
+                return Err(format!("Failed to finish companion assets duplication: {}", error));
+            }
+        }
+
         Ok(dest.to_string_lossy().to_string())
+    }
+}
+
+fn copy_file_with_metadata(source: &Path, destination: &Path) -> Result<(), std::io::Error> {
+    fs::copy(source, destination)?;
+    copy_extended_attributes(source, destination)
+}
+
+fn remove_staging_path(path: &Path) {
+    let Ok(metadata) = fs::symlink_metadata(path) else { return };
+    if metadata.is_dir() && !metadata.file_type().is_symlink() {
+        let _ = fs::remove_dir_all(path);
+    } else {
+        let _ = fs::remove_file(path);
     }
 }
 
@@ -380,10 +686,18 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
         let entry = entry.map_err(|e| e.to_string())?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
+        let file_type = entry.file_type().map_err(|error| error.to_string())?;
+        if file_type.is_symlink() {
+            return Err(format!(
+                "Folder duplication stopped at symbolic link: {}",
+                src_path.display(),
+            ));
+        }
+        if file_type.is_dir() {
             copy_dir_recursive(&src_path, &dst_path)?;
         } else {
-            fs::copy(&src_path, &dst_path).map_err(|e| format!("Failed to copy: {}", e))?;
+            copy_file_with_metadata(&src_path, &dst_path)
+                .map_err(|e| format!("Failed to copy: {}", e))?;
         }
     }
     Ok(())
@@ -545,7 +859,25 @@ pub async fn open_with_default_app(path: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::decode_text_bytes;
+    use super::{
+        decode_text_bytes, duplicate_file, move_file, rename_file, write_file_checked, WriteFileError,
+        TEMP_FILE_COUNTER,
+    };
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::Ordering;
+
+    fn test_directory(name: &str) -> PathBuf {
+        let suffix = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let directory = std::env::temp_dir().join(format!(
+            "ghost-fs-test-{}-{}-{}",
+            name,
+            std::process::id(),
+            suffix,
+        ));
+        fs::create_dir(&directory).expect("test directory should be created");
+        directory
+    }
 
     #[test]
     fn accepts_utf8_text() {
@@ -589,6 +921,216 @@ mod tests {
             decode_text_bytes(occasional_control.as_bytes()),
             Some(occasional_control)
         );
+    }
+
+    #[test]
+    fn checked_write_atomically_replaces_the_file_without_leaving_a_temp_file() {
+        let directory = test_directory("atomic-write");
+        let path = directory.join("notes.md");
+        fs::write(&path, "before").expect("fixture should be written");
+
+        write_file_checked(&path, "after", Some("before"), false)
+            .expect("matching content should save");
+
+        assert_eq!(fs::read_to_string(&path).unwrap(), "after");
+        let entries = fs::read_dir(&directory).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path(), path);
+        fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[test]
+    fn checked_write_detects_an_external_change_without_overwriting_it() {
+        let directory = test_directory("write-conflict");
+        let path = directory.join("notes.md");
+        fs::write(&path, "changed elsewhere").expect("fixture should be written");
+
+        let error = write_file_checked(&path, "my edit", Some("original"), false)
+            .expect_err("external change should conflict");
+
+        assert!(matches!(error, WriteFileError::Conflict { .. }));
+        assert_eq!(fs::read_to_string(&path).unwrap(), "changed elsewhere");
+        fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[test]
+    fn forced_checked_write_explicitly_overwrites_a_conflict() {
+        let directory = test_directory("force-write");
+        let path = directory.join("notes.md");
+        fs::write(&path, "changed elsewhere").expect("fixture should be written");
+
+        write_file_checked(&path, "my edit", Some("original"), true)
+            .expect("forced save should overwrite");
+
+        assert_eq!(fs::read_to_string(&path).unwrap(), "my edit");
+        fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn atomic_write_preserves_extended_file_metadata() {
+        let directory = test_directory("write-xattr");
+        let path = directory.join("notes.md");
+        fs::write(&path, "before").expect("fixture should be written");
+        xattr::set(&path, "com.ghost.test", b"preserve me")
+            .expect("fixture attribute should be written");
+
+        write_file_checked(&path, "after", Some("before"), false)
+            .expect("file should save");
+
+        assert_eq!(
+            xattr::get(&path, "com.ghost.test").unwrap(),
+            Some(b"preserve me".to_vec()),
+        );
+        fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[test]
+    fn rename_moves_companion_assets_and_updates_their_references() {
+        let directory = test_directory("rename-assets");
+        let old_path = directory.join("notes.md");
+        let old_assets = directory.join("notes.assets");
+        fs::write(&old_path, "![Diagram](notes.assets/diagram.png)")
+            .expect("fixture should be written");
+        fs::create_dir(&old_assets).expect("assets directory should be created");
+        fs::write(old_assets.join("diagram.png"), b"image")
+            .expect("asset should be written");
+
+        let renamed = tauri::async_runtime::block_on(rename_file(
+            old_path.to_string_lossy().to_string(),
+            "renamed.md".to_string(),
+        ))
+        .expect("rename should succeed");
+
+        let new_path = directory.join("renamed.md");
+        let new_assets = directory.join("renamed.assets");
+        assert_eq!(PathBuf::from(renamed), new_path);
+        assert!(!old_path.exists());
+        assert!(!old_assets.exists());
+        assert_eq!(
+            fs::read_to_string(&new_path).unwrap(),
+            "![Diagram](renamed.assets/diagram.png)",
+        );
+        assert_eq!(fs::read(new_assets.join("diagram.png")).unwrap(), b"image");
+        fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[test]
+    fn rename_preflights_an_assets_collision_without_mutating_the_source() {
+        let directory = test_directory("rename-assets-conflict");
+        let old_path = directory.join("notes.md");
+        let old_assets = directory.join("notes.assets");
+        fs::write(&old_path, "![Diagram](notes.assets/diagram.png)")
+            .expect("fixture should be written");
+        fs::create_dir(&old_assets).expect("assets directory should be created");
+        fs::create_dir(directory.join("renamed.assets"))
+            .expect("conflicting assets directory should be created");
+
+        let result = tauri::async_runtime::block_on(rename_file(
+            old_path.to_string_lossy().to_string(),
+            "renamed.md".to_string(),
+        ));
+
+        assert!(result.is_err());
+        assert!(old_path.exists());
+        assert!(old_assets.exists());
+        assert!(!directory.join("renamed.md").exists());
+        fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[test]
+    fn move_keeps_a_file_and_its_companion_assets_together() {
+        let directory = test_directory("move-assets");
+        let source_directory = directory.join("source");
+        let target_directory = directory.join("target");
+        fs::create_dir(&source_directory).expect("source directory should be created");
+        fs::create_dir(&target_directory).expect("target directory should be created");
+        let source_path = source_directory.join("notes.md");
+        let source_assets = source_directory.join("notes.assets");
+        fs::write(&source_path, "document").expect("fixture should be written");
+        fs::create_dir(&source_assets).expect("assets directory should be created");
+        fs::write(source_assets.join("diagram.png"), b"image")
+            .expect("asset should be written");
+
+        let moved = tauri::async_runtime::block_on(move_file(
+            source_path.to_string_lossy().to_string(),
+            target_directory.to_string_lossy().to_string(),
+            Some(false),
+        ))
+        .expect("move should succeed");
+
+        assert_eq!(PathBuf::from(moved), target_directory.join("notes.md"));
+        assert!(!source_path.exists());
+        assert!(!source_assets.exists());
+        assert_eq!(fs::read_to_string(target_directory.join("notes.md")).unwrap(), "document");
+        assert_eq!(
+            fs::read(target_directory.join("notes.assets/diagram.png")).unwrap(),
+            b"image",
+        );
+        fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[test]
+    fn duplicate_creates_independent_companion_assets_and_updates_references() {
+        let directory = test_directory("duplicate-assets");
+        let source_path = directory.join("notes.md");
+        let source_assets = directory.join("notes.assets");
+        fs::write(&source_path, "![Diagram](notes.assets/diagram.png)")
+            .expect("fixture should be written");
+        fs::create_dir(&source_assets).expect("assets directory should be created");
+        fs::write(source_assets.join("diagram.png"), b"image")
+            .expect("asset should be written");
+
+        let duplicated = tauri::async_runtime::block_on(duplicate_file(
+            source_path.to_string_lossy().to_string(),
+        ))
+        .expect("duplicate should succeed");
+
+        let duplicated_path = directory.join("notes copy.md");
+        let duplicated_assets = directory.join("notes copy.assets");
+        assert_eq!(PathBuf::from(duplicated), duplicated_path);
+        assert_eq!(
+            fs::read_to_string(&duplicated_path).unwrap(),
+            "![Diagram](notes copy.assets/diagram.png)",
+        );
+        assert_eq!(
+            fs::read(duplicated_assets.join("diagram.png")).unwrap(),
+            b"image",
+        );
+        assert!(source_assets.join("diagram.png").exists());
+        fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn folder_duplicate_does_not_follow_symbolic_links() {
+        use std::os::unix::fs::symlink;
+
+        let directory = test_directory("duplicate-symlink");
+        let source = directory.join("source");
+        let outside = directory.join("outside");
+        fs::create_dir(&source).expect("source directory should be created");
+        fs::create_dir(&outside).expect("outside directory should be created");
+        fs::write(outside.join("private.txt"), "outside")
+            .expect("outside fixture should be written");
+        symlink(&outside, source.join("link")).expect("symlink should be created");
+
+        let result = tauri::async_runtime::block_on(duplicate_file(
+            source.to_string_lossy().to_string(),
+        ));
+
+        assert!(result.is_err());
+        assert!(!directory.join("source copy").exists());
+        assert_eq!(fs::read_to_string(outside.join("private.txt")).unwrap(), "outside");
+        let staging_items = fs::read_dir(&directory)
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .into_iter()
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with(".ghost-backup"))
+            .count();
+        assert_eq!(staging_items, 0);
+        fs::remove_dir_all(directory).expect("test directory should be removed");
     }
 
     #[cfg(target_os = "macos")]

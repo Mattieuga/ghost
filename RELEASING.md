@@ -16,6 +16,20 @@
 
 Follow every step in order. Do not skip any.
 
+### 0. Run the release checks
+
+```sh
+pnpm install --frozen-lockfile
+pnpm test
+pnpm build
+pnpm audit
+cargo test --manifest-path src-tauri/Cargo.toml
+cargo audit --file src-tauri/Cargo.lock
+```
+
+Install `cargo-audit` with `cargo install cargo-audit --locked` if it is not
+already available.
+
 ### 1. Bump the version
 
 Update the version in **all four files** (they must match):
@@ -47,7 +61,9 @@ This triggers the GitHub Actions release workflow automatically.
 
 Watch the build at: https://github.com/Mattieuga/ghost/actions
 
-The workflow builds the app, signs the update artifacts, and creates a GitHub Release with:
+The workflow builds and tests the app, audits its dependencies, and creates a
+draft GitHub Release. It publishes the release only after the disk image passes
+Apple notarization and stapling. The published release contains:
 
 - `Ghost_<version>_aarch64.dmg` — for new installs
 - `Ghost_aarch64.app.tar.gz` + `.sig` — for the auto-updater
@@ -234,6 +250,9 @@ gh release create v<version> \
 - File associations for `.md`/`.markdown` are configured in `tauri.conf.json`.
 - The auto-updater uses its own Ed25519 signature, independent of Apple code signing.
 - Existing users on versions before the updater (≤0.5.0) must manually download the first updater-enabled release.
+- Tauri warns that the existing `com.ghost.app` bundle identifier ends in
+  `.app`. It is retained for compatibility with installed copies and stored
+  settings; change it only as a planned migration, not during a routine release.
 
 ## Key Management
 

@@ -11,9 +11,9 @@ jobs:
       contents: write
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: lts/*
 
@@ -28,7 +28,22 @@ jobs:
         with:
           workspaces: "./src-tauri -> target"
 
-      - run: pnpm install
+      - run: pnpm install --frozen-lockfile
+
+      - name: Test frontend
+        run: pnpm test
+
+      - name: Build frontend
+        run: pnpm build
+
+      - name: Test Rust backend
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Audit dependencies
+        run: |
+          pnpm audit
+          cargo install cargo-audit --locked --version 0.22.2
+          cargo audit --file src-tauri/Cargo.lock
 
       - name: Validate signing secrets
         env:
@@ -37,9 +52,12 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           missing=()
-          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+          # The updater key password is intentionally allowed to be empty.
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID TAURI_SIGNING_PRIVATE_KEY; do
             if [[ -z "${!name}" ]]; then
               missing+=("$name")
             fi
@@ -101,7 +119,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: "Ghost v__VERSION__"
           releaseBody: "See assets to download and install."
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
           args: "--target aarch64-apple-darwin"
@@ -135,3 +153,7 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" "$DMG_PATH" \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
+
+          gh release edit "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false

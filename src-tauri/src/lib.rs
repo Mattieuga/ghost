@@ -7,22 +7,23 @@ mod context_menu;
 #[cfg(target_os = "macos")]
 mod traffic_lights;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri::RunEvent;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(watcher::WatcherState::new())
+        .manage(commands::fs::FileWriteState::new())
         .manage(windows::EditorWindowMap(Mutex::new(HashMap::new())))
+        .manage(windows::ClosingEditorWindows(Mutex::new(HashSet::new())))
         .manage(menu::ShowMainMenuItem(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             commands::fs::is_directory,
@@ -50,6 +51,8 @@ pub fn run() {
             commands::search::search_file_contents,
             watcher::watch_directories,
             windows::open_editor_window,
+            windows::list_editor_windows,
+            windows::close_editor_window,
             windows::emit_file_renamed,
             windows::emit_file_deleted,
         ])
@@ -130,6 +133,18 @@ pub fn run() {
                                 }
                                 if let Some(state) = app_handle.try_state::<menu::ShowMainMenuItem>() {
                                     state.set_enabled(true);
+                                }
+                            } else if label.starts_with("editor-") {
+                                let may_close = app_handle
+                                    .try_state::<windows::ClosingEditorWindows>()
+                                    .and_then(|state| state.0.lock().ok().map(|mut closing| closing.remove(label)))
+                                    .unwrap_or(false);
+
+                                if !may_close {
+                                    api.prevent_close();
+                                    if let Some(window) = app_handle.get_webview_window(label) {
+                                        let _ = window.emit("request-editor-close", ());
+                                    }
                                 }
                             }
                         }

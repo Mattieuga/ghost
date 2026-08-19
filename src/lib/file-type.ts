@@ -1,7 +1,8 @@
 import { LanguageDescription, type LanguageSupport } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
+import { marked, type Token, type Tokens } from "marked";
 
-const MARKDOWN_EXTENSIONS = new Set(["md", "mdx", "markdown", "mkd", "mdown", "mkdn", "mdwn"]);
+const MARKDOWN_EXTENSIONS = new Set(["md", "markdown", "mkd", "mdown", "mkdn", "mdwn"]);
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "icns", "heic", "heif", "tiff", "tif"]);
 const PDF_EXTENSIONS = new Set(["pdf"]);
 const FONT_EXTENSIONS = new Set(["ttf", "otf", "woff", "woff2"]);
@@ -78,6 +79,7 @@ const EXTENSION_LANGUAGE_ALIASES: Record<string, string> = {
   php8: "PHP",
   command: "Shell",
   bazel: "Python",
+  mdx: "Markdown",
 };
 
 const FILENAME_LANGUAGE_ALIASES: Record<string, string> = {
@@ -173,6 +175,135 @@ function isKnownPlainTextFilename(filePath: string): boolean {
 
 export function isMarkdown(filePath: string): boolean {
   return MARKDOWN_EXTENSIONS.has(getExtension(filePath));
+}
+
+const GHOST_HTML_TABLE_TAGS = new Set([
+  "table", "thead", "tbody", "tfoot", "tr", "th", "td", "colgroup", "col",
+  "p", "strong", "b", "em", "i", "s", "del", "code", "a", "br",
+]);
+
+function hasOnlyAttributes(
+  source: string,
+  allowed: ReadonlySet<string>,
+  validate?: (name: string, value: string) => boolean,
+): boolean {
+  let cursor = 0;
+  const seen = new Set<string>();
+  const attribute = /([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+
+  for (const match of source.matchAll(attribute)) {
+    if (match.index === undefined || source.slice(cursor, match.index).trim()) return false;
+    const name = match[1].toLowerCase();
+    const value = match[2] ?? match[3] ?? "";
+    if (!allowed.has(name) || seen.has(name) || (validate && !validate(name, value))) return false;
+    seen.add(name);
+    cursor = match.index + match[0].length;
+  }
+
+  return source.slice(cursor).trim() === "";
+}
+
+function isGhostTableWidthMetadata(source: string): boolean {
+  const match = source.match(/^<!--\s*ghost-table-widths:(\[.*\])\s*-->$/s);
+  if (!match) return false;
+
+  try {
+    const value: unknown = JSON.parse(match[1]);
+    return Array.isArray(value) && value.every((row) =>
+      Array.isArray(row) && row.every((cell) =>
+        cell === null || (Array.isArray(cell) && cell.every((width) =>
+          width === null || (typeof width === "number" && Number.isFinite(width) && width > 0)
+        ))
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isGhostResizableImage(source: string): boolean {
+  const match = source.match(/^<img\b([\s\S]*)>$/i);
+  if (!match) return false;
+  const attributes = match[1].replace(/\/\s*$/, "");
+  const allowed = new Set(["src", "alt", "title", "width"]);
+  if (!hasOnlyAttributes(attributes, allowed, (name, value) =>
+    name !== "width" || (/^\d+$/.test(value) && Number(value) > 0)
+  )) return false;
+
+  const names = [...attributes.matchAll(/([A-Za-z_:][\w:.-]*)\s*=/g)]
+    .map((attribute) => attribute[1].toLowerCase());
+  return names.includes("src") && names.includes("width");
+}
+
+function isMigratableLegacyTable(source: string): boolean {
+  if (!/^<table(?:\s|>)/i.test(source) || !/<\/table>\s*$/i.test(source)) return false;
+  if (source.includes("<!--")) return false;
+
+  const tag = /<(\/)?([A-Za-z][\w-]*)([^<>]*)>/g;
+  let tagCount = 0;
+  for (const match of source.matchAll(tag)) {
+    tagCount += 1;
+    const closing = Boolean(match[1]);
+    const name = match[2].toLowerCase();
+    if (!GHOST_HTML_TABLE_TAGS.has(name)) return false;
+
+    const attributes = match[3].replace(/\/\s*$/, "");
+    if (closing) {
+      if (attributes.trim()) return false;
+      continue;
+    }
+
+    if (name === "th" || name === "td") {
+      if (!hasOnlyAttributes(attributes, new Set(["colwidth"]), (_attribute, value) =>
+        /^\d+(?:,\d+)*$/.test(value) && value.split(",").every((width) => Number(width) > 0)
+      )) return false;
+    } else if (name === "a") {
+      if (!hasOnlyAttributes(attributes, new Set(["href", "title"]))) return false;
+    } else if (attributes.trim()) {
+      return false;
+    }
+  }
+
+  // Any unparsed tag-like construct could carry semantics Tiptap cannot
+  // reproduce, so leave the whole document in source mode.
+  const withoutTags = source.replace(tag, "");
+  return tagCount > 0 && !/<[!/A-Za-z]/.test(withoutTags);
+}
+
+function isGhostOwnedHtml(raw: string): boolean {
+  const trimmed = raw.trim();
+  return isGhostTableWidthMetadata(trimmed)
+    || isGhostResizableImage(trimmed)
+    || isMigratableLegacyTable(trimmed);
+}
+
+function tokenContainsUnsupportedHtml(token: Token | Tokens.Generic): boolean {
+  if (token.type === "html" && !isGhostOwnedHtml(String(token.raw ?? ""))) {
+    return true;
+  }
+
+  const nested = (token as Token & { tokens?: Token[] }).tokens;
+  if (nested?.some(tokenContainsUnsupportedHtml)) return true;
+
+  const items = (token as Tokens.List).items;
+  return Array.isArray(items) && items.some((item) => item.tokens?.some(tokenContainsUnsupportedHtml));
+}
+
+/**
+ * Tiptap intentionally interprets recognized HTML instead of preserving its
+ * source. Open those documents in CodeMirror so comments, custom blocks, and
+ * exact tags cannot be silently rewritten. Ghost's own resized image/table
+ * markup remains supported by the rich editor for backwards compatibility.
+ */
+export function requiresMarkdownSourceMode(filePath: string, content: string): boolean {
+  if (getExtension(filePath) === "mdx") return true;
+  if (!isMarkdown(filePath)) return false;
+
+  try {
+    return marked.lexer(content, { gfm: true }).some(tokenContainsUnsupportedHtml);
+  } catch {
+    return true;
+  }
 }
 
 export function isImage(filePath: string): boolean {

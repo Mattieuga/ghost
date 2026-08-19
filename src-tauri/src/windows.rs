@@ -1,11 +1,14 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 use tauri::webview::WebviewWindowBuilder;
-use tauri::{Emitter, Manager, WebviewUrl};
+use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindow};
 
 /// Tracks which file paths are open in which editor windows
 pub struct EditorWindowMap(pub Mutex<HashMap<String, String>>);
+
+/// Labels that completed their frontend save handshake and may close once.
+pub struct ClosingEditorWindows(pub Mutex<HashSet<String>>);
 
 /// Counter for generating unique editor window labels
 static EDITOR_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -98,6 +101,39 @@ pub fn create_editor_window(app: &tauri::AppHandle, file_path: &str) -> Result<S
 #[tauri::command]
 pub async fn open_editor_window(app: tauri::AppHandle, file_path: String) -> Result<String, String> {
     create_editor_window(&app, &file_path)
+}
+
+#[tauri::command]
+pub fn list_editor_windows(app: tauri::AppHandle) -> Vec<String> {
+    let mut labels = app
+        .webview_windows()
+        .into_keys()
+        .filter(|label| label.starts_with("editor-"))
+        .collect::<Vec<_>>();
+    labels.sort();
+    labels
+}
+
+#[tauri::command]
+pub fn close_editor_window(
+    window: WebviewWindow,
+    state: State<'_, ClosingEditorWindows>,
+) -> Result<(), String> {
+    let label = window.label().to_string();
+    state
+        .0
+        .lock()
+        .map_err(|_| "The close queue is unavailable".to_string())?
+        .insert(label.clone());
+
+    if let Err(error) = window.close() {
+        if let Ok(mut closing) = state.0.lock() {
+            closing.remove(&label);
+        }
+        return Err(error.to_string());
+    }
+
+    Ok(())
 }
 
 #[tauri::command]

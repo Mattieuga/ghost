@@ -17,6 +17,8 @@ interface UseReloadOnFocusParams {
   contentRef: React.RefObject<string | null>;
   /** Ref tracking the timestamp of the last successful save from handleContentChange. */
   lastSaveTimestamp: React.RefObject<number>;
+  /** Number of queued or in-flight saves. External reloads wait until it is zero. */
+  pendingSaveCount?: React.RefObject<number>;
   /** Called after content is applied in place. Receives the new content. */
   onContentApplied?: (content: string) => void;
 }
@@ -36,6 +38,7 @@ export function useReloadOnFocus({
   applyContent,
   contentRef,
   lastSaveTimestamp,
+  pendingSaveCount,
   onContentApplied,
 }: UseReloadOnFocusParams) {
   const getPathRef = useRef(getPath);
@@ -53,6 +56,7 @@ export function useReloadOnFocus({
 
       const path = getPathRef.current();
       if (!path) return;
+      if ((pendingSaveCount?.current ?? 0) > 0) return;
 
       // Skip if we just saved (avoid reloading our own writes).
       if (Date.now() - lastSaveTimestamp.current < 1000) return;
@@ -85,5 +89,5 @@ export function useReloadOnFocus({
 
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
-  }, [applyContent, contentRef, lastSaveTimestamp]);
+  }, [applyContent, contentRef, lastSaveTimestamp, pendingSaveCount]);
 }

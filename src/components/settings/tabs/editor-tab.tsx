@@ -3,13 +3,16 @@ import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { Separator } from "@/components/ui/separator";
 import type { Settings } from "@/hooks/use-settings";
+import { fontFamilyValue, MACOS_SYSTEM_FONT, sanitizeFontName } from "@/lib/fonts";
 
-const BUNDLED_TEXT_FONTS = [
+const FEATURED_TEXT_FONTS = [
+  MACOS_SYSTEM_FONT, "Avenir Next",
+  "Atkinson Hyperlegible Next", "Source Sans 3", "Literata", "Newsreader",
   "Lora", "Source Serif 4", "Crimson Pro", "Playfair Display",
   "Fraunces", "IBM Plex Serif", "Roboto", "Inter", "Space Grotesk",
 ];
 
-const BUNDLED_CODE_FONTS = [
+const FEATURED_CODE_FONTS = [
   "JetBrains Mono", "Fira Code", "IBM Plex Mono", "Source Code Pro",
 ];
 
@@ -24,19 +27,14 @@ function fetchSystemFonts(): Promise<string[]> {
   return systemFontsPromise;
 }
 
-/** Strip characters that could break CSS property values */
-function sanitizeFont(name: string): string {
-  return name.replace(/[";{}\\]/g, "");
-}
-
 interface FontPickerProps {
   label: string;
   value: string;
-  bundledFonts: string[];
+  featuredFonts: string[];
   onChange: (font: string) => void;
 }
 
-function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
+function FontPicker({ label, value, featuredFonts, onChange }: FontPickerProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [systemFonts, setSystemFonts] = useState<string[] | null>(null);
@@ -47,13 +45,15 @@ function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
   const [activeIndex, setActiveIndex] = useState(-1);
 
   const query = search.toLowerCase();
-  const filteredBundled = bundledFonts.filter((f) => f.toLowerCase().includes(query));
-  const allFilteredSystem = systemFonts?.filter((f) => f.toLowerCase().includes(query)) ?? null;
+  const filteredFeatured = featuredFonts.filter((f) => f.toLowerCase().includes(query));
+  const allFilteredSystem = systemFonts?.filter(
+    (f) => !featuredFonts.includes(f) && f.toLowerCase().includes(query),
+  ) ?? null;
   const filteredSystem = allFilteredSystem?.slice(0, MAX_VISIBLE_SYSTEM_FONTS) ?? null;
   const totalSystemMatches = allFilteredSystem?.length ?? 0;
 
   // All selectable items in order (for keyboard nav)
-  const allItems = [...filteredBundled, ...(filteredSystem ?? [])];
+  const allItems = [...filteredFeatured, ...(filteredSystem ?? [])];
 
   useEffect(() => {
     if (!open) return;
@@ -80,7 +80,7 @@ function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
   }, [open, systemFonts]);
 
   const selectItem = (font: string) => {
-    onChange(sanitizeFont(font));
+    onChange(sanitizeFontName(font));
     setOpen(false);
     setSearch("");
   };
@@ -116,7 +116,7 @@ function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
         }}
         className="h-8 w-full px-3 rounded-md border border-border hover:border-ring bg-transparent text-sm text-card-foreground cursor-pointer flex items-center gap-2 justify-between"
       >
-        <span className="truncate" style={{ fontFamily: `"${sanitizeFont(value)}", sans-serif` }}>{value}</span>
+        <span className="truncate" style={{ fontFamily: fontFamilyValue(value) }}>{value}</span>
         <span className="text-muted-foreground text-xs">▾</span>
       </button>
 
@@ -135,13 +135,13 @@ function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
             </div>
 
             <div className="overflow-y-auto flex-1">
-              {/* Bundled section */}
-              {filteredBundled.length > 0 && (
+              {/* Featured bundled and macOS fonts */}
+              {filteredFeatured.length > 0 && (
                 <div className="px-2 py-1">
                   <div className="text-[10px] font-medium uppercase text-muted-foreground px-2 mb-0.5" style={{ letterSpacing: "1px" }}>
-                    Bundled
+                    Featured
                   </div>
-                  {filteredBundled.map((font, i) => (
+                  {filteredFeatured.map((font, i) => (
                     <button
                       key={font}
                       onClick={() => selectItem(font)}
@@ -149,7 +149,7 @@ function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
                         activeIndex === i ? "bg-accent text-accent-foreground" :
                         value === font ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
                       }`}
-                      style={{ fontFamily: `"${font}", sans-serif` }}
+                      style={{ fontFamily: fontFamilyValue(font) }}
                     >
                       {font}
                     </button>
@@ -157,7 +157,7 @@ function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
                 </div>
               )}
 
-              {filteredBundled.length > 0 && (filteredSystem === null || filteredSystem.length > 0) && (
+              {filteredFeatured.length > 0 && (filteredSystem === null || filteredSystem.length > 0) && (
                 <div className="border-t border-border mx-2" />
               )}
 
@@ -170,7 +170,7 @@ function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
                     System{totalSystemMatches > MAX_VISIBLE_SYSTEM_FONTS ? ` (${MAX_VISIBLE_SYSTEM_FONTS} of ${totalSystemMatches})` : ""}
                   </div>
                   {filteredSystem.map((font, i) => {
-                    const globalIdx = filteredBundled.length + i;
+                    const globalIdx = filteredFeatured.length + i;
                     return (
                       <button
                         key={font}
@@ -185,7 +185,7 @@ function FontPicker({ label, value, bundledFonts, onChange }: FontPickerProps) {
                     );
                   })}
                 </div>
-              ) : search && filteredBundled.length === 0 ? (
+              ) : search && filteredFeatured.length === 0 ? (
                 <div className="px-4 py-2 text-xs text-muted-foreground">No fonts found</div>
               ) : null}
             </div>
@@ -206,12 +206,18 @@ function CompactSlider({ label, value, display, ...props }: {
   label: string; value: number; display: string;
 } & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-sm text-card-foreground shrink-0">{label}</span>
-      <div className="flex items-center gap-1.5">
-        <input type="range" value={value} {...props} className="w-20 accent-ghost-amber" />
-        <span className="text-xs text-muted-foreground w-10 text-right tabular-nums">{display}</span>
+    <div className="min-w-0 space-y-1.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="min-w-0 truncate text-sm text-card-foreground">{label}</span>
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{display}</span>
       </div>
+      <input
+        type="range"
+        value={value}
+        {...props}
+        aria-label={props["aria-label"] ?? label}
+        className="block w-full accent-ghost-amber"
+      />
     </div>
   );
 }
@@ -224,19 +230,19 @@ export function EditorTab({ settings, onUpdateSettings, compact }: EditorTabProp
         <FontPicker
           label="Text"
           value={settings.textFont}
-          bundledFonts={BUNDLED_TEXT_FONTS}
+          featuredFonts={FEATURED_TEXT_FONTS}
           onChange={(textFont) => onUpdateSettings({ textFont })}
         />
         <FontPicker
           label="Heading"
           value={settings.headingFont}
-          bundledFonts={BUNDLED_TEXT_FONTS}
+          featuredFonts={FEATURED_TEXT_FONTS}
           onChange={(headingFont) => onUpdateSettings({ headingFont })}
         />
         <FontPicker
           label="Code"
           value={settings.codeFont}
-          bundledFonts={BUNDLED_CODE_FONTS}
+          featuredFonts={FEATURED_CODE_FONTS}
           onChange={(codeFont) => onUpdateSettings({ codeFont })}
         />
       </div>
@@ -244,7 +250,7 @@ export function EditorTab({ settings, onUpdateSettings, compact }: EditorTabProp
       <Separator />
 
       {/* Typography sliders */}
-      <div className={compact ? "space-y-3" : "grid grid-cols-2 gap-x-6 gap-y-3"}>
+      <div className={compact ? "space-y-4" : "grid grid-cols-2 gap-x-6 gap-y-4"}>
         <CompactSlider
           label="Font size" value={settings.fontSize} display={`${settings.fontSize}px`}
           min={12} max={24} step={1}
@@ -256,14 +262,19 @@ export function EditorTab({ settings, onUpdateSettings, compact }: EditorTabProp
           onChange={(e) => onUpdateSettings({ lineHeight: Number(e.currentTarget.value) })}
         />
         <CompactSlider
-          label="Paragraph" value={settings.paragraphSpacing} display={settings.paragraphSpacing.toFixed(2)}
-          min={0} max={1.5} step={0.05}
-          onChange={(e) => onUpdateSettings({ paragraphSpacing: Number(e.currentTarget.value) })}
+          label="Block spacing" value={settings.blockSpacing} display={settings.blockSpacing.toFixed(2)}
+          min={0} max={2.5} step={0.05}
+          onChange={(e) => onUpdateSettings({ blockSpacing: Number(e.currentTarget.value) })}
         />
         <CompactSlider
-          label="Heading gap" value={settings.headingSpacing} display={settings.headingSpacing.toFixed(2)}
+          label="Before heading" value={settings.headingSpacing} display={settings.headingSpacing.toFixed(2)}
           min={0.25} max={2.5} step={0.05}
           onChange={(e) => onUpdateSettings({ headingSpacing: Number(e.currentTarget.value) })}
+        />
+        <CompactSlider
+          label="After heading" value={settings.headingAfterSpacing} display={settings.headingAfterSpacing.toFixed(2)}
+          min={0} max={1.5} step={0.05}
+          onChange={(e) => onUpdateSettings({ headingAfterSpacing: Number(e.currentTarget.value) })}
         />
         <CompactSlider
           label="Editor width" value={settings.editorWidth} display={`${settings.editorWidth}px`}
@@ -275,8 +286,9 @@ export function EditorTab({ settings, onUpdateSettings, compact }: EditorTabProp
       <div className="flex justify-end pt-1">
         <button
           onClick={() => onUpdateSettings({
-            textFont: "Inter", headingFont: "Inter", codeFont: "JetBrains Mono",
-            fontSize: 16, lineHeight: 1.60, paragraphSpacing: 0.50, headingSpacing: 0.80, editorWidth: 730,
+            textFont: "Avenir Next", headingFont: "Avenir Next", codeFont: "JetBrains Mono",
+            fontSize: 16, lineHeight: 1.65, blockSpacing: 0,
+            headingSpacing: 0.80, headingAfterSpacing: 0.50, editorWidth: 730,
           })}
           className="text-xs text-muted-foreground hover:text-card-foreground transition-colors cursor-pointer"
         >

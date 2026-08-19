@@ -17,8 +17,9 @@ export interface Settings {
   fontSize: number;
   lineHeight: number;
   editorWidth: number;
-  paragraphSpacing: number;
+  blockSpacing: number;
   headingSpacing: number;
+  headingAfterSpacing: number;
   countMode: "words" | "chars" | "lines" | "tokens";
 }
 
@@ -34,14 +35,15 @@ const DEFAULTS: Settings = {
     heading: DEFAULT_THEME.heading,
   },
   customThemes: [],
-  textFont: "Inter",
-  headingFont: "Inter",
+  textFont: "Avenir Next",
+  headingFont: "Avenir Next",
   codeFont: "JetBrains Mono",
   fontSize: 16,
-  lineHeight: 1.60,
+  lineHeight: 1.65,
   editorWidth: 730,
-  paragraphSpacing: 0.50,
+  blockSpacing: 0,
   headingSpacing: 0.80,
+  headingAfterSpacing: 0.50,
   countMode: "words",
 };
 
@@ -55,9 +57,30 @@ export function useSettings() {
     load("settings.json", { defaults: {}, autoSave: true }).then(
       async (store) => {
         storeRef.current = store;
-        const saved = await store.get<Settings>(STORE_KEY);
+        const saved = await store.get<Settings & { paragraphSpacing?: number }>(STORE_KEY);
         if (saved) {
-          setSettings({ ...DEFAULTS, ...saved });
+          const savedSettings: Partial<Settings> & { paragraphSpacing?: number } = { ...saved };
+          const needsTypographyMigration = savedSettings.blockSpacing === undefined;
+          delete savedSettings.paragraphSpacing;
+
+          const next = {
+            ...DEFAULTS,
+            ...savedSettings,
+            ...(needsTypographyMigration
+              ? {
+                  textFont: DEFAULTS.textFont,
+                  headingFont: DEFAULTS.headingFont,
+                  lineHeight: DEFAULTS.lineHeight,
+                  blockSpacing: DEFAULTS.blockSpacing,
+                  headingAfterSpacing: DEFAULTS.headingAfterSpacing,
+                }
+              : {}),
+          } as Settings;
+
+          setSettings(next);
+          if (needsTypographyMigration) {
+            await store.set(STORE_KEY, next);
+          }
         }
       }
     ).catch((err) => console.error("Failed to load settings:", err));

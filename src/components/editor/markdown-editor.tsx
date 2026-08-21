@@ -20,6 +20,7 @@ import { ResizableTable } from "./table-extension";
 import { Frontmatter } from "./frontmatter-extension";
 import { parseMarkdownDocument } from "./frontmatter";
 import {
+  cachePendingMarkdownDocument,
   getPendingMarkdownDocument,
   isMarkdownDocumentDirty,
   markMarkdownDocumentClean,
@@ -126,9 +127,21 @@ export function MarkdownEditor({
     markMarkdownDocumentClean(currentEditor, revision);
   }, []);
 
+  const persistRevision = useCallback(async (
+    currentEditor: Editor,
+    revision: number,
+  ) => {
+    if (currentEditor.isDestroyed || !isMarkdownDocumentDirty(currentEditor)) return;
+    const pending = getPendingMarkdownDocument(currentEditor);
+    if (pending.revision !== revision) return;
+
+    const markdown = pending.markdown ?? serializeMarkdownDocument(currentEditor);
+    cachePendingMarkdownDocument(currentEditor, revision, markdown);
+    await persistMarkdown(currentEditor, markdown, revision);
+  }, [persistMarkdown]);
+
   const debouncedSave = useCallback((
     currentEditor: Editor,
-    markdown: string,
     revision: number,
   ) => {
     if (saveTimeout.current) {
@@ -136,9 +149,9 @@ export function MarkdownEditor({
     }
     saveTimeout.current = setTimeout(() => {
       saveTimeout.current = null;
-      void persistMarkdown(currentEditor, markdown, revision).catch(() => {});
+      void persistRevision(currentEditor, revision).catch(() => {});
     }, 1000);
-  }, [persistMarkdown]);
+  }, [persistRevision]);
 
   const editor = useEditor({
     extensions: [
@@ -184,9 +197,8 @@ export function MarkdownEditor({
     ],
     content: "",
     onUpdate: ({ editor }) => {
-      const markdown = serializeMarkdownDocument(editor);
-      const revision = markMarkdownDocumentDirty(editor, markdown);
-      debouncedSave(editor, markdown, revision);
+      const revision = markMarkdownDocumentDirty(editor);
+      debouncedSave(editor, revision);
     },
     onTransaction: ({ editor }) => {
       if (!onSearchResults) return;
@@ -294,9 +306,8 @@ export function MarkdownEditor({
     }
 
     const pending = getPendingMarkdownDocument(editor);
-    const markdown = pending.markdown ?? serializeMarkdownDocument(editor);
-    await persistMarkdown(editor, markdown, pending.revision);
-  }, [editor, persistMarkdown]);
+    await persistRevision(editor, pending.revision);
+  }, [editor, persistRevision]);
   flushSaveRef.current = flushPendingSave;
 
   // Flush pending save when window loses focus (ensures other windows see latest content)

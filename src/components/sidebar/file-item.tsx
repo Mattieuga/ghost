@@ -27,10 +27,11 @@ import { useFileTreeNode } from "./file-tree-keyboard";
 
 interface FileItemProps {
   entry: FileEntry;
+  projectPath: string;
   indent: number;
   onSelect: () => void;
   onDeleted?: () => void;
-  onRenamed?: (newPath: string) => void;
+  onRenamed?: (newPath: string) => void | Promise<void>;
   onNewSibling?: () => void;
   onNewFolderSibling?: () => void;
   autoRename?: boolean;
@@ -42,6 +43,7 @@ interface FileItemProps {
 
 export const FileItem = React.memo(function FileItem({
   entry,
+  projectPath,
   indent,
   onSelect,
   onDeleted,
@@ -62,6 +64,7 @@ export const FileItem = React.memo(function FileItem({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const blurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const renameInFlightRef = useRef(false);
   const handleOpenInNewWindow = async () => {
     try {
       await window.__ghostFlushSave?.();
@@ -72,15 +75,16 @@ export const FileItem = React.memo(function FileItem({
   };
 
   const parentDir = entry.path.substring(0, entry.path.lastIndexOf("/"));
+  const occurrenceId = JSON.stringify([projectPath, entry.path]);
 
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
-    id: disableDnd ? `disabled-drag:${entry.path}` : entry.path,
+    id: disableDnd ? `disabled-drag:${occurrenceId}` : `file:${occurrenceId}`,
     data: { name: entry.name, path: entry.path, type: "file" },
     disabled: disableDnd,
   });
 
   const { setNodeRef: setDropRef } = useDroppable({
-    id: disableDnd ? `disabled-drop:${entry.path}` : `file-drop:${entry.path}`,
+    id: disableDnd ? `disabled-drop:${occurrenceId}` : `file-drop:${occurrenceId}`,
     data: { folderPath: parentDir },
     disabled: disableDnd,
   });
@@ -116,12 +120,19 @@ export const FileItem = React.memo(function FileItem({
   }, [isRenaming]);
 
   const handleRename = async () => {
+    if (renameInFlightRef.current) return;
     onAutoRenameDone?.();
     if (!renameName || renameName === entry.name) {
+      renameInFlightRef.current = true;
       setIsRenaming(false);
       setRenameName(entry.name);
+      requestAnimationFrame(() => {
+        renameInFlightRef.current = false;
+        void focusTreePath(entry.path, projectPath);
+      });
       return;
     }
+    renameInFlightRef.current = true;
     setDisplayName(renameName);
     setIsRenaming(false);
     try {
@@ -130,11 +141,16 @@ export const FileItem = React.memo(function FileItem({
         oldPath: entry.path,
         newName: renameName,
       });
-      onRenamed?.(newPath);
+      await onRenamed?.(newPath);
+      await focusTreePath(newPath, projectPath);
     } catch (err) {
       console.error("Failed to rename:", err);
+      setDisplayName(entry.name);
+      setIsRenaming(true);
       setRenameError(true);
       setTimeout(() => setRenameError(false), 500);
+    } finally {
+      renameInFlightRef.current = false;
     }
   };
 
@@ -199,8 +215,9 @@ export const FileItem = React.memo(function FileItem({
     }
   };
 
-  const { isFocused, nodeProps, restoreTreeFocus } = useFileTreeNode({
+  const { isFocused, nodeProps, restoreTreeFocus, focusTreePath } = useFileTreeNode({
     path: entry.path,
+    projectPath,
     label: displayName,
     kind: "file",
     parentPath: parentDir,
@@ -232,14 +249,28 @@ export const FileItem = React.memo(function FileItem({
             }
           }}
           onBlur={() => {
-            blurTimeout.current = setTimeout(() => handleRename(), 50);
+            if (!renameInFlightRef.current) {
+              blurTimeout.current = setTimeout(() => void handleRename(), 50);
+            }
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter") handleRename();
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.stopPropagation();
+              if (blurTimeout.current) clearTimeout(blurTimeout.current);
+              void handleRename();
+            }
             if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              renameInFlightRef.current = true;
               onAutoRenameDone?.();
               setRenameName(entry.name);
               setIsRenaming(false);
+              requestAnimationFrame(() => {
+                renameInFlightRef.current = false;
+                void focusTreePath(entry.path, projectPath);
+              });
             }
           }}
           className={`w-full bg-transparent text-[13px] text-card-foreground outline-none caret-ghost-amber border rounded-[4px] px-2 py-1 transition-colors ${
@@ -381,6 +412,7 @@ export const FileItem = React.memo(function FileItem({
 }, (prev, next) =>
   prev.entry.path === next.entry.path &&
   prev.entry.name === next.entry.name &&
+  prev.projectPath === next.projectPath &&
   prev.indent === next.indent &&
   prev.autoRename === next.autoRename &&
   prev.onDuplicated === next.onDuplicated &&

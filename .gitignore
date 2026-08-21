@@ -32,6 +32,10 @@ certificate-base64.txt
 # Claude Code
 .claude/
 
+# Superset local workspace state
+.superset/config.local.json
+.superset/workspace-name
+
 # Debug
 *.log
 

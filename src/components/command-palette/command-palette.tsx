@@ -41,6 +41,7 @@ function formatDate(epochMs: number) {
 }
 
 export type CommandPaletteMode = "files" | "content" | "commands";
+export type CommandPaletteCloseReason = "cancel" | "selection" | "command";
 
 export interface PaletteCommand {
   id: string;
@@ -56,10 +57,10 @@ export interface PaletteCommand {
 interface CommandPaletteProps {
   open: boolean;
   initialMode?: CommandPaletteMode;
-  onClose: () => void;
+  onClose: (reason?: CommandPaletteCloseReason) => void;
   allFiles: FlatFileEntry[];
   recentFiles: string[];
-  onFileSelect: (path: string) => void;
+  onFileSelect: (path: string) => boolean | void | Promise<boolean | void>;
   folders: string[];
   extensions: string[];
   commands?: PaletteCommand[];
@@ -305,15 +306,20 @@ export function CommandPalette({
     setPreviewMeta(null);
   }, []);
 
-  const handleClose = useCallback(() => {
+  const handleClose = useCallback((reason: CommandPaletteCloseReason = "cancel") => {
     resetState();
-    onClose();
+    onClose(reason);
   }, [resetState, onClose]);
 
   const handleSelect = useCallback(
-    (path: string) => {
-      onFileSelect(path);
-      handleClose();
+    async (path: string) => {
+      try {
+        const opened = await onFileSelect(path);
+        if (opened === false) return;
+        handleClose("selection");
+      } catch (error) {
+        console.error(`Failed to open file: ${path}`, error);
+      }
     },
     [onFileSelect, handleClose]
   );
@@ -322,13 +328,13 @@ export function CommandPalette({
     (item: (typeof items)[number]) => {
       if (item.type === "command") {
         if (item.command.disabled) return;
-        if (item.command.closeOnRun !== false) handleClose();
+        if (item.command.closeOnRun !== false) handleClose("command");
         void Promise.resolve(item.command.run()).catch((error) => {
           console.error(`Command failed: ${item.command.title}`, error);
         });
         return;
       }
-      handleSelect(item.path);
+      void handleSelect(item.path);
     },
     [handleClose, handleSelect, items],
   );
@@ -409,7 +415,7 @@ export function CommandPalette({
       {/* Backdrop */}
       <div
         className="fixed inset-0 z-50 bg-black/60 animate-in fade-in-0 duration-150"
-        onClick={handleClose}
+        onClick={() => handleClose()}
       />
 
       {/* Palette container */}
@@ -558,7 +564,7 @@ export function CommandPalette({
                           ? "bg-sidebar-accent border-l-2 border-ghost-amber"
                           : "border-l-2 border-transparent hover:bg-sidebar-accent/50"
                       }`}
-                      onClick={() => handleSelect(entry.path)}
+                      onClick={() => { void handleSelect(entry.path); }}
                       onMouseEnter={() => setSelectedIndex(i)}
                     >
                       <span
@@ -624,7 +630,7 @@ export function CommandPalette({
                         ? "bg-sidebar-accent border-l-2 border-ghost-amber"
                         : "border-l-2 border-transparent hover:bg-sidebar-accent/50"
                     }`}
-                    onClick={() => handleSelect(match.path)}
+                    onClick={() => { void handleSelect(match.path); }}
                     onMouseEnter={() => setSelectedIndex(globalIndex)}
                   >
                     <div className="flex items-center gap-2">

@@ -100,6 +100,8 @@ describe("useDocumentSave", () => {
 
     expect(state().status).toBe("error");
     expect(state().error?.kind).toBe("conflict");
+    expect(state().hasFailedSaveRef.current).toBe(true);
+    await expect(state().flush()).rejects.toMatchObject({ kind: "conflict" });
 
     await act(async () => {
       await state().retry(true);
@@ -111,5 +113,7 @@ describe("useDocumentSave", () => {
       force: true,
     });
     expect(state().status).toBe("saved");
+    expect(state().hasFailedSaveRef.current).toBe(false);
+    await expect(state().flush()).resolves.toBeUndefined();
   });
 });

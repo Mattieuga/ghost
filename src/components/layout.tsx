@@ -52,6 +52,7 @@ import { Search, SlidersHorizontal } from "lucide-react";
 import { SearchBar } from "@/components/editor/search-bar";
 import {
   CommandPalette,
+  type CommandPaletteCloseReason,
   type CommandPaletteMode,
   type PaletteCommand,
 } from "@/components/command-palette/command-palette";
@@ -195,12 +196,13 @@ export function GhostLayout() {
     setCommandPaletteOpen(true);
   }, [closeSearch]);
 
-  const closeCommandPalette = useCallback(() => {
+  const closeCommandPalette = useCallback((reason: CommandPaletteCloseReason = "cancel") => {
     setCommandPaletteOpen(false);
     const returnTarget = paletteReturnFocusRef.current;
     paletteReturnFocusRef.current = null;
     requestAnimationFrame(() => {
-      if (returnTarget?.isConnected) returnTarget.focus();
+      if (reason === "selection") focusEditor();
+      else if (returnTarget?.isConnected) returnTarget.focus();
       else focusEditor();
     });
   }, [focusEditor]);
@@ -262,9 +264,9 @@ export function GhostLayout() {
   );
 
   const handlePaletteFileSelect = useCallback(async (path: string) => {
-    if (await openFile(path, true)) {
-      await treeKeyboardRef.current?.revealPath(path);
-    }
+    if (!await openFile(path, true)) return false;
+    await treeKeyboardRef.current?.revealPath(path);
+    return true;
   }, [openFile]);
 
   const navigateBack = useCallback(async () => {
@@ -351,6 +353,7 @@ export function GhostLayout() {
     contentRef: fileContentRef,
     lastSaveTimestamp,
     pendingSaveCount: documentSave.pendingSaveRef,
+    hasFailedSave: documentSave.hasFailedSaveRef,
     onContentApplied: (content) => setLiveText(content),
   });
 
@@ -481,7 +484,7 @@ export function GhostLayout() {
       const { active, over } = event;
       if (!over) return;
 
-      const filePath = String(active.id);
+      const filePath = (active.data.current as { path?: string })?.path ?? String(active.id);
       const folderPath = (over.data.current as { folderPath?: string })?.folderPath;
       if (!folderPath) return;
 
@@ -1168,10 +1171,10 @@ export function GhostLayout() {
           {__GHOST_DEV_BUILD__ && (
             <span
               data-sidebar-chrome
-              className="pointer-events-none rounded border border-ghost-amber/40 bg-ghost-amber/10 px-1.5 py-0.5 text-[9px] font-semibold leading-none tracking-[0.12em] text-ghost-amber"
-              title="Development build"
+              className="pointer-events-none max-w-[7rem] truncate rounded border border-ghost-amber/40 bg-ghost-amber/10 px-1.5 py-0.5 text-[9px] font-semibold leading-none tracking-[0.12em] text-ghost-amber whitespace-nowrap"
+              title={__GHOST_DEV_WORKSPACE__ ? `Worktree: ${__GHOST_DEV_WORKSPACE__}` : "Development build"}
             >
-              DEV
+              {__GHOST_DEV_LABEL__}
             </span>
           )}
           <button

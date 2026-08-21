@@ -153,23 +153,10 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       const wasText = isContentDetectedTextRef.current || !isBinaryViewer(currentPath);
       const knownBefore = fileContentRef.current ?? "";
       const tiptapEditor = editorInstanceRef.current;
-      const tiptapDirty = tiptapEditor ? isMarkdownDocumentDirty(tiptapEditor) : false;
-      const tiptapPending = tiptapEditor && tiptapDirty
-        ? getPendingMarkdownDocument(tiptapEditor)
-        : null;
-      const editorText = tiptapEditor
-        ? (tiptapPending?.markdown ?? (tiptapDirty
-            ? serializeMarkdownDocument(tiptapEditor)
-            : knownBefore))
-        : cmViewRef.current?.state.doc.toString() ?? liveTextRef.current;
       const isDirectFileRename = currentPath === oldPath;
       const renamedKnown = isDirectFileRename
         ? retargetCompanionAssetReferences(knownBefore, oldPath, newPath)
         : knownBefore;
-      const renamedEditorText = isDirectFileRename
-        ? retargetCompanionAssetReferences(editorText, oldPath, newPath)
-        : editorText;
-      const hadLocalChanges = tiptapEditor ? tiptapDirty : editorText !== knownBefore;
 
       filePathRef.current = renamedPath;
       let diskContent = renamedKnown;
@@ -189,17 +176,53 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
         detectedText = wasText && shouldProbeTextContent(renamedPath);
       }
 
+      const currentEditorText = () => {
+        if (tiptapEditor && isMarkdownDocumentDirty(tiptapEditor)) {
+          const pending = getPendingMarkdownDocument(tiptapEditor);
+          return pending.markdown ?? serializeMarkdownDocument(tiptapEditor);
+        }
+        return tiptapEditor
+          ? knownBefore
+          : cmViewRef.current?.state.doc.toString() ?? liveTextRef.current;
+      };
+      const retargetEditorText = (text: string) => isDirectFileRename
+        ? retargetCompanionAssetReferences(text, oldPath, newPath)
+        : text;
+      const editorText = currentEditorText();
+      const hadLocalChanges = tiptapEditor
+        ? isMarkdownDocumentDirty(tiptapEditor)
+        : editorText !== knownBefore;
+
       let visibleContent = diskContent;
       if (hadLocalChanges) {
         fileContentRef.current = renamedKnown;
-        visibleContent = renamedEditorText;
         try {
-          await documentSave.save(renamedPath, renamedEditorText);
-          if (tiptapEditor && tiptapPending) {
-            markMarkdownDocumentClean(tiptapEditor, tiptapPending.revision);
+          if (tiptapEditor) {
+            // A user can keep typing while the renamed file is being read or
+            // written. Drain revisions until the exact current revision is on
+            // disk before replacing the path-keyed editor instance.
+            while (isMarkdownDocumentDirty(tiptapEditor)) {
+              const pending = getPendingMarkdownDocument(tiptapEditor);
+              const markdown = pending.markdown ?? serializeMarkdownDocument(tiptapEditor);
+              visibleContent = retargetEditorText(markdown);
+              await documentSave.save(renamedPath, visibleContent);
+              markMarkdownDocumentClean(tiptapEditor, pending.revision);
+            }
+          } else {
+            let sourceText = editorText;
+            while (true) {
+              visibleContent = retargetEditorText(sourceText);
+              await documentSave.save(renamedPath, visibleContent);
+              const latestText = cmViewRef.current?.state.doc.toString() ?? sourceText;
+              if (latestText === sourceText) break;
+              sourceText = latestText;
+            }
           }
         } catch (error) {
-          // Keep the local edit visible. SaveStatus exposes conflict recovery.
+          // Preserve the newest local snapshot in the replacement editor.
+          // documentSave.flush() keeps close/relaunch blocked until Retry or
+          // Overwrite succeeds.
+          visibleContent = retargetEditorText(currentEditorText());
           console.error("Renamed document needs save recovery:", error);
         }
       } else {
@@ -228,6 +251,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
 
       try {
         await window.__ghostFlushSave?.();
+        await documentSave.flush();
         await invoke("close_editor_window");
       } catch (error) {
         closingRef.current = false;
@@ -236,7 +260,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
     });
 
     return () => { unlisten.then((fn) => fn()); };
-  }, []);
+  }, [documentSave.flush]);
 
   // The updater requires an acknowledgement from each accessory window after
   // its actual disk write completes. This avoids relying on an arbitrary
@@ -247,6 +271,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       const requestId = event.payload;
       try {
         await window.__ghostFlushSave?.();
+        await documentSave.flush();
         await emitTo("main", "save-flush-result", { requestId, label, ok: true });
       } catch (error) {
         await emitTo("main", "save-flush-result", {
@@ -259,7 +284,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
     });
 
     return () => { unlisten.then((fn) => fn()); };
-  }, []);
+  }, [documentSave.flush]);
 
   useReloadOnFocus({
     getPath: () => filePathRef.current,
@@ -267,6 +292,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
     contentRef: fileContentRef,
     lastSaveTimestamp,
     pendingSaveCount: documentSave.pendingSaveRef,
+    hasFailedSave: documentSave.hasFailedSaveRef,
     onContentApplied: (content) => setLiveText(content),
   });
 

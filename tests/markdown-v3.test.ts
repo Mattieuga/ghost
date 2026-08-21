@@ -113,6 +113,20 @@ describe("Tiptap 3 Markdown", () => {
     expect(output).toBe(`${frontmatter}\n\nSalt & pepper and ~1/4 cup`);
   });
 
+  it("relaxes prose escapes across a large mixed-syntax document without a global cap", () => {
+    const source = Array.from(
+      { length: 200 },
+      (_, index) => `Salt & pepper ${index}; \\*literal stars\\*; [unclear: x]; ~1/4 cup`,
+    ).join("\n\n");
+    const editor = createEditor(source);
+    const output = serializeMarkdownDocument(editor);
+    const reopened = createEditor(output);
+
+    expect(output).not.toContain("&amp;");
+    expect(output).toContain("Salt & pepper 199");
+    expect(reopened.getJSON()).toEqual(editor.getJSON());
+  });
+
   it("preserves YAML frontmatter as one raw node", () => {
     const frontmatter =
       "---\n" +

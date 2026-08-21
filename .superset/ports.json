@@ -1,0 +1,5 @@
+{
+  "ports": [
+    { "port": 1420, "label": "Vite (Tauri webview)" }
+  ]
+}

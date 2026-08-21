@@ -33,13 +33,13 @@ afterEach(() => {
 async function renderPalette({
   mode = "files" as const,
   commands = [] as PaletteCommand[],
+  onFileSelect = vi.fn(),
 } = {}) {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
   mounted.push({ root, host });
   const onClose = vi.fn();
-  const onFileSelect = vi.fn();
 
   await act(async () => {
     root.render(
@@ -104,6 +104,23 @@ describe("CommandPalette keyboard modes", () => {
 
     await press(input, "Enter");
     expect(onFileSelect).toHaveBeenCalledWith("/project/beta.md");
+  });
+
+  it("keeps Quick Open mounted until the selected file finishes opening", async () => {
+    const opening = Promise.withResolvers<boolean>();
+    const onFileSelect = vi.fn(() => opening.promise);
+    const rendered = await renderPalette({ onFileSelect });
+
+    await press(rendered.input, "Enter");
+    expect(rendered.onClose).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+
+    await act(async () => {
+      opening.resolve(true);
+      await opening.promise;
+      await Promise.resolve();
+    });
+    expect(rendered.onClose).toHaveBeenCalledWith("selection");
   });
 
   it("filters and runs contextual commands entirely from the keyboard", async () => {

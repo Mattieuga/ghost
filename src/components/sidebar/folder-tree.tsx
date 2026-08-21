@@ -106,8 +106,8 @@ interface FolderTreeProps {
   onFileSelect: (path: string) => void;
 
   onRemoveFolder: (path: string) => void;
-  onRootRenamed?: (oldPath: string, newPath: string) => void;
-  onFileRenamed: (oldPath: string, newPath: string) => void;
+  onRootRenamed?: (oldPath: string, newPath: string) => void | Promise<void>;
+  onFileRenamed: (oldPath: string, newPath: string) => void | Promise<void>;
   onFileDeleted: (path: string) => void;
   newlyCreatedFile: string | null;
   onNewFileRenamed: () => void;
@@ -219,6 +219,7 @@ export function FolderTree({
   return (
     <DroppableFolder
       id={path}
+      projectPath={path}
       folderName={folderName}
       activeDropFolder={activeDropFolder}
 
@@ -239,6 +240,7 @@ export function FolderTree({
     >
       <FileTree
         entries={entries}
+        projectPath={path}
 
         activeDropFolder={activeDropFolder}
         onFileSelect={onFileSelect}
@@ -263,6 +265,7 @@ export function FolderTree({
 
 function DroppableFolder({
   id,
+  projectPath,
   folderName,
   activeDropFolder,
   onRemoveFolder,
@@ -285,10 +288,11 @@ function DroppableFolder({
   children,
 }: {
   id: string;
+  projectPath: string;
   folderName: string;
   activeDropFolder: string | null;
   onRemoveFolder?: (path: string) => void;
-  onRenamed?: (oldPath: string, newPath: string) => void;
+  onRenamed?: (oldPath: string, newPath: string) => void | Promise<void>;
   onDeleted?: (path: string) => void;
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
@@ -318,6 +322,7 @@ function DroppableFolder({
     setDisplayFolderName(folderName);
   }, [folderName]);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const renameInFlightRef = useRef(false);
   const isHighlighted = activeDropFolder === id;
   const activeFileStore = useActiveFileStore();
   const containsActiveFile = useSyncExternalStore(
@@ -325,7 +330,7 @@ function DroppableFolder({
     () => { const af = activeFileStore.get(); return !isRoot && !open && !!af && af.startsWith(id + "/"); },
   );
   const { setNodeRef } = useDroppable({
-    id: `folder:${id}`,
+    id: `folder:${JSON.stringify([projectPath, id])}`,
     data: { folderPath: id },
   });
 
@@ -349,23 +354,33 @@ function DroppableFolder({
   }, [autoRename]);
 
   const handleRename = async () => {
+    if (renameInFlightRef.current) return;
     if (!renameName || renameName === folderName) {
+      renameInFlightRef.current = true;
       setIsRenaming(false);
       setRenameName(folderName);
+      requestAnimationFrame(() => {
+        renameInFlightRef.current = false;
+        void focusTreePath(id, projectPath);
+      });
       return;
     }
+    renameInFlightRef.current = true;
     setDisplayFolderName(renameName);
     setIsRenaming(false);
     try {
       await window.__ghostFlushSave?.();
       const newPath = await invoke<string>("rename_file", { oldPath: id, newName: renameName });
-      onRenamed?.(id, newPath);
+      await onRenamed?.(id, newPath);
+      await focusTreePath(newPath, isRoot ? newPath : projectPath);
     } catch (err) {
       console.error("Failed to rename folder:", err);
       setDisplayFolderName(folderName);
       setIsRenaming(true);
       setRenameError(true);
       setTimeout(() => setRenameError(false), 500);
+    } finally {
+      renameInFlightRef.current = false;
     }
   };
 
@@ -416,8 +431,9 @@ function DroppableFolder({
     onOpenChange?.(expanded);
   }, [onOpenChange]);
 
-  const { isFocused, nodeProps, restoreTreeFocus } = useFileTreeNode({
+  const { isFocused, nodeProps, restoreTreeFocus, focusTreePath } = useFileTreeNode({
     path: id,
+    projectPath,
     label: displayFolderName,
     kind: "folder",
     parentPath: isRoot ? null : id.substring(0, id.lastIndexOf("/")),
@@ -561,12 +577,25 @@ function DroppableFolder({
             ref={renameInputRef}
             value={renameName}
             onChange={(e) => setRenameName(e.target.value)}
-            onBlur={handleRename}
+            onBlur={() => {
+              if (!renameInFlightRef.current) void handleRename();
+            }}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleRename();
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
+                void handleRename();
+              }
               if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                renameInFlightRef.current = true;
                 setRenameName(folderName);
                 setIsRenaming(false);
+                requestAnimationFrame(() => {
+                  renameInFlightRef.current = false;
+                  void focusTreePath(id, projectPath);
+                });
               }
             }}
             className={`flex-1 bg-transparent text-[13px] text-card-foreground font-medium outline-none caret-ghost-amber border rounded-[4px] px-2 py-0.5 transition-colors ${
@@ -664,6 +693,7 @@ function DroppableFolder({
 
 const FileTree = React.memo(function FileTree({
   entries,
+  projectPath,
 
   activeDropFolder,
   onFileSelect,
@@ -683,11 +713,12 @@ const FileTree = React.memo(function FileTree({
   isSkippedDir,
 }: {
   entries: FileEntry[];
+  projectPath: string;
 
   activeDropFolder: string | null;
   onFileSelect: (path: string) => void;
 
-  onFileRenamed: (oldPath: string, newPath: string) => void;
+  onFileRenamed: (oldPath: string, newPath: string) => void | Promise<void>;
   onFileDeleted: (path: string) => void;
   onCreateFile: (dir: string) => void;
   onCreateFolder: (dir: string) => void;
@@ -727,6 +758,7 @@ const FileTree = React.memo(function FileTree({
           <DroppableFolder
             key={entry.path}
             id={entry.path}
+            projectPath={projectPath}
             folderName={entry.name}
             activeDropFolder={activeDropFolder}
             onCreateFile={onCreateFile}
@@ -743,6 +775,7 @@ const FileTree = React.memo(function FileTree({
           >
             <FileTree
               entries={entry.children ?? []}
+              projectPath={projectPath}
 
               activeDropFolder={activeDropFolder}
               onFileSelect={onFileSelect}
@@ -766,6 +799,7 @@ const FileTree = React.memo(function FileTree({
           <FileItem
             key={entry.path}
             entry={entry}
+            projectPath={projectPath}
             onSelect={() => onFileSelect(entry.path)}
             onRenamed={(newPath) => onFileRenamed(entry.path, newPath)}
             onDeleted={() => onFileDeleted(entry.path)}
@@ -791,6 +825,7 @@ const FileTree = React.memo(function FileTree({
 // so they must never be hidden behind a stale memoized tree.
 }, (prev, next) =>
   prev.entries === next.entries &&
+  prev.projectPath === next.projectPath &&
   prev.depth === next.depth &&
   prev.activeDropFolder === next.activeDropFolder &&
   prev.newlyCreatedFile === next.newlyCreatedFile &&

@@ -31,9 +31,20 @@ interface HarnessActions {
   trash: ReturnType<typeof vi.fn>;
 }
 
-function TestFile({ path, label, actions }: { path: string; label: string; actions: HarnessActions }) {
+function TestFile({
+  path,
+  projectPath = "/project",
+  label,
+  actions,
+}: {
+  path: string;
+  projectPath?: string;
+  label: string;
+  actions: HarnessActions;
+}) {
   const { nodeProps, isFocused, restoreTreeFocus } = useFileTreeNode({
     path,
+    projectPath,
     label,
     kind: "file",
     parentPath: path.substring(0, path.lastIndexOf("/")),
@@ -70,6 +81,7 @@ function TreeHarness({
   const [open, setOpen] = useState(initiallyOpen);
   const folderNode = useFileTreeNode({
     path: "/project",
+    projectPath: "/project",
     label: "Project",
     kind: "folder",
     parentPath: null,
@@ -95,6 +107,7 @@ function TreeHarness({
 function SecondProject({ actions }: { actions: HarnessActions }) {
   const folderNode = useFileTreeNode({
     path: "/other",
+    projectPath: "/other",
     label: "Other",
     kind: "folder",
     parentPath: null,
@@ -106,9 +119,71 @@ function SecondProject({ actions }: { actions: HarnessActions }) {
     <div {...folderNode.nodeProps} data-label="Other">
       <span data-tree-focus-target>Other</span>
       <div role="group">
-        <TestFile path="/other/gamma.md" label="Gamma" actions={actions} />
+        <TestFile path="/other/gamma.md" projectPath="/other" label="Gamma" actions={actions} />
       </div>
     </div>
+  );
+}
+
+function OverlappingProjects({ actions }: { actions: HarnessActions }) {
+  const outerRoot = useFileTreeNode({
+    path: "/project",
+    projectPath: "/project",
+    label: "Outer Root",
+    kind: "folder",
+    parentPath: null,
+    expanded: true,
+    actions: {},
+  });
+  const outerNested = useFileTreeNode({
+    path: "/project/nested",
+    projectPath: "/project",
+    label: "Outer Nested",
+    kind: "folder",
+    parentPath: "/project",
+    expanded: true,
+    actions: {},
+  });
+  const innerRoot = useFileTreeNode({
+    path: "/project/nested",
+    projectPath: "/project/nested",
+    label: "Inner Root",
+    kind: "folder",
+    parentPath: null,
+    expanded: true,
+    actions: {},
+  });
+
+  return (
+    <>
+      <div {...outerRoot.nodeProps} data-label="Outer Root">
+        <span data-tree-focus-target>Outer Root</span>
+        <div role="group">
+          <div {...outerNested.nodeProps} data-label="Outer Nested">
+            <span data-tree-focus-target>Outer Nested</span>
+            <div role="group">
+              <TestFile
+                path="/project/nested/shared.md"
+                projectPath="/project"
+                label="Outer Shared"
+                actions={actions}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div {...innerRoot.nodeProps} data-label="Inner Root">
+        <span data-tree-focus-target>Inner Root</span>
+        <div role="group">
+          <TestFile
+            path="/project/nested/shared.md"
+            projectPath="/project/nested"
+            label="Inner Shared"
+            actions={actions}
+          />
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -323,5 +398,56 @@ describe("FileTreeKeyboard", () => {
     expect(host.querySelectorAll('[role="treeitem"]')).toHaveLength(3);
     expect(host.querySelector('[data-label="Project"]')?.getAttribute("aria-expanded")).toBe("true");
     expect(Array.from(host.querySelectorAll('[role="treeitem"]')).every((node) => (node as HTMLElement).tabIndex === -1)).toBe(true);
+  });
+
+  it("keeps overlapping project occurrences distinct and scopes Command boundaries", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const controllerRef = { current: null } as React.RefObject<FileTreeKeyboardHandle | null>;
+    const actions: HarnessActions = {
+      activate: vi.fn(),
+      preview: vi.fn(),
+      openNewWindow: vi.fn(),
+      rename: vi.fn(),
+      duplicate: vi.fn(),
+      trash: vi.fn(),
+    };
+
+    await act(async () => {
+      root.render(
+        <FileTreeKeyboard
+          ref={controllerRef}
+          activePath="/project/nested/shared.md"
+          onFocusEditor={vi.fn()}
+        >
+          <OverlappingProjects actions={actions} />
+        </FileTreeKeyboard>,
+      );
+      await Promise.resolve();
+    });
+
+    const duplicateOccurrences = host.querySelectorAll('[data-tree-path="/project/nested/shared.md"]');
+    expect(duplicateOccurrences).toHaveLength(2);
+    expect(duplicateOccurrences[0].id).not.toBe(duplicateOccurrences[1].id);
+
+    const tree = host.querySelector('[role="tree"]') as HTMLDivElement;
+    await act(async () => { tree.focus(); });
+    expect(host.querySelector('[data-label="Inner Shared"]')?.getAttribute("data-focused")).toBe("true");
+
+    await act(async () => {
+      await controllerRef.current?.focusPath("/project/nested/shared.md", "/project/nested");
+    });
+    expect(host.querySelector('[data-label="Inner Shared"]')?.getAttribute("data-focused")).toBe("true");
+
+    await press(tree, "ArrowUp", { metaKey: true });
+    expect(host.querySelector('[data-label="Inner Root"]')?.getAttribute("data-tree-focused")).toBe("true");
+
+    await act(async () => {
+      await controllerRef.current?.focusPath("/project/nested/shared.md", "/project");
+    });
+    await press(tree, "ArrowUp", { metaKey: true });
+    expect(host.querySelector('[data-label="Outer Root"]')?.getAttribute("data-tree-focused")).toBe("true");
   });
 });

@@ -56,6 +56,7 @@ export function useDocumentSave({
     promise: Promise<void>;
   } | null>(null);
   const failedSaveRef = useRef<FailedSave | null>(null);
+  const hasFailedSaveRef = useRef(false);
 
   const save = useCallback(
     (path: string, content: string, force = false): Promise<void> => {
@@ -84,6 +85,7 @@ export function useDocumentSave({
           knownDiskContent.current = content;
           lastSaveTimestamp.current = Date.now();
           failedSaveRef.current = null;
+          hasFailedSaveRef.current = false;
         });
 
       queueRef.current = promise;
@@ -98,6 +100,7 @@ export function useDocumentSave({
         })
         .catch((saveError) => {
           failedSaveRef.current = { path, content };
+          hasFailedSaveRef.current = true;
           if (requestId === latestRequestRef.current) {
             setStatus("error");
             setError(normalizeSaveError(saveError));
@@ -121,11 +124,17 @@ export function useDocumentSave({
     [save],
   );
 
+  const flush = useCallback(async () => {
+    await queueRef.current;
+  }, []);
+
   return {
     status,
     error,
     pendingSaveRef: pendingCountRef,
+    hasFailedSaveRef,
     save,
     retry,
+    flush,
   };
 }

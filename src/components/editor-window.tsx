@@ -19,6 +19,12 @@ import { isMarkdown, isBinaryViewer, shouldProbeTextContent } from "@/lib/file-t
 import { OpenExternalButton } from "@/components/viewer/open-external-button";
 import { useDocumentSave } from "@/hooks/use-document-save";
 import { retargetCompanionAssetReferences, retargetPath } from "@/lib/file-path";
+import {
+  getPendingMarkdownDocument,
+  isMarkdownDocumentDirty,
+  markMarkdownDocumentClean,
+  serializeMarkdownDocument,
+} from "@/components/editor/markdown-source";
 
 interface EditorWindowProps {
   filePath: string;
@@ -146,9 +152,16 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
 
       const wasText = isContentDetectedTextRef.current || !isBinaryViewer(currentPath);
       const knownBefore = fileContentRef.current ?? "";
-      const editorText = editorInstanceRef.current?.getMarkdown()
-        ?? cmViewRef.current?.state.doc.toString()
-        ?? liveTextRef.current;
+      const tiptapEditor = editorInstanceRef.current;
+      const tiptapDirty = tiptapEditor ? isMarkdownDocumentDirty(tiptapEditor) : false;
+      const tiptapPending = tiptapEditor && tiptapDirty
+        ? getPendingMarkdownDocument(tiptapEditor)
+        : null;
+      const editorText = tiptapEditor
+        ? (tiptapPending?.markdown ?? (tiptapDirty
+            ? serializeMarkdownDocument(tiptapEditor)
+            : knownBefore))
+        : cmViewRef.current?.state.doc.toString() ?? liveTextRef.current;
       const isDirectFileRename = currentPath === oldPath;
       const renamedKnown = isDirectFileRename
         ? retargetCompanionAssetReferences(knownBefore, oldPath, newPath)
@@ -156,7 +169,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       const renamedEditorText = isDirectFileRename
         ? retargetCompanionAssetReferences(editorText, oldPath, newPath)
         : editorText;
-      const hadLocalChanges = editorText !== knownBefore;
+      const hadLocalChanges = tiptapEditor ? tiptapDirty : editorText !== knownBefore;
 
       filePathRef.current = renamedPath;
       let diskContent = renamedKnown;
@@ -182,6 +195,9 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
         visibleContent = renamedEditorText;
         try {
           await documentSave.save(renamedPath, renamedEditorText);
+          if (tiptapEditor && tiptapPending) {
+            markMarkdownDocumentClean(tiptapEditor, tiptapPending.revision);
+          }
         } catch (error) {
           // Keep the local edit visible. SaveStatus exposes conflict recovery.
           console.error("Renamed document needs save recovery:", error);

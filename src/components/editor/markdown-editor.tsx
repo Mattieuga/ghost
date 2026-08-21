@@ -19,6 +19,15 @@ import { ResizableImage } from "./image-extension";
 import { ResizableTable } from "./table-extension";
 import { Frontmatter } from "./frontmatter-extension";
 import { parseMarkdownDocument } from "./frontmatter";
+import {
+  getPendingMarkdownDocument,
+  isMarkdownDocumentDirty,
+  markMarkdownDocumentClean,
+  markMarkdownDocumentDirty,
+  resetMarkdownDocumentState,
+  serializeMarkdownContent,
+  serializeMarkdownDocument,
+} from "./markdown-source";
 import { CollapsibleHeadings } from "./collapsible-headings";
 import { useEffect, useRef, useCallback } from "react";
 import { DOMSerializer } from "@tiptap/pm/model";
@@ -97,6 +106,7 @@ export function MarkdownEditor({
   onEditorReady,
 }: MarkdownEditorProps) {
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushSaveRef = useRef<() => Promise<void>>(async () => undefined);
   const lastSearchResults = useRef({ count: 0, index: 0 });
   const onContentChangeRef = useRef(onContentChange);
   onContentChangeRef.current = onContentChange;
@@ -107,15 +117,28 @@ export function MarkdownEditor({
     return () => { delete window.__ghostActiveFile; };
   }, [activeFile]);
 
-  const debouncedSave = useCallback((markdown: string) => {
+  const persistMarkdown = useCallback(async (
+    currentEditor: Editor,
+    markdown: string,
+    revision: number,
+  ) => {
+    await onContentChangeRef.current(markdown);
+    markMarkdownDocumentClean(currentEditor, revision);
+  }, []);
+
+  const debouncedSave = useCallback((
+    currentEditor: Editor,
+    markdown: string,
+    revision: number,
+  ) => {
     if (saveTimeout.current) {
       clearTimeout(saveTimeout.current);
     }
     saveTimeout.current = setTimeout(() => {
       saveTimeout.current = null;
-      void Promise.resolve(onContentChangeRef.current(markdown)).catch(() => {});
+      void persistMarkdown(currentEditor, markdown, revision).catch(() => {});
     }, 1000);
-  }, []);
+  }, [persistMarkdown]);
 
   const editor = useEditor({
     extensions: [
@@ -161,8 +184,9 @@ export function MarkdownEditor({
     ],
     content: "",
     onUpdate: ({ editor }) => {
-      const markdown = editor.getMarkdown();
-      debouncedSave(markdown);
+      const markdown = serializeMarkdownDocument(editor);
+      const revision = markMarkdownDocumentDirty(editor, markdown);
+      debouncedSave(editor, markdown, revision);
     },
     onTransaction: ({ editor }) => {
       if (!onSearchResults) return;
@@ -242,8 +266,8 @@ export function MarkdownEditor({
             const slice = view.state.doc.slice(from, to);
             const tempDoc = view.state.schema.topNodeType.create(null, slice.content);
             try {
-              const md = editor?.markdown?.serialize(tempDoc.toJSON());
-              if (md === undefined) throw new Error("Markdown serializer unavailable");
+              if (!editor) throw new Error("Markdown serializer unavailable");
+              const md = serializeMarkdownContent(editor, tempDoc.toJSON());
               writeText(md);
             } catch {
               writeText(view.state.doc.textBetween(from, to, "\n"));
@@ -254,13 +278,7 @@ export function MarkdownEditor({
         // Cmd+S for immediate save (but not Cmd+Shift+S which is strikethrough)
         if ((event.metaKey || event.ctrlKey) && event.key === "s" && !event.shiftKey) {
           event.preventDefault();
-          if (saveTimeout.current) {
-            clearTimeout(saveTimeout.current);
-          }
-          const md = editor?.getMarkdown();
-          if (md !== undefined) {
-            void Promise.resolve(onContentChangeRef.current(md)).catch(() => {});
-          }
+          void flushSaveRef.current().catch(() => {});
           return true;
         }
         return false;
@@ -268,17 +286,23 @@ export function MarkdownEditor({
     },
   });
 
+  const flushPendingSave = useCallback(async () => {
+    if (!editor || editor.isDestroyed || !isMarkdownDocumentDirty(editor)) return;
+    if (saveTimeout.current) {
+      clearTimeout(saveTimeout.current);
+      saveTimeout.current = null;
+    }
+
+    const pending = getPendingMarkdownDocument(editor);
+    const markdown = pending.markdown ?? serializeMarkdownDocument(editor);
+    await persistMarkdown(editor, markdown, pending.revision);
+  }, [editor, persistMarkdown]);
+  flushSaveRef.current = flushPendingSave;
+
   // Flush pending save when window loses focus (ensures other windows see latest content)
   useEffect(() => {
     const handleBlur = () => {
-      if (saveTimeout.current) {
-        clearTimeout(saveTimeout.current);
-        saveTimeout.current = null;
-        const md = editor?.getMarkdown();
-        if (md !== undefined) {
-          void Promise.resolve(onContentChangeRef.current(md)).catch(() => {});
-        }
-      }
+      void flushSaveRef.current().catch(() => {});
     };
     window.addEventListener("blur", handleBlur);
     return () => window.removeEventListener("blur", handleBlur);
@@ -305,6 +329,7 @@ export function MarkdownEditor({
       editor.commands.setContent(parseMarkdownDocument(editor, content), {
         emitUpdate: false,
       });
+      resetMarkdownDocumentState(editor);
       contentSet.current = true;
     }
   }, [editor]);
@@ -317,30 +342,14 @@ export function MarkdownEditor({
 
   // Expose flush function for updater (and other consumers) to force-save before relaunch
   useEffect(() => {
-    window.__ghostFlushSave = async () => {
-      if (saveTimeout.current) {
-        clearTimeout(saveTimeout.current);
-        saveTimeout.current = null;
-      }
-      const md = editor?.getMarkdown();
-      if (md !== undefined) {
-        await onContentChangeRef.current(md);
-      }
-    };
+    window.__ghostFlushSave = flushPendingSave;
     return () => { delete window.__ghostFlushSave; };
-  }, [editor]);
+  }, [flushPendingSave]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
-      if (saveTimeout.current) {
-        clearTimeout(saveTimeout.current);
-        saveTimeout.current = null;
-        const md = editor?.getMarkdown();
-        if (md !== undefined) {
-          void Promise.resolve(onContentChangeRef.current(md)).catch(() => {});
-        }
-      }
+      void flushSaveRef.current().catch(() => {});
     };
   }, [editor]);
 
@@ -381,8 +390,7 @@ export function MarkdownEditor({
         const slice = editor.state.doc.slice(from, to);
         const tempDoc = editor.schema.topNodeType.create(null, slice.content);
         try {
-          const selectedMd = editor.markdown?.serialize(tempDoc.toJSON());
-          if (selectedMd === undefined) throw new Error("Markdown serializer unavailable");
+          const selectedMd = serializeMarkdownContent(editor, tempDoc.toJSON());
           await writeText(selectedMd);
         } catch {
           // Fallback to full markdown if serializer fails on slice

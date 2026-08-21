@@ -40,36 +40,56 @@ function formatDate(epochMs: number) {
   }
 }
 
+export type CommandPaletteMode = "files" | "content" | "commands";
+
+export interface PaletteCommand {
+  id: string;
+  title: string;
+  shortcut?: string;
+  detail?: string;
+  keywords?: string;
+  disabled?: boolean;
+  closeOnRun?: boolean;
+  run: () => void | Promise<unknown>;
+}
+
 interface CommandPaletteProps {
   open: boolean;
+  initialMode?: CommandPaletteMode;
   onClose: () => void;
   allFiles: FlatFileEntry[];
   recentFiles: string[];
   onFileSelect: (path: string) => void;
   folders: string[];
   extensions: string[];
+  commands?: PaletteCommand[];
 }
 
-type PaletteMode = "recent" | "files" | "content";
+type PaletteMode = "recent" | "files" | "content" | "commands";
 
-function getMode(query: string): PaletteMode {
+function getMode(query: string, initialMode: CommandPaletteMode): PaletteMode {
+  if (initialMode === "commands") return "commands";
+  if (initialMode === "content") return "content";
   if (!query) return "recent";
   if (query.startsWith("# ") || query === "#") return "content";
   return "files";
 }
 
-function getContentQuery(query: string): string {
+function getContentQuery(query: string, initialMode: CommandPaletteMode): string {
+  if (initialMode === "content") return query;
   return query.startsWith("# ") ? query.slice(2) : "";
 }
 
 export function CommandPalette({
   open,
+  initialMode = "files",
   onClose,
   allFiles,
   recentFiles,
   onFileSelect,
   folders,
   extensions,
+  commands = [],
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -89,7 +109,7 @@ export function CommandPalette({
   const contentSearchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contentSearchVersion = useRef(0);
 
-  const mode = getMode(query);
+  const mode = getMode(query, initialMode);
 
   // Focus input when opening
   useEffect(() => {
@@ -103,6 +123,17 @@ export function CommandPalette({
     if (mode !== "files" || !query) return [];
     return fuzzySearch(allFiles, query, (f) => f.name, 20);
   }, [query, allFiles, mode]);
+
+  const commandResults = useMemo(() => {
+    if (mode !== "commands") return [];
+    if (!query) return commands;
+    return fuzzySearch(
+      commands,
+      query,
+      (command) => `${command.title} ${command.detail ?? ""} ${command.keywords ?? ""}`,
+      40,
+    ).map((result) => result.item);
+  }, [commands, mode, query]);
 
   // Shared file lookup map
   const fileMap = useMemo(
@@ -120,9 +151,17 @@ export function CommandPalette({
 
   // Build flat items list for navigation
   const items = useMemo(() => {
-    const list: { type: "file" | "content"; path: string; entry?: FlatFileEntry; match?: ContentMatch }[] = [];
+    const list: Array<
+      | { type: "file"; path: string; entry: FlatFileEntry }
+      | { type: "content"; path: string; match: ContentMatch }
+      | { type: "command"; command: PaletteCommand }
+    > = [];
 
-    if (mode === "recent") {
+    if (mode === "commands") {
+      for (const command of commandResults) {
+        list.push({ type: "command", command });
+      }
+    } else if (mode === "recent") {
       for (const entry of recentEntries) {
         list.push({ type: "file", path: entry.path, entry });
       }
@@ -140,7 +179,7 @@ export function CommandPalette({
     }
 
     return list;
-  }, [mode, recentEntries, fileResults, contentResults]);
+  }, [mode, commandResults, recentEntries, fileResults, contentResults]);
 
   // Clamp selected index when items change
   useEffect(() => {
@@ -152,7 +191,7 @@ export function CommandPalette({
     if (contentSearchRef.current) clearTimeout(contentSearchRef.current);
 
     const contentQuery =
-      mode === "content" ? getContentQuery(query) : mode === "files" ? query : "";
+      mode === "content" ? getContentQuery(query, initialMode) : mode === "files" ? query : "";
 
     if (!contentQuery || contentQuery.length < 2) {
       setContentResults([]);
@@ -189,20 +228,21 @@ export function CommandPalette({
     return () => {
       if (contentSearchRef.current) clearTimeout(contentSearchRef.current);
     };
-  }, [query, mode, folders, extensions]);
+  }, [query, mode, initialMode, folders, extensions]);
 
   // Load preview for selected item
   const selectedItem = items[selectedIndex];
+  const selectedPath = selectedItem && selectedItem.type !== "command" ? selectedItem.path : null;
 
   useEffect(() => {
-    if (!previewOpen || !selectedItem) {
+    if (!previewOpen || !selectedPath) {
       setPreviewHtml("");
       setPreviewMeta(null);
       return;
     }
 
     let cancelled = false;
-    const path = selectedItem.path;
+    const path = selectedPath;
 
     const timer = setTimeout(async () => {
       try {
@@ -244,7 +284,7 @@ export function CommandPalette({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [previewOpen, selectedItem?.path]);
+  }, [previewOpen, selectedPath]);
 
   // Scroll selected item into view
   useEffect(() => {
@@ -278,8 +318,37 @@ export function CommandPalette({
     [onFileSelect, handleClose]
   );
 
+  const handleItemSelect = useCallback(
+    (item: (typeof items)[number]) => {
+      if (item.type === "command") {
+        if (item.command.disabled) return;
+        if (item.command.closeOnRun !== false) handleClose();
+        void Promise.resolve(item.command.run()).catch((error) => {
+          console.error(`Command failed: ${item.command.title}`, error);
+        });
+        return;
+      }
+      handleSelect(item.path);
+    },
+    [handleClose, handleSelect, items],
+  );
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+      const command = e.metaKey || (!isMac && e.ctrlKey);
+
+      // Match the familiar quick-open behavior: repeated Cmd-P walks through
+      // recent/file matches without leaving the search field.
+      if (initialMode === "files" && command && !e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (items.length > 0) {
+          setSelectedIndex((previous) => (previous + 1) % items.length);
+        }
+        return;
+      }
+
       if (e.key === "Escape") {
         e.preventDefault();
         handleClose();
@@ -301,12 +370,13 @@ export function CommandPalette({
       if (e.key === "Enter") {
         e.preventDefault();
         const item = items[selectedIndex];
-        if (item) handleSelect(item.path);
+        if (item) handleItemSelect(item);
         return;
       }
 
       if (e.key === "Tab") {
         e.preventDefault();
+        if (mode === "commands") return;
         if (e.shiftKey) {
           setPreviewOpen(false);
         } else {
@@ -315,7 +385,7 @@ export function CommandPalette({
         return;
       }
     },
-    [items, selectedIndex, handleSelect, handleClose]
+    [items, selectedIndex, handleItemSelect, handleClose, initialMode, mode]
   );
 
   if (!open) return null;
@@ -344,6 +414,10 @@ export function CommandPalette({
 
       {/* Palette container */}
       <div
+        data-command-palette
+        role="dialog"
+        aria-modal="true"
+        aria-label={mode === "commands" ? "Commands" : mode === "content" ? "Search file contents" : "Go to file"}
         className="fixed left-1/2 z-50 -translate-x-1/2 animate-in fade-in-0 zoom-in-95 duration-150"
         style={{ top: "min(15%, calc(100vh - 480px))", width: compact ? "calc(100vw - 1.5rem)" : (previewOpen ? 780 : 580), maxWidth: "calc(100vw - 1rem)" }}
         onKeyDown={handleKeyDown}
@@ -356,12 +430,23 @@ export function CommandPalette({
             <Search className="size-4 text-ring shrink-0" />
             <input
               ref={inputRef}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded="true"
+              aria-controls="ghost-command-results"
+              aria-activedescendant={items[selectedIndex] ? `ghost-command-result-${selectedIndex}` : undefined}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
                 setSelectedIndex(0);
               }}
-              placeholder="Search files, content, commands..."
+              placeholder={
+                mode === "commands"
+                  ? "Search commands..."
+                  : initialMode === "content"
+                    ? "Search file contents..."
+                    : "Search files..."
+              }
               className="flex-1 bg-transparent text-[15px] text-foreground placeholder:text-ring outline-none"
               spellCheck={false}
             />
@@ -372,6 +457,9 @@ export function CommandPalette({
           <div className="relative flex min-h-0 flex-1">
             {/* Result list */}
             <div
+              id="ghost-command-results"
+              role="listbox"
+              aria-label="Results"
               ref={listRef}
               className={`overflow-y-auto overscroll-contain py-2 ${
                 previewOpen && !compact ? "w-[320px] border-r border-border shrink-0" : "flex-1"
@@ -385,10 +473,55 @@ export function CommandPalette({
                 </div>
               )}
 
+              {/* Section: COMMANDS */}
+              {mode === "commands" && commandResults.length > 0 && (
+                <div className="px-4 pt-1 pb-2">
+                  <span className="text-[10px] font-medium uppercase text-ghost-amber tracking-wider">
+                    Commands
+                  </span>
+                </div>
+              )}
+
+              {mode === "commands" && commandResults.map((command, index) => (
+                <div
+                  key={command.id}
+                  id={`ghost-command-result-${index}`}
+                  data-index={index}
+                  role="option"
+                  aria-selected={selectedIndex === index}
+                  aria-disabled={command.disabled || undefined}
+                  className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
+                    command.disabled
+                      ? "cursor-not-allowed opacity-40 border-l-2 border-transparent"
+                      : selectedIndex === index
+                        ? "cursor-pointer bg-sidebar-accent border-l-2 border-ghost-amber"
+                        : "cursor-pointer border-l-2 border-transparent hover:bg-sidebar-accent/50"
+                  }`}
+                  onClick={() => handleItemSelect({ type: "command", command })}
+                  onMouseEnter={() => setSelectedIndex(index)}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className={`truncate text-[14px] ${selectedIndex === index ? "text-foreground font-medium" : "text-popover-foreground"}`}>
+                      {command.title}
+                    </div>
+                    {command.detail && (
+                      <div className="mt-0.5 truncate text-[11px] text-ring">{command.detail}</div>
+                    )}
+                  </div>
+                  {command.shortcut && (
+                    <kbd className="shrink-0 text-[11px] font-medium text-ring">{command.shortcut}</kbd>
+                  )}
+                </div>
+              ))}
+
               {/* Empty state: no recent files */}
               {items.length === 0 && !query && (
                 <div className="px-4 py-8 text-center text-[13px] text-ring">
-                  No recent files
+                  {mode === "commands"
+                    ? "No commands available"
+                    : mode === "content"
+                      ? "Type at least two characters to search file contents"
+                      : "No recent files"}
                 </div>
               )}
 
@@ -416,7 +549,10 @@ export function CommandPalette({
                   return (
                     <div
                       key={entry.path}
+                      id={`ghost-command-result-${i}`}
                       data-index={i}
+                      role="option"
+                      aria-selected={selectedIndex === i}
                       className={`flex items-center gap-2 px-4 py-2.5 cursor-pointer transition-colors ${
                         selectedIndex === i
                           ? "bg-sidebar-accent border-l-2 border-ghost-amber"
@@ -479,7 +615,10 @@ export function CommandPalette({
                 return (
                   <div
                     key={`${match.path}:${match.line_number}:${i}`}
+                    id={`ghost-command-result-${globalIndex}`}
                     data-index={globalIndex}
+                    role="option"
+                    aria-selected={selectedIndex === globalIndex}
                     className={`px-4 py-2.5 cursor-pointer transition-colors ${
                       selectedIndex === globalIndex
                         ? "bg-sidebar-accent border-l-2 border-ghost-amber"
@@ -517,7 +656,7 @@ export function CommandPalette({
             </div>
 
             {/* Preview panel */}
-            {previewOpen && selectedItem && (
+            {previewOpen && selectedPath && (
               <div
                 className={
                   compact
@@ -542,10 +681,10 @@ export function CommandPalette({
                       </button>
                     </div>
                     <div className="text-[14px] font-medium text-foreground">
-                      {getFileName(selectedItem.path)}
+                      {getFileName(selectedPath)}
                     </div>
                     <div className="text-[12px] text-ring">
-                      {getFolderDisplay(selectedItem.path)}
+                      {getFolderDisplay(selectedPath)}
                     </div>
                   </div>
                   <div className="mt-4 border-t border-border pt-4">
@@ -572,7 +711,12 @@ export function CommandPalette({
 
           {/* Footer */}
           <div className="flex items-center gap-6 px-4 h-10 border-t border-border text-[11px] text-ring shrink-0 select-none">
-            {mode === "content" && contentResults.length > 0 ? (
+            {mode === "commands" ? (
+              <>
+                <span><kbd className="font-medium">↑↓</kbd> navigate</span>
+                <span><kbd className="font-medium">↵</kbd> run</span>
+              </>
+            ) : mode === "content" && contentResults.length > 0 ? (
               <span>
                 {contentTotal} matches across {contentFileCount} files
               </span>

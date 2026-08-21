@@ -50,8 +50,16 @@ import {
 } from "@/components/ui/context-menu";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { SearchBar } from "@/components/editor/search-bar";
-import { CommandPalette } from "@/components/command-palette/command-palette";
+import {
+  CommandPalette,
+  type CommandPaletteMode,
+  type PaletteCommand,
+} from "@/components/command-palette/command-palette";
 import { SidebarGuide } from "@/components/sidebar/sidebar-guide";
+import {
+  FileTreeKeyboard,
+  type FileTreeKeyboardHandle,
+} from "@/components/sidebar/file-tree-keyboard";
 import { useRecentFiles } from "@/hooks/use-recent-files";
 import { useSearch } from "@/hooks/use-search";
 import { useFileTree } from "@/hooks/use-file-tree";
@@ -70,6 +78,10 @@ export function GhostLayout() {
   const [activeFileStore] = useState(() => new ActiveFileStore());
   const [activeFile, _setActiveFile] = useState<string | null>(null);
   const activeFileRef = useRef<string | null>(null);
+  const backHistoryRef = useRef<string[]>([]);
+  const forwardHistoryRef = useRef<string[]>([]);
+  const recentCycleRef = useRef<{ paths: string[]; index: number } | null>(null);
+  const openRequestRef = useRef(0);
   const setActiveFile = useCallback((path: string | null) => {
     activeFileRef.current = path;
     _setActiveFile(path);
@@ -96,8 +108,11 @@ export function GhostLayout() {
   const sidebarContextMenuOpen = useRef(false);
   const headerInputRef = useRef<HTMLInputElement>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandPaletteMode, setCommandPaletteMode] = useState<CommandPaletteMode>("files");
+  const paletteReturnFocusRef = useRef<HTMLElement | null>(null);
   const [externalDragOver, setExternalDragOver] = useState(false);
   const treeAreaRef = useRef<HTMLDivElement>(null);
+  const treeKeyboardRef = useRef<FileTreeKeyboardHandle>(null);
   const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   const [cmView, setCmView] = useState<EditorView | null>(null);
@@ -118,7 +133,28 @@ export function GhostLayout() {
   isContentDetectedTextRef.current = isContentDetectedText;
   const styleBarRef = useRef(settings.showStyleBar);
   styleBarRef.current = settings.showStyleBar;
-  const { recentFiles, addRecentFile } = useRecentFiles();
+  const {
+    recentFiles,
+    addRecentFile,
+    retargetRecentFiles,
+    removeRecentFiles,
+  } = useRecentFiles();
+
+  const focusEditor = useCallback(() => {
+    requestAnimationFrame(() => {
+      const tiptap = editorInstanceRef.current;
+      if (tiptap && !tiptap.isDestroyed) {
+        tiptap.commands.focus();
+        return;
+      }
+      const codeMirror = cmViewRef.current;
+      if (codeMirror) {
+        codeMirror.focus();
+        return;
+      }
+      mainElRef.current?.focus();
+    });
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -148,47 +184,128 @@ export function GhostLayout() {
 
   const { closeSearch, openSearch } = search;
 
-  const handleFileSelect = useCallback(async (path: string) => {
+  const openCommandPalette = useCallback((mode: CommandPaletteMode) => {
+    if (!document.querySelector("[data-command-palette]")) {
+      paletteReturnFocusRef.current = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    }
+    closeSearch();
+    setCommandPaletteMode(mode);
+    setCommandPaletteOpen(true);
+  }, [closeSearch]);
+
+  const closeCommandPalette = useCallback(() => {
+    setCommandPaletteOpen(false);
+    const returnTarget = paletteReturnFocusRef.current;
+    paletteReturnFocusRef.current = null;
+    requestAnimationFrame(() => {
+      if (returnTarget?.isConnected) returnTarget.focus();
+      else focusEditor();
+    });
+  }, [focusEditor]);
+
+  const openFile = useCallback(async (path: string, recordHistory = true): Promise<boolean> => {
+    const requestId = ++openRequestRef.current;
+    const previousPath = activeFileRef.current;
     if (activeFileRef.current && activeFileRef.current !== path) {
       try {
         await window.__ghostFlushSave?.();
       } catch {
         // Keep the current editor open; its save status explains the failure.
-        return;
+        return false;
       }
     }
 
     try {
       setShowSettings(false);
       closeSearch();
-      addRecentFile(path);
+
+      let content = "";
+      let detectedText = false;
 
       if (shouldProbeTextContent(path)) {
-        const content = await invoke<string | null>("read_file_if_text", { path });
-        const detectedText = content !== null;
-        fileContentRef.current = content ?? "";
-        setIsContentDetectedText(detectedText);
-        setActiveFile(path);
-        setFileContent(content ?? "");
-        setLiveText(content ?? "");
+        const detectedContent = await invoke<string | null>("read_file_if_text", { path });
+        detectedText = detectedContent !== null;
+        content = detectedContent ?? "";
       } else if (isBinaryViewer(path)) {
-        fileContentRef.current = "";
-        setIsContentDetectedText(false);
-        setActiveFile(path);
-        setFileContent("");
-        setLiveText("");
+        content = "";
       } else {
-        const content = await invoke<string>("read_file", { path });
-        fileContentRef.current = content;
-        setIsContentDetectedText(false);
-        setActiveFile(path);
-        setFileContent(content);
-        setLiveText(content);
+        content = await invoke<string>("read_file", { path });
       }
+
+      if (requestId !== openRequestRef.current) return false;
+
+      if (recordHistory && previousPath && previousPath !== path) {
+        const back = backHistoryRef.current;
+        if (back[back.length - 1] !== previousPath) back.push(previousPath);
+        if (back.length > 100) back.splice(0, back.length - 100);
+        forwardHistoryRef.current = [];
+      }
+
+      fileContentRef.current = content;
+      setIsContentDetectedText(detectedText);
+      setActiveFile(path);
+      setFileContent(content);
+      setLiveText(content);
+      addRecentFile(path);
+      return true;
     } catch (err) {
       console.error("Failed to read file:", err);
+      return false;
     }
-  }, [closeSearch, addRecentFile]);
+  }, [closeSearch, addRecentFile, setActiveFile]);
+
+  const handleFileSelect = useCallback(
+    (path: string) => openFile(path, true),
+    [openFile],
+  );
+
+  const handlePaletteFileSelect = useCallback(async (path: string) => {
+    if (await openFile(path, true)) {
+      await treeKeyboardRef.current?.revealPath(path);
+    }
+  }, [openFile]);
+
+  const navigateBack = useCallback(async () => {
+    const target = backHistoryRef.current[backHistoryRef.current.length - 1];
+    const current = activeFileRef.current;
+    if (!target || !current) return;
+    if (await openFile(target, false)) {
+      backHistoryRef.current.pop();
+      if (forwardHistoryRef.current[forwardHistoryRef.current.length - 1] !== current) {
+        forwardHistoryRef.current.push(current);
+      }
+    }
+  }, [openFile]);
+
+  const navigateForward = useCallback(async () => {
+    const target = forwardHistoryRef.current[forwardHistoryRef.current.length - 1];
+    const current = activeFileRef.current;
+    if (!target || !current) return;
+    if (await openFile(target, false)) {
+      forwardHistoryRef.current.pop();
+      if (backHistoryRef.current[backHistoryRef.current.length - 1] !== current) {
+        backHistoryRef.current.push(current);
+      }
+    }
+  }, [openFile]);
+
+  const cycleRecentFile = useCallback(async (reverse: boolean) => {
+    let cycle = recentCycleRef.current;
+    if (!cycle) {
+      const paths = recentFiles.filter((path) => path !== activeFileRef.current);
+      if (paths.length === 0) return;
+      cycle = { paths, index: reverse ? paths.length - 1 : 0 };
+      recentCycleRef.current = cycle;
+    } else {
+      const offset = reverse ? -1 : 1;
+      cycle.index = (cycle.index + offset + cycle.paths.length) % cycle.paths.length;
+    }
+
+    const target = cycle.paths[cycle.index];
+    if (target) await openFile(target, true);
+  }, [openFile, recentFiles]);
 
   // openSearch wrapper: only open if a file is active
   const openSearchIfFile = useCallback((mode: "find" | "replace") => {
@@ -237,7 +354,30 @@ export function GhostLayout() {
     onContentApplied: (content) => setLiveText(content),
   });
 
+  const retargetNavigationHistory = useCallback((oldPath: string, newPath: string) => {
+    const retarget = (path: string) => retargetPath(path, oldPath, newPath) ?? path;
+    backHistoryRef.current = backHistoryRef.current.map(retarget);
+    forwardHistoryRef.current = forwardHistoryRef.current.map(retarget);
+    if (recentCycleRef.current) {
+      recentCycleRef.current.paths = recentCycleRef.current.paths.map(retarget);
+    }
+    retargetRecentFiles(oldPath, newPath);
+  }, [retargetRecentFiles]);
+
+  const removeFromNavigationHistory = useCallback((removedPath: string) => {
+    const keep = (path: string) => path !== removedPath && !path.startsWith(`${removedPath}/`);
+    backHistoryRef.current = backHistoryRef.current.filter(keep);
+    forwardHistoryRef.current = forwardHistoryRef.current.filter(keep);
+    if (recentCycleRef.current) {
+      recentCycleRef.current.paths = recentCycleRef.current.paths.filter(keep);
+    }
+    removeRecentFiles(removedPath);
+  }, [removeRecentFiles]);
+
   const retargetActiveFile = useCallback((oldPath: string, newPath: string): Promise<string | null> => {
+    // History and recents may contain the renamed item even when it is not
+    // currently open, so keep navigation state in sync unconditionally.
+    retargetNavigationHistory(oldPath, newPath);
     const currentFile = activeFileRef.current;
     if (!currentFile) return Promise.resolve(null);
 
@@ -285,7 +425,7 @@ export function GhostLayout() {
       if (retargetPromiseRef.current === barrier) retargetPromiseRef.current = null;
     });
     return retarget;
-  }, [activeFileStore, setActiveFile]);
+  }, [activeFileStore, retargetNavigationHistory, setActiveFile]);
 
   const handleFileRenamed = useCallback(
     async (oldPath: string, newPath: string) => {
@@ -307,6 +447,7 @@ export function GhostLayout() {
 
   const handleFileDeleted = useCallback(
     (path: string) => {
+      removeFromNavigationHistory(path);
       const currentFile = activeFileRef.current;
       if (currentFile && (currentFile === path || currentFile.startsWith(path + "/"))) {
         setActiveFile(null);
@@ -317,7 +458,7 @@ export function GhostLayout() {
       // Notify accessory windows — they will auto-close
       invoke("emit_file_deleted", { path }).catch(() => {});
     },
-    [setActiveFile, handleFsChange]
+    [setActiveFile, handleFsChange, removeFromNavigationHistory]
   );
 
   // dnd-kit handlers
@@ -364,12 +505,17 @@ export function GhostLayout() {
   );
 
   // Expose functions for Rust menu events
-  const createNewFile = useCallback(async () => {
+  const createNewFile = useCallback(async (targetDirectory?: string) => {
     if (folders.length === 0) { addFolder(); return; }
     const currentFile = activeFileRef.current;
-    const targetDir = currentFile
-      ? currentFile.substring(0, currentFile.lastIndexOf("/"))
-      : folders[0];
+    const keyboardTarget = treeKeyboardRef.current?.hasFocus()
+      ? treeKeyboardRef.current.getTargetDirectory()
+      : null;
+    const targetDir = targetDirectory
+      ?? keyboardTarget
+      ?? (currentFile
+        ? currentFile.substring(0, currentFile.lastIndexOf("/"))
+        : folders[0]);
     let name = "Untitled.md";
     let counter = 1;
     while (true) {
@@ -387,12 +533,48 @@ export function GhostLayout() {
     }
   }, [folders, addFolder, handleFileSelect, handleFsChange]);
 
+  const createNewFolder = useCallback(async (targetDirectory?: string) => {
+    if (folders.length === 0) { addFolder(); return; }
+    const currentFile = activeFileRef.current;
+    const keyboardTarget = treeKeyboardRef.current?.hasFocus()
+      ? treeKeyboardRef.current.getTargetDirectory()
+      : null;
+    const targetDir = targetDirectory
+      ?? keyboardTarget
+      ?? (currentFile
+        ? currentFile.substring(0, currentFile.lastIndexOf("/"))
+        : folders[0]);
+
+    let name = "New Folder";
+    let counter = 1;
+    while (counter < 100) {
+      try {
+        const path = await invoke<string>("create_directory", {
+          parent: targetDir,
+          name,
+        });
+        setNewlyCreatedFolder(path);
+        handleFsChange();
+        break;
+      } catch {
+        counter += 1;
+        name = `New Folder ${counter}`;
+      }
+    }
+  }, [folders, addFolder, handleFsChange]);
+
   useEffect(() => {
     window.__ghostAddFolder = addFolder;
     window.__ghostNewFile = createNewFile;
     window.__ghostFind = () => openSearchIfFile("find");
     window.__ghostFindAndReplace = () => openSearchIfFile("replace");
-    window.__ghostCommandPalette = () => setCommandPaletteOpen((p) => !p);
+    window.__ghostCommandPalette = () => openCommandPalette("commands");
+    window.__ghostQuickOpen = () => openCommandPalette("files");
+    window.__ghostSearchContents = () => openCommandPalette("content");
+    window.__ghostFocusEditor = focusEditor;
+    window.__ghostNavigateBack = () => { void navigateBack(); };
+    window.__ghostNavigateForward = () => { void navigateForward(); };
+    window.__ghostSettings = () => setShowSettings((previous) => !previous);
     window.__ghostToggleStyleBar = () => updateSettings({ showStyleBar: !styleBarRef.current });
     return () => {
       delete window.__ghostAddFolder;
@@ -400,9 +582,24 @@ export function GhostLayout() {
       delete window.__ghostFind;
       delete window.__ghostFindAndReplace;
       delete window.__ghostCommandPalette;
+      delete window.__ghostQuickOpen;
+      delete window.__ghostSearchContents;
+      delete window.__ghostFocusEditor;
+      delete window.__ghostNavigateBack;
+      delete window.__ghostNavigateForward;
+      delete window.__ghostSettings;
       delete window.__ghostToggleStyleBar;
     };
-  }, [addFolder, createNewFile, openSearchIfFile]);
+  }, [
+    addFolder,
+    createNewFile,
+    focusEditor,
+    navigateBack,
+    navigateForward,
+    openCommandPalette,
+    openSearchIfFile,
+    updateSettings,
+  ]);
 
   // Finder file-open events are now handled by Rust (opens accessory windows directly)
 
@@ -476,82 +673,6 @@ export function GhostLayout() {
       unlistenDrop.then((fn) => fn());
     };
   }, [addFolderByPath, handleFsChange]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = async (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey;
-
-      if (mod && e.shiftKey && e.key.toLowerCase() === "n") {
-        // Cmd+Shift+N — new folder
-        e.preventDefault();
-        if (folders.length === 0) return;
-        const currentFile = activeFileRef.current;
-        const targetDir = currentFile
-          ? currentFile.substring(0, currentFile.lastIndexOf("/"))
-          : folders[0];
-        let name = "New Folder";
-        let counter = 1;
-        while (counter < 100) {
-          try {
-            const path = await invoke<string>("create_directory", {
-              parent: targetDir,
-              name,
-            });
-            setNewlyCreatedFolder(path);
-            handleFsChange();
-            break;
-          } catch {
-            counter++;
-            name = `New Folder ${counter}`;
-          }
-        }
-      } else if (mod && !e.shiftKey && e.key.toLowerCase() === "n") {
-        // Cmd+N — new file (reuse createNewFile callback)
-        e.preventDefault();
-        createNewFile();
-      }
-
-      if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
-        e.preventDefault();
-        openSearchIfFile("find");
-      }
-
-      if (mod && e.altKey && e.key.toLowerCase() === "f") {
-        e.preventDefault();
-        openSearchIfFile("replace");
-      }
-
-      if (mod && e.key === "o") {
-        e.preventDefault();
-        addFolder();
-      }
-
-      if (mod && e.key === "\\") {
-        e.preventDefault();
-        toggleSidebar();
-      }
-
-      if (mod && e.key === ",") {
-        e.preventDefault();
-        setShowSettings((prev) => !prev);
-      }
-
-      if (mod && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setCommandPaletteOpen((prev) => {
-          if (!prev) {
-            // Close in-editor search when opening palette
-            closeSearch();
-          }
-          return !prev;
-        });
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [folders, addFolder, createNewFile, handleFileSelect, openSearchIfFile, closeSearch]);
 
   // Breadcrumb from active file
   const breadcrumb = useMemo(() => {
@@ -658,6 +779,129 @@ export function GhostLayout() {
     setSidebarHovered(false);
   }, [sidebarCollapsed, sidebarWidth]);
 
+  const focusFileTree = useCallback(async () => {
+    if (sidebarCollapsed) await toggleSidebar();
+    requestAnimationFrame(() => {
+      void treeKeyboardRef.current?.focusActive();
+    });
+  }, [sidebarCollapsed, toggleSidebar]);
+
+  useEffect(() => {
+    window.__ghostFocusTree = () => { void focusFileTree(); };
+    window.__ghostToggleSidebar = () => { void toggleSidebar(); };
+    return () => {
+      delete window.__ghostFocusTree;
+      delete window.__ghostToggleSidebar;
+    };
+  }, [focusFileTree, toggleSidebar]);
+
+  // Application-level shortcuts. Tree-specific unmodified keys are handled
+  // by FileTreeKeyboard so they never interfere with editor typing.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+      const command = event.metaKey || (!isMac && event.ctrlKey);
+
+      if (event.ctrlKey && !event.metaKey && event.key === "Tab") {
+        event.preventDefault();
+        void cycleRecentFile(event.shiftKey);
+        return;
+      }
+      if (
+        event.ctrlKey &&
+        !event.metaKey &&
+        (event.code === "Minus" || event.key === "-" || event.key === "_")
+      ) {
+        event.preventDefault();
+        void (event.shiftKey ? navigateForward() : navigateBack());
+        return;
+      }
+      if (command && event.shiftKey && key === "e") {
+        event.preventDefault();
+        void focusFileTree();
+        return;
+      }
+      if (command && !event.shiftKey && key === "1") {
+        event.preventDefault();
+        focusEditor();
+        return;
+      }
+      if (command && key === "p") {
+        event.preventDefault();
+        openCommandPalette(event.shiftKey ? "commands" : "files");
+        return;
+      }
+      if (command && event.shiftKey && key === "f") {
+        event.preventDefault();
+        openCommandPalette("content");
+        return;
+      }
+      if (command && key === "k") {
+        event.preventDefault();
+        openCommandPalette("commands");
+        return;
+      }
+      if (command && event.shiftKey && key === "n") {
+        event.preventDefault();
+        void createNewFolder();
+        return;
+      }
+      if (command && !event.shiftKey && key === "n") {
+        event.preventDefault();
+        void createNewFile();
+        return;
+      }
+      if (command && key === "o") {
+        event.preventDefault();
+        addFolder();
+        return;
+      }
+      if (command && event.key === "\\") {
+        event.preventDefault();
+        void toggleSidebar();
+        return;
+      }
+      if (command && event.key === ",") {
+        event.preventDefault();
+        setShowSettings((previous) => !previous);
+        return;
+      }
+      if (command && !event.shiftKey && !event.altKey && key === "f") {
+        event.preventDefault();
+        openSearchIfFile("find");
+        return;
+      }
+      if (command && event.altKey && key === "f") {
+        event.preventDefault();
+        openSearchIfFile("replace");
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Control") recentCycleRef.current = null;
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [
+    addFolder,
+    createNewFile,
+    createNewFolder,
+    cycleRecentFile,
+    focusEditor,
+    focusFileTree,
+    navigateBack,
+    navigateForward,
+    openCommandPalette,
+    openSearchIfFile,
+    toggleSidebar,
+  ]);
+
   // Dynamic window min size based on sidebar state
   useEffect(() => {
     const minWidth = sidebarCollapsed ? EDITOR_MIN : SIDEBAR_MIN + EDITOR_MIN;
@@ -752,6 +996,146 @@ export function GhostLayout() {
     setIsRenamingHeader(false);
   }, [activeFile, headerRenameName, activeFileName, retargetActiveFile, handleFsChange]);
 
+  const focusedTreeNode = treeKeyboardRef.current?.getFocusedNode() ?? null;
+  const focusedTreeDetail = focusedTreeNode
+    ? `${focusedTreeNode.kind === "folder" ? "Folder" : "File"}: ${focusedTreeNode.label}`
+    : "Focus the file tree first";
+  const focusedTreeDirectory = treeKeyboardRef.current?.getTargetDirectory() ?? undefined;
+
+  const paletteCommands: PaletteCommand[] = [
+    {
+      id: "navigation.goToFile",
+      title: "Go to File…",
+      shortcut: "⌘P",
+      keywords: "quick open recent",
+      closeOnRun: false,
+      run: () => openCommandPalette("files"),
+    },
+    {
+      id: "navigation.searchContents",
+      title: "Search File Contents…",
+      shortcut: "⇧⌘F",
+      keywords: "global workspace text",
+      closeOnRun: false,
+      run: () => openCommandPalette("content"),
+    },
+    {
+      id: "navigation.focusTree",
+      title: "Focus File Tree",
+      shortcut: "⇧⌘E",
+      run: focusFileTree,
+    },
+    {
+      id: "navigation.focusEditor",
+      title: "Focus Editor",
+      shortcut: "⌘1",
+      run: focusEditor,
+    },
+    {
+      id: "navigation.back",
+      title: "Go Back",
+      shortcut: "⌃-",
+      run: navigateBack,
+    },
+    {
+      id: "navigation.forward",
+      title: "Go Forward",
+      shortcut: "⌃⇧-",
+      run: navigateForward,
+    },
+    {
+      id: "file.new",
+      title: "New File",
+      shortcut: "⌘N",
+      detail: focusedTreeDirectory ? `In ${focusedTreeDirectory}` : undefined,
+      run: () => createNewFile(focusedTreeDirectory),
+    },
+    {
+      id: "folder.new",
+      title: "New Folder",
+      shortcut: "⇧⌘N",
+      detail: focusedTreeDirectory ? `In ${focusedTreeDirectory}` : undefined,
+      run: () => createNewFolder(focusedTreeDirectory),
+    },
+    {
+      id: "tree.open",
+      title: "Open Focused Tree Item",
+      detail: focusedTreeDetail,
+      disabled: !focusedTreeNode,
+      run: () => treeKeyboardRef.current?.runFocusedAction("activate"),
+    },
+    {
+      id: "tree.openNewWindow",
+      title: "Open Focused File in New Window",
+      shortcut: "⌘↵",
+      detail: focusedTreeDetail,
+      disabled: focusedTreeNode?.kind !== "file",
+      run: () => treeKeyboardRef.current?.runFocusedAction("openNewWindow"),
+    },
+    {
+      id: "tree.rename",
+      title: "Rename Focused Tree Item…",
+      shortcut: "F2",
+      detail: focusedTreeDetail,
+      disabled: !focusedTreeNode,
+      run: () => treeKeyboardRef.current?.runFocusedAction("rename"),
+    },
+    {
+      id: "tree.duplicate",
+      title: "Duplicate Focused Tree Item",
+      shortcut: "⌘D",
+      detail: focusedTreeDetail,
+      disabled: !focusedTreeNode,
+      run: () => treeKeyboardRef.current?.runFocusedAction("duplicate"),
+    },
+    {
+      id: "tree.copyPath",
+      title: "Copy Path of Focused Tree Item",
+      detail: focusedTreeDetail,
+      disabled: !focusedTreeNode,
+      run: () => treeKeyboardRef.current?.runFocusedAction("copyPath"),
+    },
+    {
+      id: "tree.reveal",
+      title: "Reveal Focused Tree Item in Finder",
+      detail: focusedTreeDetail,
+      disabled: !focusedTreeNode,
+      run: () => treeKeyboardRef.current?.runFocusedAction("reveal"),
+    },
+    {
+      id: "tree.trash",
+      title: "Move Focused Tree Item to Trash…",
+      shortcut: "⌘⌫",
+      detail: focusedTreeDetail,
+      disabled: !focusedTreeNode || (focusedTreeNode.kind === "folder" && folders.includes(focusedTreeNode.path)),
+      run: () => treeKeyboardRef.current?.runFocusedAction("trash"),
+    },
+    {
+      id: "workspace.addProject",
+      title: "Open New Project…",
+      shortcut: "⌘O",
+      run: addFolder,
+    },
+    {
+      id: "view.toggleSidebar",
+      title: sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar",
+      shortcut: "⌘\\",
+      run: toggleSidebar,
+    },
+    {
+      id: "view.toggleStyleBar",
+      title: settings.showStyleBar ? "Hide Style Bar" : "Show Style Bar",
+      shortcut: "⇧⌘Y",
+      run: () => updateSettings({ showStyleBar: !settings.showStyleBar }),
+    },
+    {
+      id: "settings.open",
+      title: "Open Settings",
+      shortcut: "⌘,",
+      run: () => setShowSettings(true),
+    },
+  ];
+
   return (
     <div
       className="flex h-svh w-full overflow-hidden relative"
@@ -792,9 +1176,9 @@ export function GhostLayout() {
           )}
           <button
             data-sidebar-chrome
-            onClick={() => setCommandPaletteOpen(true)}
+            onClick={() => openCommandPalette("files")}
             className="text-ring hover:text-sidebar-foreground transition-colors cursor-pointer"
-            title="Search (⌘K)"
+            title="Go to File (⌘P)"
           >
             <Search className="size-[15px]" strokeWidth={2.25} />
           </button>
@@ -812,7 +1196,13 @@ export function GhostLayout() {
         <ContextMenu>
         <ContextMenuTrigger asChild>
         <div className="flex-1 relative overflow-hidden">
-        <div ref={treeAreaRef} data-tree-area className="h-full overscroll-contain px-1 pb-12 overflow-y-auto">
+        <FileTreeKeyboard
+          ref={treeKeyboardRef}
+          scrollRef={treeAreaRef}
+          activePath={activeFile}
+          onFocusEditor={focusEditor}
+          className="h-full overscroll-contain px-1 pb-12 overflow-y-auto outline-none"
+        >
           <ActiveFileProvider value={activeFileStore}>
           <DndContext
             sensors={sensors}
@@ -853,6 +1243,7 @@ export function GhostLayout() {
                       } catch {
                         return;
                       }
+                      removeFromNavigationHistory(path);
                       removeFolder(path);
                       if (activeFile?.startsWith(path)) {
                         setActiveFile(null);
@@ -888,7 +1279,7 @@ export function GhostLayout() {
             </DragOverlay>
           </DndContext>
           </ActiveFileProvider>
-        </div>
+        </FileTreeKeyboard>
         <SidebarGuide treeAreaRef={treeAreaRef} />
         </div>
         </ContextMenuTrigger>
@@ -1042,7 +1433,7 @@ export function GhostLayout() {
         </div>
 
         {/* Editor — scrolls behind the floating header */}
-        <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative">
+        <main ref={setMainEl} tabIndex={-1} className="h-full overflow-auto overscroll-contain relative outline-none">
           {activeFile ? (
             <FileViewer
               filePath={activeFile}
@@ -1107,13 +1498,16 @@ export function GhostLayout() {
 
       {commandPaletteOpen && (
         <CommandPalette
+          key={commandPaletteMode}
           open={commandPaletteOpen}
-          onClose={() => setCommandPaletteOpen(false)}
+          initialMode={commandPaletteMode}
+          onClose={closeCommandPalette}
           allFiles={allFiles}
           recentFiles={recentFiles}
-          onFileSelect={handleFileSelect}
+          onFileSelect={handlePaletteFileSelect}
           folders={folders}
           extensions={extensions}
+          commands={paletteCommands}
         />
       )}
     </div>

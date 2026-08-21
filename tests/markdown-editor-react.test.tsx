@@ -23,6 +23,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 }));
 
 import { MarkdownEditor } from "../src/components/editor/markdown-editor";
+import { applyContentInPlace } from "../src/lib/editor-utils";
 
 class TestResizeObserver {
   observe() {}
@@ -44,6 +45,182 @@ afterEach(() => {
 });
 
 describe("MarkdownEditor React integration", () => {
+  it("does not serialize or save a clean document when explicitly flushed", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const onContentChange = vi.fn(async () => undefined);
+
+    await act(async () => {
+      root.render(
+        <MarkdownEditor
+          content={"Salt & pepper\n\n[unclear: x]"}
+          onContentChange={onContentChange}
+          activeFile="/tmp/clean.md"
+        />,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(window.__ghostFlushSave).toBeTypeOf("function");
+    await act(async () => {
+      await window.__ghostFlushSave?.();
+    });
+
+    expect(onContentChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps externally reloaded clean content clean instead of writing it back", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const onContentChange = vi.fn(async () => undefined);
+    let editor: Editor | null = null;
+
+    await act(async () => {
+      root.render(
+        <MarkdownEditor
+          content="Before"
+          onContentChange={onContentChange}
+          activeFile="/tmp/external.md"
+          onEditorReady={(readyEditor) => { editor = readyEditor; }}
+        />,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    const applied = applyContentInPlace(
+      { current: editor },
+      { current: null },
+      { current: null },
+      "Salt & pepper\n\n[unclear: x]",
+    );
+    expect(applied).toBe(true);
+
+    await act(async () => {
+      await window.__ghostFlushSave?.();
+    });
+    expect(onContentChange).not.toHaveBeenCalled();
+  });
+
+  it("does not replace a dirty buffer with an external reload", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const onContentChange = vi.fn(async () => undefined);
+    let editor: Editor | null = null;
+
+    await act(async () => {
+      root.render(
+        <MarkdownEditor
+          content="Before"
+          onContentChange={onContentChange}
+          activeFile="/tmp/dirty.md"
+          onEditorReady={(readyEditor) => { editor = readyEditor; }}
+        />,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    act(() => {
+      (editor as Editor).commands.insertContentAt(
+        (editor as Editor).state.doc.content.size,
+        " locally edited",
+      );
+    });
+    const applied = applyContentInPlace(
+      { current: editor },
+      { current: null },
+      { current: null },
+      "Externally repaired",
+    );
+
+    expect(applied).toBe(false);
+    expect((editor as Editor).getText()).toContain("locally edited");
+  });
+
+  it("saves edited recipe prose without adding entities or unnecessary escapes", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const onContentChange = vi.fn(async () => undefined);
+    let editor: Editor | null = null;
+
+    await act(async () => {
+      root.render(
+        <MarkdownEditor
+          content={"Salt & pepper\n\n[unclear: x]\n\n~1/4 cup"}
+          onContentChange={onContentChange}
+          activeFile="/tmp/recipe.md"
+          onEditorReady={(readyEditor) => { editor = readyEditor; }}
+        />,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    act(() => {
+      (editor as Editor).commands.insertContentAt(
+        (editor as Editor).state.doc.content.size - 1,
+        "!",
+      );
+    });
+    await act(async () => {
+      await window.__ghostFlushSave?.();
+    });
+
+    expect(onContentChange).toHaveBeenCalledTimes(1);
+    expect(onContentChange.mock.calls[0][0]).toBe(
+      "Salt & pepper\n\n[unclear: x]\n\n~1/4 cup!",
+    );
+
+    await act(async () => {
+      await window.__ghostFlushSave?.();
+    });
+    expect(onContentChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a failed edit dirty so a later flush can retry it", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const onContentChange = vi.fn()
+      .mockRejectedValueOnce(new Error("disk unavailable"))
+      .mockResolvedValueOnce(undefined);
+    let editor: Editor | null = null;
+
+    await act(async () => {
+      root.render(
+        <MarkdownEditor
+          content="Before"
+          onContentChange={onContentChange}
+          activeFile="/tmp/retry.md"
+          onEditorReady={(readyEditor) => { editor = readyEditor; }}
+        />,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    act(() => {
+      (editor as Editor).commands.insertContentAt(
+        (editor as Editor).state.doc.content.size - 1,
+        " after",
+      );
+    });
+
+    await expect(window.__ghostFlushSave?.()).rejects.toThrow("disk unavailable");
+    await act(async () => {
+      await window.__ghostFlushSave?.();
+    });
+
+    expect(onContentChange).toHaveBeenCalledTimes(2);
+    expect(onContentChange.mock.calls[1][0]).toBe("Before after");
+  });
+
   it("opens a frontmatter document with menus and toolbar without a render loop", async () => {
     const host = document.createElement("div");
     document.body.appendChild(host);

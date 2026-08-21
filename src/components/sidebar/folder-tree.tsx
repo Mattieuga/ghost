@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import React, { useMemo, useState, useCallback, useRef, useEffect, useSyncExternalStore } from "react";
 import { useActiveFileStore } from "./sidebar-context";
+import { useFileTreeNode } from "./file-tree-keyboard";
 
 const INDENT_BASE = 16;
 const INDENT_STEP = 14;
@@ -410,6 +411,32 @@ function DroppableFolder({
     }
   };
 
+  const setExpanded = useCallback((expanded: boolean) => {
+    setOpen(expanded);
+    onOpenChange?.(expanded);
+  }, [onOpenChange]);
+
+  const { isFocused, nodeProps, restoreTreeFocus } = useFileTreeNode({
+    path: id,
+    label: displayFolderName,
+    kind: "folder",
+    parentPath: isRoot ? null : id.substring(0, id.lastIndexOf("/")),
+    expanded: open,
+    expand: () => setExpanded(true),
+    collapse: () => setExpanded(false),
+    actions: {
+      activate: () => setExpanded(!open),
+      rename: startRename,
+      duplicate: handleDuplicate,
+      trash: isRoot ? undefined : () => setShowDeleteDialog(true),
+      copyPath: handleCopyPath,
+      reveal: handleRevealInFinder,
+      newFile: () => { setExpanded(true); onCreateFile(id); },
+      newFolder: () => { setExpanded(true); onCreateFolder(id); },
+      closeProject: isRoot ? () => onRemoveFolder?.(id) : undefined,
+    },
+  });
+
   // Build context menu items based on folder type
   const renderContextMenu = () => {
     if (isRoot) {
@@ -496,7 +523,7 @@ function DroppableFolder({
   };
 
   const guideLine = open ? (
-    <div className="relative">
+    <div className="relative" role="group">
       <div
         className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
         data-tree-guide={isRoot ? "root" : "sub"}
@@ -555,16 +582,19 @@ function DroppableFolder({
   return (
     <div
       ref={setNodeRef}
+      {...nodeProps}
       data-root-folder={isRoot ? id : undefined}
       className={`rounded-md transition-colors ${isHighlighted ? "bg-muted/60 ring-1 ring-border" : ""}`}
     >
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <button
+            data-tree-focus-target
+            tabIndex={-1}
             onClick={() => {
               const next = !open;
-              setOpen(next);
-              onOpenChange?.(next);
+              setExpanded(next);
+              requestAnimationFrame(restoreTreeFocus);
             }}
             onPointerDown={(e) => {
               if (!isRoot || folderIndex === undefined || !onReorderProject || (folderCount ?? 0) < 2) return;
@@ -587,7 +617,7 @@ function DroppableFolder({
               document.addEventListener("pointerup", onUp);
             }}
             data-folder-active={containsActiveFile || undefined}
-            className={`relative w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-card-foreground transition-colors cursor-pointer select-none rounded-[5px] ${containsActiveFile ? "bg-white/[0.06]" : "data-[state=open]:bg-white/[0.06]"}`}
+            className={`relative w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-card-foreground transition-colors cursor-pointer select-none rounded-[5px] ${containsActiveFile ? "bg-white/[0.06]" : "data-[state=open]:bg-white/[0.06]"} ${isFocused ? "ring-1 ring-inset ring-ghost-amber/80 bg-ghost-amber/[0.05]" : ""}`}
             style={{ paddingLeft: `${togglePadding}px` }}
           >
             {/* Guide line rendered by SidebarGuide overlay */}
@@ -745,6 +775,7 @@ const FileTree = React.memo(function FileTree({
             autoRename={entry.path === newlyCreatedFile}
             onAutoRenameDone={onNewFileRenamed}
             onAddProject={onAddProject}
+            onDuplicated={onRefresh}
             disableDnd={entries.length > 200}
           />
         )

@@ -2,6 +2,10 @@ import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
 import { TextSelection } from "@tiptap/pm/state";
 import { parseMarkdownDocument } from "../components/editor/frontmatter";
+import {
+  isMarkdownDocumentDirty,
+  resetMarkdownDocumentState,
+} from "../components/editor/markdown-source";
 
 export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
@@ -18,6 +22,10 @@ export function applyContentInPlace(
 
   const editor = editorRef.current;
   if (editor && !editor.isDestroyed) {
+    // Never replace a local edit that is still waiting for its checked write.
+    // The eventual save will surface an external-change conflict instead.
+    if (isMarkdownDocumentDirty(editor)) return false;
+
     const { from, to } = editor.state.selection;
     editor
       .chain()
@@ -35,6 +43,7 @@ export function applyContentInPlace(
         return true;
       })
       .run();
+    resetMarkdownDocumentState(editor);
     if (scrollEl) scrollEl.scrollTop = scrollTop;
     return true;
   }

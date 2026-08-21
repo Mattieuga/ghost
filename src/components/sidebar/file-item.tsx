@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { FileEntry } from "@/types";
 import { useIsActiveFile } from "./sidebar-context";
+import { useFileTreeNode } from "./file-tree-keyboard";
 
 interface FileItemProps {
   entry: FileEntry;
@@ -35,6 +36,7 @@ interface FileItemProps {
   autoRename?: boolean;
   onAutoRenameDone?: () => void;
   onAddProject?: () => void;
+  onDuplicated?: () => void;
   disableDnd?: boolean;
 }
 
@@ -49,6 +51,7 @@ export const FileItem = React.memo(function FileItem({
   autoRename,
   onAutoRenameDone,
   onAddProject,
+  onDuplicated,
   disableDnd,
 }: FileItemProps) {
   const isActive = useIsActiveFile(entry.path);
@@ -149,6 +152,7 @@ export const FileItem = React.memo(function FileItem({
   const handleDuplicate = async () => {
     try {
       await invoke<string>("duplicate_file", { path: entry.path });
+      onDuplicated?.();
     } catch (err) {
       console.error("Failed to duplicate:", err);
     }
@@ -160,6 +164,11 @@ export const FileItem = React.memo(function FileItem({
     } catch (err) {
       console.error("Failed to reveal:", err);
     }
+  };
+
+  const startRename = () => {
+    setRenameName(displayName);
+    setIsRenaming(true);
   };
 
   const handleCopyPath = async () => {
@@ -189,6 +198,25 @@ export const FileItem = React.memo(function FileItem({
       console.error("Failed to copy text:", err);
     }
   };
+
+  const { isFocused, nodeProps, restoreTreeFocus } = useFileTreeNode({
+    path: entry.path,
+    label: displayName,
+    kind: "file",
+    parentPath: parentDir,
+    actions: {
+      activate: onSelect,
+      preview: onSelect,
+      openNewWindow: handleOpenInNewWindow,
+      rename: startRename,
+      duplicate: handleDuplicate,
+      trash: () => setShowDeleteDialog(true),
+      copyPath: handleCopyPath,
+      reveal: handleRevealInFinder,
+      newFile: onNewSibling,
+      newFolder: onNewFolderSibling,
+    },
+  });
 
   if (isRenaming) {
     return (
@@ -227,18 +255,25 @@ export const FileItem = React.memo(function FileItem({
       ref={setRefs}
       {...listeners}
       {...attributes}
+      {...nodeProps}
+      aria-current={isActive ? "page" : undefined}
       style={{ opacity: isDragging ? 0.4 : 1, touchAction: "none" }}
     >
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
+            data-tree-focus-target
             data-file-active={isActive || undefined}
-            className={`mx-1.5 rounded-[5px] relative ${isActive ? "bg-white/[0.06]" : "data-[state=open]:bg-white/[0.06]"}`}
+            className={`mx-1.5 rounded-[5px] relative ${isActive ? "bg-white/[0.06]" : "data-[state=open]:bg-white/[0.06]"} ${isFocused ? "ring-1 ring-ghost-amber/80 bg-ghost-amber/[0.07]" : ""}`}
           >
           {/* Guide line rendered by SidebarGuide overlay */}
           <button
             data-tree-label
-            onClick={onSelect}
+            tabIndex={-1}
+            onClick={() => {
+              onSelect();
+              requestAnimationFrame(restoreTreeFocus);
+            }}
             onDoubleClick={handleOpenInNewWindow}
             className={`w-full text-left py-1 pr-2 text-[13px] truncate transition-colors cursor-pointer select-none
               ${isActive
@@ -302,10 +337,7 @@ export const FileItem = React.memo(function FileItem({
             Duplicate
           </ContextMenuItem>
           <ContextMenuItem
-            onSelect={() => {
-              setRenameName(displayName);
-              setIsRenaming(true);
-            }}
+            onSelect={startRename}
           >
             Rename...
           </ContextMenuItem>
@@ -351,5 +383,6 @@ export const FileItem = React.memo(function FileItem({
   prev.entry.name === next.entry.name &&
   prev.indent === next.indent &&
   prev.autoRename === next.autoRename &&
+  prev.onDuplicated === next.onDuplicated &&
   prev.disableDnd === next.disableDnd
 );

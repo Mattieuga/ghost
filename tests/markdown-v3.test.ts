@@ -16,6 +16,7 @@ import {
 } from "../src/components/editor/frontmatter";
 import { ResizableImage } from "../src/components/editor/image-extension";
 import { ResizableTable } from "../src/components/editor/table-extension";
+import { serializeMarkdownDocument } from "../src/components/editor/markdown-source";
 
 const editors: Editor[] = [];
 
@@ -48,7 +49,7 @@ function createEditor(markdown: string, onUpdate?: () => void): Editor {
 }
 
 function roundTrip(markdown: string): string {
-  return createEditor(markdown).getMarkdown();
+  return serializeMarkdownDocument(createEditor(markdown));
 }
 
 afterEach(() => {
@@ -56,6 +57,62 @@ afterEach(() => {
 });
 
 describe("Tiptap 3 Markdown", () => {
+  it("keeps ordinary recipe prose readable instead of entity or backslash encoding it", () => {
+    const output = roundTrip(
+      "Salt & pepper\n\n" +
+      "S&B curry powder\n\n" +
+      "</>\n\n" +
+      "[unclear: x]\n\n" +
+      "~1/4 cup\n",
+    );
+
+    expect(output).toBe(
+      "Salt & pepper\n\n" +
+      "S&B curry powder\n\n" +
+      "</>\n\n" +
+      "[unclear: x]\n\n" +
+      "~1/4 cup",
+    );
+  });
+
+  it("keeps required Markdown protection while relaxing unrelated prose in the same paragraph", () => {
+    const editor = createEditor(
+      "Salt & pepper; \\*literal stars\\*; [unclear: x]; ~1/4 cup",
+    );
+    const output = serializeMarkdownDocument(editor);
+    const reopened = createEditor(output);
+
+    expect(output).toContain("Salt & pepper");
+    expect(output).toContain("[unclear: x]");
+    expect(output).toContain("~1/4 cup");
+    expect(output).not.toContain("&amp;");
+    expect(output).toContain("\\*");
+    expect(reopened.getJSON()).toEqual(editor.getJSON());
+  });
+
+  it("keeps ampersands readable in link labels and destinations", () => {
+    const editor = createEditor("[Salt & pepper](https://example.com?a=1&b=2)");
+    const output = serializeMarkdownDocument(editor);
+    const reopened = createEditor(output);
+
+    expect(output).toContain("[Salt & pepper]");
+    expect(output).toContain("https://example.com?a=1&b=2");
+    expect(output).not.toContain("&amp;");
+    expect(reopened.getJSON()).toEqual(editor.getJSON());
+  });
+
+  it("preserves raw frontmatter while keeping recipe prose readable", () => {
+    const frontmatter =
+      "---\r\n" +
+      "# keep this comment\r\n" +
+      "title: Salt & pepper\r\n" +
+      "note: '[unclear: x]'\r\n" +
+      "---";
+    const output = roundTrip(`${frontmatter}\r\n\r\nSalt & pepper and ~1/4 cup`);
+
+    expect(output).toBe(`${frontmatter}\n\nSalt & pepper and ~1/4 cup`);
+  });
+
   it("preserves YAML frontmatter as one raw node", () => {
     const frontmatter =
       "---\n" +

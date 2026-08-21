@@ -14,6 +14,14 @@ interface GhostWindow {
   __ghostCopyAs?: (format: string) => Promise<void>;
   __ghostSearch?: GhostSearchCommands;
   __ghostCommandPalette?: () => void;
+  __ghostQuickOpen?: () => void;
+  __ghostSearchContents?: () => void;
+  __ghostFocusTree?: () => void;
+  __ghostFocusEditor?: () => void;
+  __ghostNavigateBack?: () => void;
+  __ghostNavigateForward?: () => void;
+  __ghostToggleSidebar?: () => void;
+  __ghostSettings?: () => void;
   __ghostToggleStyleBar?: () => void;
   __ghostFlushSave?: () => Promise<void>;
 }

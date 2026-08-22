@@ -41,7 +41,7 @@ import {
 import { loadFileModel } from "@/lib/file-loader";
 import { OpenExternalButton } from "@/components/viewer/open-external-button";
 import { ActiveFileStore, ActiveFileProvider } from "@/components/sidebar/sidebar-context";
-import { applyContentInPlace } from "@/lib/editor-utils";
+import { applyContentInPlace, focusViewerTarget } from "@/lib/editor-utils";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { useTrackedFolders } from "@/hooks/use-tracked-folders";
 import { useFileWatcher } from "@/hooks/use-file-watcher";
@@ -159,7 +159,8 @@ export function GhostLayout() {
         codeMirror.focus();
         return;
       }
-      mainElRef.current?.focus();
+      if (focusViewerTarget(mainElRef.current)) return;
+      mainElRef.current?.focus({ preventScroll: true });
     });
   }, []);
 
@@ -1434,7 +1435,14 @@ export function GhostLayout() {
         </div>
 
         {/* Editor — scrolls behind the floating header */}
-        <main ref={setMainEl} tabIndex={-1} className="h-full overflow-auto overscroll-contain relative outline-none">
+        <main
+          ref={setMainEl}
+          tabIndex={-1}
+          onFocus={(event) => {
+            if (event.target === event.currentTarget) focusViewerTarget(event.currentTarget);
+          }}
+          className="h-full overflow-auto overscroll-contain relative outline-none"
+        >
           {activeFile && fileDescriptor ? (
             <FileViewer
               filePath={activeFile}

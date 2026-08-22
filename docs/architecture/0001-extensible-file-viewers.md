@@ -28,7 +28,11 @@ Both the main window and accessory editor windows will use one shared loader ret
 
 Window chrome, search availability, reload-on-focus behavior, and save behavior will use descriptor capabilities instead of inferring behavior from a negative `isBinaryViewer` test.
 
-Large binary media will be delivered as seekable URLs rather than serialized byte arrays. Audio and video should use Tauri's scoped asset protocol, with narrow runtime path grants and CSP directives for media. Viewers must release resources and stop playback when unmounted.
+Large binary media will be delivered as seekable URLs rather than serialized byte arrays. Audio and video use Tauri's scoped asset protocol, with an empty static scope, exact runtime file grants, and CSP directives limited to media. Viewers must release resources and stop playback when unmounted.
+
+Audio playback uses an HTML `audio` element inside the Tauri WebView. This is a WebKit-backed player that uses the platform media stack, not a separately embedded AppKit or Swift `AVPlayer` view. The DOM player preserves Ghost's existing window, focus, theming, and accessibility architecture while Tauri's range-capable asset protocol provides seeking without a whole-file JavaScript copy. Runtime grants accumulate for the application session because Tauri's asset scope does not expose a safe allow-list removal operation; each grant is limited to a canonical file path.
+
+Interactive read-only viewers expose one primary keyboard destination with the `data-viewer-focus-target` attribute. Editor-focus commands and focus that would otherwise stop on the surrounding scroll surface are redirected there. This keeps keyboard ownership consistent between the sidebar and the active viewer without adding viewer-specific branches to the window layouts.
 
 ## File detection policy
 
@@ -81,6 +85,6 @@ Rejected as the primary path because Ghost's dedicated viewers provide a more co
 
 1. Introduce descriptors, a pure classifier, and a shared loader while preserving current viewers.
 2. Route existing viewers and chrome from descriptors; remove negative binary checks from callers.
-3. Add audio through the scoped asset protocol.
+3. Add WebKit-backed audio through the scoped asset protocol.
 4. Reuse the media substrate for video and ambiguous media containers.
 5. Add broader fallbacks such as Quick Look, archives, and an incremental hex viewer.

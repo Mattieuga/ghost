@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
 use pulldown_cmark::{Parser, Options, html};
-use tauri::State;
+use tauri::{Manager, State};
 
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 const TEXT_PROBE_BYTES: u64 = 64 * 1024;
@@ -816,14 +816,58 @@ pub struct FileMetadata {
     pub modified_ms: u64, // epoch milliseconds
 }
 
+#[derive(Debug, Serialize)]
+pub struct MediaAssetMetadata {
+    pub canonical_path: String,
+    pub size_bytes: u64,
+    pub modified_ms: u64,
+}
+
+fn read_file_metadata(path: &Path) -> Result<FileMetadata, String> {
+    let metadata = fs::metadata(path).map_err(|e| format!("Failed to read metadata: {}", e))?;
+    let size_bytes = metadata.len();
+    let modified = metadata
+        .modified()
+        .map_err(|e| format!("Failed to get modified time: {}", e))?;
+    let modified_ms = modified
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    Ok(FileMetadata {
+        size_bytes,
+        modified_ms,
+    })
+}
+
 #[tauri::command]
 pub async fn get_file_metadata(path: String) -> Result<FileMetadata, String> {
-    let metadata = fs::metadata(&path).map_err(|e| format!("Failed to read metadata: {}", e))?;
-    let size_bytes = metadata.len();
-    let modified = metadata.modified()
-        .map_err(|e| format!("Failed to get modified time: {}", e))?;
-    let modified_ms = modified.duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
-    Ok(FileMetadata { size_bytes, modified_ms })
+    read_file_metadata(Path::new(&path))
+}
+
+/// Grant the asset protocol access to one existing file and return the stable,
+/// canonical path used by the WebView. The static asset scope stays empty so
+/// opening media never exposes an entire project or home directory.
+#[tauri::command]
+pub async fn prepare_media_asset(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<MediaAssetMetadata, String> {
+    let canonical_path =
+        fs::canonicalize(&path).map_err(|e| format!("Failed to prepare media file: {}", e))?;
+    if !canonical_path.is_file() {
+        return Err("Media path is not a file".to_string());
+    }
+
+    app.asset_protocol_scope()
+        .allow_file(&canonical_path)
+        .map_err(|e| format!("Failed to allow media file: {}", e))?;
+
+    let metadata = read_file_metadata(&canonical_path)?;
+    Ok(MediaAssetMetadata {
+        canonical_path: canonical_path.to_string_lossy().to_string(),
+        size_bytes: metadata.size_bytes,
+        modified_ms: metadata.modified_ms,
+    })
 }
 
 #[tauri::command]

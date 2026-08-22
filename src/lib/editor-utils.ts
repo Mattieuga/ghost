@@ -11,6 +11,15 @@ export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+/** Focus the primary keyboard target exposed by an interactive file viewer. */
+export function focusViewerTarget(container: HTMLElement | null): boolean {
+  const target = container?.querySelector<HTMLElement>("[data-viewer-focus-target]");
+  if (!target) return false;
+
+  target.focus({ preventScroll: true });
+  return true;
+}
+
 export function applyContentInPlace(
   editorRef: React.RefObject<Editor | null>,
   cmViewRef: React.RefObject<EditorView | null>,

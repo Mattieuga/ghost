@@ -6,6 +6,7 @@ import { FontViewer } from "@/components/viewer/font-viewer";
 import { CsvViewer } from "@/components/viewer/csv-viewer";
 import { SvgViewer } from "@/components/viewer/svg-viewer";
 import { UnsupportedViewer } from "@/components/viewer/unsupported-viewer";
+import { AudioViewer } from "@/components/viewer/audio-viewer";
 import { requiresMarkdownSourceMode, type FileDescriptor } from "@/lib/file-type";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
@@ -92,6 +93,8 @@ export function FileViewer({
       return <PdfViewer key={filePath} filePath={filePath} />;
     case "font":
       return <FontViewer key={filePath} filePath={filePath} />;
+    case "audio":
+      return <AudioViewer key={filePath} filePath={filePath} />;
     case "svg":
       return (
         <SvgViewer

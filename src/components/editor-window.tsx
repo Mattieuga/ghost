@@ -9,7 +9,7 @@ import { TextStats } from "@/components/editor/text-stats";
 import { SaveStatus } from "@/components/editor/save-status";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
-import { applyContentInPlace } from "@/lib/editor-utils";
+import { applyContentInPlace, focusViewerTarget } from "@/lib/editor-utils";
 import { SearchBar } from "@/components/editor/search-bar";
 import { useSettings } from "@/hooks/use-settings";
 import { useCloseSearchWhenUnavailable, useSearch } from "@/hooks/use-search";
@@ -420,7 +420,14 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
 
       {/* Editor */}
       <div className="relative flex-1 overflow-hidden">
-        <main ref={setMainEl} className="h-full overflow-auto overscroll-contain relative">
+        <main
+          ref={setMainEl}
+          tabIndex={-1}
+          onFocus={(event) => {
+            if (event.target === event.currentTarget) focusViewerTarget(event.currentTarget);
+          }}
+          className="h-full overflow-auto overscroll-contain relative outline-none"
+        >
           <FileViewer
             filePath={filePath}
             content={fileContent}

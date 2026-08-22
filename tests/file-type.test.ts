@@ -18,6 +18,8 @@ describe("file classification", () => {
     ["icon.icns", "image", "viewer-owned", false],
     ["manual.pdf", "pdf", "viewer-owned", false],
     ["typeface.woff2", "font", "viewer-owned", false],
+    ["recording.FLAC", "audio", "asset-url", false],
+    ["audiobook.m4b", "audio", "asset-url", false],
     ["archive.ghost-data", "unsupported", "probe-text", false],
   ] as const)(
     "classifies %s as a %s viewer",
@@ -37,6 +39,14 @@ describe("file classification", () => {
       showTextStats: false,
       canOpenExternally: true,
     });
+    expect(classifyFile("song.mp3")).toMatchObject({
+      kind: "audio",
+      loadMode: "asset-url",
+      searchable: false,
+      editable: false,
+      canOpenExternally: true,
+      mimeType: "audio/mpeg",
+    });
   });
 
   it("uses the load mode, not editability, to decide whether content is text-backed", () => {
@@ -46,6 +56,20 @@ describe("file classification", () => {
       loadMode: "viewer-owned",
       editable: true,
     })).toBe(false);
+  });
+
+  it.each([
+    "mp3", "m4a", "m4b", "aac",
+    "wav", "wave", "bwf",
+    "aif", "aiff", "aifc", "caf",
+    "flac", "ogg", "oga", "opus",
+    "au", "snd", "ac3", "eac3", "ec3",
+  ])("routes .%s through the audio viewer", (extension) => {
+    expect(classifyFile(`recording.${extension}`)).toMatchObject({
+      kind: "audio",
+      loadMode: "asset-url",
+      editable: false,
+    });
   });
 });
 

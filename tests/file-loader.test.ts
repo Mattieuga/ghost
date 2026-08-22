@@ -41,6 +41,19 @@ describe("loadFileModel", () => {
     },
   );
 
+  it("leaves seekable audio loading to the asset-backed viewer", async () => {
+    const reader = backend();
+
+    const model = await loadFileModel("recording.flac", reader);
+
+    expect(model).toMatchObject({
+      content: "",
+      descriptor: { kind: "audio", loadMode: "asset-url", editable: false },
+    });
+    expect(reader.readText).not.toHaveBeenCalled();
+    expect(reader.probeText).not.toHaveBeenCalled();
+  });
+
   it("promotes an unknown UTF-8 file to the code viewer", async () => {
     const reader = backend({ probeText: vi.fn(async () => "title: Example\n") });
 

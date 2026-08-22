@@ -7,6 +7,13 @@ const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "i
 const PDF_EXTENSIONS = new Set(["pdf"]);
 const FONT_EXTENSIONS = new Set(["ttf", "otf", "woff", "woff2"]);
 const CSV_EXTENSIONS = new Set(["csv", "tsv"]);
+const AUDIO_EXTENSIONS = new Set([
+  "mp3", "m4a", "m4b", "aac",
+  "wav", "wave", "bwf",
+  "aif", "aiff", "aifc", "caf",
+  "flac", "ogg", "oga", "opus",
+  "au", "snd", "ac3", "eac3", "ec3",
+]);
 
 export type ViewerKind =
   | "markdown"
@@ -16,6 +23,7 @@ export type ViewerKind =
   | "image"
   | "pdf"
   | "font"
+  | "audio"
   | "unsupported";
 
 export type FileLoadMode = "text" | "probe-text" | "viewer-owned" | "asset-url";
@@ -95,6 +103,29 @@ const FONT_MIME_TYPES: Readonly<Record<string, string>> = {
   otf: "font/otf",
   woff: "font/woff",
   woff2: "font/woff2",
+};
+
+const AUDIO_MIME_TYPES: Readonly<Record<string, string>> = {
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  m4b: "audio/mp4",
+  aac: "audio/aac",
+  wav: "audio/wav",
+  wave: "audio/wav",
+  bwf: "audio/wav",
+  aif: "audio/aiff",
+  aiff: "audio/aiff",
+  aifc: "audio/aiff",
+  caf: "audio/x-caf",
+  flac: "audio/flac",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  opus: "audio/opus",
+  au: "audio/basic",
+  snd: "audio/basic",
+  ac3: "audio/ac3",
+  eac3: "audio/eac3",
+  ec3: "audio/eac3",
 };
 
 // Extra extensions that CodeMirror's official language catalog does not
@@ -415,6 +446,10 @@ export function isSvg(filePath: string): boolean {
   return getExtension(filePath) === "svg";
 }
 
+export function isAudio(filePath: string): boolean {
+  return AUDIO_EXTENSIONS.has(getExtension(filePath));
+}
+
 export function isTextEditable(filePath: string): boolean {
   const ext = getExtension(filePath);
   return getLanguageDescription(filePath) !== null
@@ -445,6 +480,15 @@ const FILE_TYPE_DEFINITIONS: readonly FileTypeDefinition[] = [
       kind: "font",
       ...VIEWER_CAPABILITIES,
       mimeType: FONT_MIME_TYPES[getExtension(filePath)],
+    }),
+  },
+  {
+    matches: isAudio,
+    describe: (filePath) => ({
+      kind: "audio",
+      ...VIEWER_CAPABILITIES,
+      loadMode: "asset-url",
+      mimeType: AUDIO_MIME_TYPES[getExtension(filePath)],
     }),
   },
   { matches: isSvg, describe: () => SVG_DESCRIPTOR },

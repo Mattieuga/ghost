@@ -32,15 +32,14 @@ Acceptance checks:
 
 ## Phase 2: Audio viewer
 
-Status: Planned
+Status: Implemented 2026-08-22 — awaiting manual codec and interaction verification
 
-- Add an audio/media load mode backed by a seekable Tauri asset URL.
-- Enable narrowly scoped runtime asset access and the required media CSP.
-- Add an `AudioViewer` using native accessible controls and `preload="metadata"`.
-- Initially recognize MP3, M4A/M4B, AAC, WAV/BWF, AIFF/AIFC, CAF, FLAC, Ogg/Opus, AU/SND, and AC-3 families, with runtime codec failure handling.
-- Show filename, size, duration, playback state, and Open Externally.
-- Scope keyboard playback controls to a focused audio viewer.
-- Pause and release the media source on navigation or window close.
+- Added an audio/media load mode backed by a seekable Tauri asset URL.
+- Enabled an empty static scope, exact runtime file grants, and the required media CSP.
+- Added a WebKit-backed `AudioViewer` using accessible HTML controls and `preload="metadata"`.
+- Recognizes MP3, M4A/M4B, AAC, WAV/BWF, AIFF/AIFC, CAF, FLAC, Ogg/Opus, AU/SND, and AC-3 families, with runtime codec failure handling.
+- Shows filename, size, duration, focused keyboard controls, and Open Externally fallback.
+- Refreshes replaced media on filesystem/focus checks and pauses and releases its source on navigation or window close.
 
 Acceptance checks:
 

@@ -1,4 +1,14 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
+
+/** Keep viewer changes from leaving search UI mounted where search is unavailable. */
+export function useCloseSearchWhenUnavailable(
+  searchable: boolean | undefined,
+  closeSearch: () => void,
+) {
+  useEffect(() => {
+    if (searchable === false) closeSearch();
+  }, [searchable, closeSearch]);
+}
 
 export function useSearch() {
   const [searchOpen, setSearchOpen] = useState(false);

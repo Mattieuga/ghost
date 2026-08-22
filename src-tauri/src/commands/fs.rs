@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::fs;
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -10,6 +10,7 @@ use pulldown_cmark::{Parser, Options, html};
 use tauri::State;
 
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
+const TEXT_PROBE_BYTES: u64 = 64 * 1024;
 
 #[cfg(unix)]
 fn copy_extended_attributes(source: &Path, destination: &Path) -> Result<(), std::io::Error> {
@@ -155,8 +156,53 @@ pub async fn read_file(path: String) -> Result<String, String> {
 /// unsupported-file viewer without treating arbitrary bytes as editable text.
 #[tauri::command]
 pub async fn read_file_if_text(path: String) -> Result<Option<String>, String> {
-    let bytes = fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
-    Ok(decode_text_bytes(&bytes))
+    let mut file = fs::File::open(&path).map_err(|e| format!("Failed to read file: {}", e))?;
+    let probe_limit = TEXT_PROBE_BYTES as usize;
+    let mut probe = Vec::with_capacity(probe_limit + 1);
+    Read::by_ref(&mut file)
+        .take(TEXT_PROBE_BYTES + 1)
+        .read_to_end(&mut probe)
+        .map_err(|e| format!("Failed to probe file: {}", e))?;
+
+    // Reading one byte past the sample boundary tells us whether this read
+    // actually reached EOF. A metadata snapshot taken before the read cannot
+    // safely answer that if a synced or externally edited file grows meanwhile.
+    let sample = if probe.len() > probe_limit {
+        &probe[..probe_limit]
+    } else {
+        &probe
+    };
+    let Some(probe_content) = decode_text_probe(sample) else {
+        return Ok(None);
+    };
+    if !looks_like_text(probe_content) {
+        return Ok(None);
+    }
+
+    if probe.len() <= probe_limit {
+        return Ok(decode_text_bytes(&probe));
+    }
+
+    // The bounded sample looked textual. Only now load the complete file, and
+    // still reject invalid UTF-8 or control-heavy content found after the probe.
+    match fs::read_to_string(&path) {
+        Ok(content) if looks_like_text(&content) => Ok(Some(content)),
+        Ok(_) => Ok(None),
+        Err(error) if error.kind() == std::io::ErrorKind::InvalidData => Ok(None),
+        Err(error) => Err(format!("Failed to read file: {}", error)),
+    }
+}
+
+fn decode_text_probe(bytes: &[u8]) -> Option<&str> {
+    match std::str::from_utf8(bytes) {
+        Ok(content) => Some(content),
+        // A multibyte character may straddle the sample boundary. An incomplete
+        // trailing sequence is safe to ignore, unlike invalid bytes in the body.
+        Err(error) if error.error_len().is_none() && error.valid_up_to() > 0 => {
+            std::str::from_utf8(&bytes[..error.valid_up_to()]).ok()
+        }
+        Err(_) => None,
+    }
 }
 
 fn decode_text_bytes(bytes: &[u8]) -> Option<String> {
@@ -860,8 +906,8 @@ pub async fn open_with_default_app(path: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_text_bytes, duplicate_file, move_file, rename_file, write_file_checked, WriteFileError,
-        TEMP_FILE_COUNTER,
+        decode_text_bytes, duplicate_file, move_file, read_file_if_text, rename_file,
+        write_file_checked, WriteFileError, TEMP_FILE_COUNTER, TEXT_PROBE_BYTES,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -921,6 +967,37 @@ mod tests {
             decode_text_bytes(occasional_control.as_bytes()),
             Some(occasional_control)
         );
+    }
+
+    #[test]
+    fn bounded_probe_accepts_text_with_a_multibyte_character_across_the_boundary() {
+        let directory = test_directory("text-probe-unicode-boundary");
+        let path = directory.join("unknown.data");
+        let content = format!("{}é", "a".repeat(TEXT_PROBE_BYTES as usize - 1));
+        fs::write(&path, &content).expect("fixture should be written");
+
+        let detected =
+            tauri::async_runtime::block_on(read_file_if_text(path.to_string_lossy().to_string()))
+                .expect("probe should succeed");
+
+        assert_eq!(detected.as_deref(), Some(content.as_str()));
+        fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[test]
+    fn bounded_probe_rejects_binary_content_after_a_textual_prefix() {
+        let directory = test_directory("text-probe-binary-suffix");
+        let path = directory.join("unknown.data");
+        let mut content = vec![b'a'; TEXT_PROBE_BYTES as usize];
+        content.extend_from_slice(b"binary\0suffix");
+        fs::write(&path, content).expect("fixture should be written");
+
+        let detected =
+            tauri::async_runtime::block_on(read_file_if_text(path.to_string_lossy().to_string()))
+                .expect("probe should succeed");
+
+        assert_eq!(detected, None);
+        fs::remove_dir_all(directory).expect("test directory should be removed");
     }
 
     #[test]

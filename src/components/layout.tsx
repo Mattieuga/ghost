@@ -32,7 +32,13 @@ import { TextStats } from "@/components/editor/text-stats";
 import { SaveStatus } from "@/components/editor/save-status";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
-import { isMarkdown, isBinaryViewer, shouldProbeTextContent } from "@/lib/file-type";
+import {
+  classifyFile,
+  isTextBackedFile,
+  resolveProbedText,
+  type FileDescriptor,
+} from "@/lib/file-type";
+import { loadFileModel } from "@/lib/file-loader";
 import { OpenExternalButton } from "@/components/viewer/open-external-button";
 import { ActiveFileStore, ActiveFileProvider } from "@/components/sidebar/sidebar-context";
 import { applyContentInPlace } from "@/lib/editor-utils";
@@ -62,7 +68,7 @@ import {
   type FileTreeKeyboardHandle,
 } from "@/components/sidebar/file-tree-keyboard";
 import { useRecentFiles } from "@/hooks/use-recent-files";
-import { useSearch } from "@/hooks/use-search";
+import { useCloseSearchWhenUnavailable, useSearch } from "@/hooks/use-search";
 import { useFileTree } from "@/hooks/use-file-tree";
 import { useReloadOnFocus } from "@/hooks/use-reload-on-focus";
 import { useUpdater } from "@/hooks/use-updater";
@@ -89,7 +95,7 @@ export function GhostLayout() {
     activeFileStore.set(path);
   }, [activeFileStore]);
   const [fileContent, setFileContent] = useState<string>("");
-  const [isContentDetectedText, setIsContentDetectedText] = useState(false);
+  const [fileDescriptor, setFileDescriptor] = useState<FileDescriptor | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [isRenamingHeader, setIsRenamingHeader] = useState(false);
@@ -130,8 +136,8 @@ export function GhostLayout() {
   mainElRef.current = mainEl;
   const lastSaveTimestamp = useRef(0);
   const retargetPromiseRef = useRef<Promise<void> | null>(null);
-  const isContentDetectedTextRef = useRef(isContentDetectedText);
-  isContentDetectedTextRef.current = isContentDetectedText;
+  const fileDescriptorRef = useRef<FileDescriptor | null>(fileDescriptor);
+  fileDescriptorRef.current = fileDescriptor;
   const styleBarRef = useRef(settings.showStyleBar);
   styleBarRef.current = settings.showStyleBar;
   const {
@@ -185,6 +191,9 @@ export function GhostLayout() {
 
   const { closeSearch, openSearch } = search;
 
+  // A rename can change the active viewer without going through openFile.
+  useCloseSearchWhenUnavailable(fileDescriptor?.searchable, closeSearch);
+
   const openCommandPalette = useCallback((mode: CommandPaletteMode) => {
     if (!document.querySelector("[data-command-palette]")) {
       paletteReturnFocusRef.current = document.activeElement instanceof HTMLElement
@@ -223,18 +232,7 @@ export function GhostLayout() {
       setShowSettings(false);
       closeSearch();
 
-      let content = "";
-      let detectedText = false;
-
-      if (shouldProbeTextContent(path)) {
-        const detectedContent = await invoke<string | null>("read_file_if_text", { path });
-        detectedText = detectedContent !== null;
-        content = detectedContent ?? "";
-      } else if (isBinaryViewer(path)) {
-        content = "";
-      } else {
-        content = await invoke<string>("read_file", { path });
-      }
+      const model = await loadFileModel(path);
 
       if (requestId !== openRequestRef.current) return false;
 
@@ -245,11 +243,11 @@ export function GhostLayout() {
         forwardHistoryRef.current = [];
       }
 
-      fileContentRef.current = content;
-      setIsContentDetectedText(detectedText);
+      fileContentRef.current = model.content;
+      setFileDescriptor(model.descriptor);
       setActiveFile(path);
-      setFileContent(content);
-      setLiveText(content);
+      setFileContent(model.content);
+      setLiveText(model.content);
       addRecentFile(path);
       return true;
     } catch (err) {
@@ -311,7 +309,7 @@ export function GhostLayout() {
 
   // openSearch wrapper: only open if a file is active
   const openSearchIfFile = useCallback((mode: "find" | "replace") => {
-    if (!activeFileRef.current) return;
+    if (!activeFileRef.current || !fileDescriptorRef.current?.searchable) return;
     openSearch(mode);
   }, [openSearch]);
 
@@ -348,7 +346,7 @@ export function GhostLayout() {
   // Reload active file when the main window regains focus (picks up edits
   // from accessory windows). Applies external changes in place, no remount.
   useReloadOnFocus({
-    getPath: () => activeFileRef.current,
+    getPath: () => isTextBackedFile(fileDescriptorRef.current) ? activeFileRef.current : null,
     applyContent: applyContentRef,
     contentRef: fileContentRef,
     lastSaveTimestamp,
@@ -386,7 +384,7 @@ export function GhostLayout() {
 
     const renamedPath = retargetPath(currentFile, oldPath, newPath);
     if (!renamedPath) return Promise.resolve(null);
-    const wasText = isContentDetectedTextRef.current || !isBinaryViewer(currentFile);
+    const previousDescriptor = fileDescriptorRef.current;
 
     const retarget = (async () => {
       // Saves must target the new path immediately, even while the rewritten
@@ -395,20 +393,18 @@ export function GhostLayout() {
       activeFileStore.set(renamedPath);
 
       let content = fileContentRef.current ?? "";
-      let detectedText = false;
+      let descriptor = classifyFile(renamedPath);
       try {
-        if (shouldProbeTextContent(renamedPath)) {
-          const detected = await invoke<string | null>("read_file_if_text", { path: renamedPath });
-          detectedText = wasText && detected !== null;
-          content = detected ?? "";
-        } else if (isBinaryViewer(renamedPath)) {
-          content = "";
-        } else {
-          content = await invoke<string>("read_file", { path: renamedPath });
-        }
+        const model = await loadFileModel(renamedPath);
+        content = model.content;
+        descriptor = model.descriptor;
       } catch (error) {
         console.error("Failed to refresh renamed file:", error);
-        detectedText = wasText && shouldProbeTextContent(renamedPath);
+        if (isTextBackedFile(previousDescriptor) && descriptor.loadMode === "probe-text") {
+          descriptor = resolveProbedText(descriptor);
+        } else if (!descriptor.editable) {
+          content = "";
+        }
       }
 
       // rename_file can also rename <stem>.assets and rewrite image paths.
@@ -417,7 +413,7 @@ export function GhostLayout() {
       lastSaveTimestamp.current = Date.now();
       setFileContent(content);
       setLiveText(content);
-      setIsContentDetectedText(detectedText);
+      setFileDescriptor(descriptor);
       setActiveFile(renamedPath);
       return renamedPath;
     })();
@@ -454,7 +450,7 @@ export function GhostLayout() {
       const currentFile = activeFileRef.current;
       if (currentFile && (currentFile === path || currentFile.startsWith(path + "/"))) {
         setActiveFile(null);
-        setIsContentDetectedText(false);
+        setFileDescriptor(null);
         setFileContent("");
       }
       handleFsChange();
@@ -1250,7 +1246,7 @@ export function GhostLayout() {
                       removeFolder(path);
                       if (activeFile?.startsWith(path)) {
                         setActiveFile(null);
-                        setIsContentDetectedText(false);
+                        setFileDescriptor(null);
                         setFileContent("");
                       }
                     }}
@@ -1413,22 +1409,24 @@ export function GhostLayout() {
               </div>
               {activeFile && (
                 <div className="flex items-center gap-3">
-                  {isBinaryViewer(activeFile) && !isContentDetectedText ? (
-                    <OpenExternalButton filePath={activeFile} />
-                  ) : (
+                  {fileDescriptor?.editable ? (
                     <>
                       <SaveStatus
                         status={documentSave.status}
                         error={documentSave.error}
                         onRetry={documentSave.retry}
                       />
-                      <TextStats
-                        text={liveText}
-                        countMode={settings.countMode}
-                        onCountModeChange={(countMode) => updateSettings({ countMode })}
-                      />
+                      {fileDescriptor.showTextStats && (
+                        <TextStats
+                          text={liveText}
+                          countMode={settings.countMode}
+                          onCountModeChange={(countMode) => updateSettings({ countMode })}
+                        />
+                      )}
                     </>
-                  )}
+                  ) : fileDescriptor?.canOpenExternally ? (
+                    <OpenExternalButton filePath={activeFile} />
+                  ) : null}
                 </div>
               )}
             </>
@@ -1437,7 +1435,7 @@ export function GhostLayout() {
 
         {/* Editor — scrolls behind the floating header */}
         <main ref={setMainEl} tabIndex={-1} className="h-full overflow-auto overscroll-contain relative outline-none">
-          {activeFile ? (
+          {activeFile && fileDescriptor ? (
             <FileViewer
               filePath={activeFile}
               content={fileContent}
@@ -1449,7 +1447,7 @@ export function GhostLayout() {
               onCmReady={setCmView}
               showStyleBar={settings.showStyleBar}
               onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
-              forceText={isContentDetectedText}
+              descriptor={fileDescriptor}
             />
           ) : (
             <div className="flex h-full items-center justify-center">
@@ -1460,7 +1458,7 @@ export function GhostLayout() {
           )}
         </main>
         {/* Heading minimap — right edge overlay (markdown only) */}
-        {editorInstance && mainEl && activeFile && isMarkdown(activeFile) && (
+        {editorInstance && mainEl && fileDescriptor?.kind === "markdown" && (
           <HeadingMinimap editor={editorInstance} scrollContainer={mainEl} />
         )}
       </div>

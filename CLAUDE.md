@@ -17,3 +17,14 @@ When you finish a change:
 3. Tell the user the work is ready to click through, then wait.
 
 Relaunch the app only when the user explicitly asks (they will have quit the other Ghost first). Start it from this worktree with `pnpm tauri dev`. The sidebar badge shows a slice of the workspace name so they can see which worktree is running.
+
+## Architecture decisions and plans
+
+Durable architecture decisions live in `docs/architecture/` as ADRs. Multi-phase implementation plans live in `docs/plans/`. The extensible file-viewer decision is `docs/architecture/0001-extensible-file-viewers.md`, and its phased roadmap is `docs/plans/file-viewer-roadmap.md`.
+
+Before a large architectural change:
+
+1. Write or update an ADR covering the context, decision, alternatives, consequences, and migration path.
+2. Add a phased plan when the work spans more than one independently testable change.
+3. Link related plans and ADRs to each other and mark superseded decisions explicitly instead of silently rewriting history.
+4. Implement only the approved phase, verify it, and update the plan status before moving to the next phase.

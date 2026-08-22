@@ -12,10 +12,16 @@ import type { EditorView } from "@codemirror/view";
 import { applyContentInPlace } from "@/lib/editor-utils";
 import { SearchBar } from "@/components/editor/search-bar";
 import { useSettings } from "@/hooks/use-settings";
-import { useSearch } from "@/hooks/use-search";
+import { useCloseSearchWhenUnavailable, useSearch } from "@/hooks/use-search";
 import { useReloadOnFocus } from "@/hooks/use-reload-on-focus";
 import { applyTheme } from "@/lib/theme-engine";
-import { isMarkdown, isBinaryViewer, shouldProbeTextContent } from "@/lib/file-type";
+import {
+  classifyFile,
+  isTextBackedFile,
+  resolveProbedText,
+  type FileDescriptor,
+} from "@/lib/file-type";
+import { loadFileModel } from "@/lib/file-loader";
 import { OpenExternalButton } from "@/components/viewer/open-external-button";
 import { useDocumentSave } from "@/hooks/use-document-save";
 import { retargetCompanionAssetReferences, retargetPath } from "@/lib/file-path";
@@ -36,9 +42,9 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   const [filePath, setFilePath] = useState(initialFilePath);
   const filePathRef = useRef(initialFilePath);
   const [fileContent, setFileContent] = useState<string | null>(null);
-  const [isContentDetectedText, setIsContentDetectedText] = useState(false);
-  const isContentDetectedTextRef = useRef(false);
-  isContentDetectedTextRef.current = isContentDetectedText;
+  const [fileDescriptor, setFileDescriptor] = useState<FileDescriptor | null>(null);
+  const fileDescriptorRef = useRef<FileDescriptor | null>(null);
+  fileDescriptorRef.current = fileDescriptor;
   const [liveText, setLiveText] = useState("");
   const lastSaveTimestamp = useRef(0);
   const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
@@ -70,6 +76,9 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
     root.style.setProperty("--editor-code-font", fontFamilyValue(settings.codeFont));
   }, [settings.textFont, settings.headingFont, settings.codeFont]);
 
+  // Renaming the open file can switch this window to a non-searchable viewer.
+  useCloseSearchWhenUnavailable(fileDescriptor?.searchable, search.closeSearch);
+
   // Load file content on mount
   useEffect(() => {
     if (skipNextPathLoadRef.current) {
@@ -80,33 +89,13 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
 
     const loadFile = async () => {
       try {
-        if (shouldProbeTextContent(filePath)) {
-          const content = await invoke<string | null>("read_file_if_text", { path: filePath });
-          if (cancelled) return;
-          setIsContentDetectedText(content !== null);
-          setFileContent(content ?? "");
-          fileContentRef.current = content ?? "";
-          setLiveText(content ?? "");
-          liveTextRef.current = content ?? "";
-          return;
-        }
-
-        if (isBinaryViewer(filePath)) {
-          setIsContentDetectedText(false);
-          setFileContent("");
-          fileContentRef.current = "";
-          setLiveText("");
-          liveTextRef.current = "";
-          return;
-        }
-
-        const content = await invoke<string>("read_file", { path: filePath });
+        const model = await loadFileModel(filePath);
         if (cancelled) return;
-        setIsContentDetectedText(false);
-        setFileContent(content);
-        fileContentRef.current = content;
-        setLiveText(content);
-        liveTextRef.current = content;
+        setFileDescriptor(model.descriptor);
+        setFileContent(model.content);
+        fileContentRef.current = model.content;
+        setLiveText(model.content);
+        liveTextRef.current = model.content;
       } catch (err) {
         if (!cancelled) console.error("Failed to read file:", err);
       }
@@ -150,7 +139,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       const renamedPath = retargetPath(currentPath, oldPath, newPath);
       if (!renamedPath) return;
 
-      const wasText = isContentDetectedTextRef.current || !isBinaryViewer(currentPath);
+      const previousDescriptor = fileDescriptorRef.current;
       const knownBefore = fileContentRef.current ?? "";
       const tiptapEditor = editorInstanceRef.current;
       const isDirectFileRename = currentPath === oldPath;
@@ -160,20 +149,18 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
 
       filePathRef.current = renamedPath;
       let diskContent = renamedKnown;
-      let detectedText = false;
+      let descriptor = classifyFile(renamedPath);
       try {
-        if (shouldProbeTextContent(renamedPath)) {
-          const detected = await invoke<string | null>("read_file_if_text", { path: renamedPath });
-          detectedText = wasText && detected !== null;
-          diskContent = detected ?? "";
-        } else if (isBinaryViewer(renamedPath)) {
-          diskContent = "";
-        } else {
-          diskContent = await invoke<string>("read_file", { path: renamedPath });
-        }
+        const model = await loadFileModel(renamedPath);
+        diskContent = model.content;
+        descriptor = model.descriptor;
       } catch (error) {
         console.error("Failed to refresh renamed document:", error);
-        detectedText = wasText && shouldProbeTextContent(renamedPath);
+        if (isTextBackedFile(previousDescriptor) && descriptor.loadMode === "probe-text") {
+          descriptor = resolveProbedText(descriptor);
+        } else if (!descriptor.editable) {
+          diskContent = "";
+        }
       }
 
       const currentEditorText = () => {
@@ -234,7 +221,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       skipNextPathLoadRef.current = true;
       setFileContent(visibleContent);
       setLiveText(visibleContent);
-      setIsContentDetectedText(detectedText);
+      setFileDescriptor(descriptor);
       setFilePath(renamedPath);
     });
     return () => { unlisten.then((fn) => fn()); };
@@ -287,7 +274,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   }, [documentSave.flush]);
 
   useReloadOnFocus({
-    getPath: () => filePathRef.current,
+    getPath: () => isTextBackedFile(fileDescriptorRef.current) ? filePathRef.current : null,
     applyContent: applyContentRef,
     contentRef: fileContentRef,
     lastSaveTimestamp,
@@ -307,8 +294,12 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
 
   // Register window globals for Rust menu events
   useEffect(() => {
-    window.__ghostFind = () => search.openSearch("find");
-    window.__ghostFindAndReplace = () => search.openSearch("replace");
+    window.__ghostFind = () => {
+      if (fileDescriptorRef.current?.searchable) search.openSearch("find");
+    };
+    window.__ghostFindAndReplace = () => {
+      if (fileDescriptorRef.current?.searchable) search.openSearch("replace");
+    };
     window.__ghostToggleStyleBar = () => updateSettings({ showStyleBar: !styleBarRef.current });
     return () => {
       delete window.__ghostFind;
@@ -323,10 +314,10 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       const meta = e.metaKey || e.ctrlKey;
       if (meta && e.key === "f" && !e.altKey) {
         e.preventDefault();
-        search.openSearch("find");
+        if (fileDescriptorRef.current?.searchable) search.openSearch("find");
       } else if (meta && e.altKey && e.key === "f") {
         e.preventDefault();
-        search.openSearch("replace");
+        if (fileDescriptorRef.current?.searchable) search.openSearch("replace");
       } else if (e.key === "Escape" && search.searchOpen) {
         search.closeSearch();
       }
@@ -342,9 +333,9 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
     return parts.length >= 2 ? parts[parts.length - 2] : "";
   })();
 
-  const mdFile = isMarkdown(filePath);
+  const mdFile = fileDescriptor?.kind === "markdown";
 
-  if (fileContent === null) {
+  if (fileContent === null || fileDescriptor === null) {
     return (
       <div className="flex h-svh items-center justify-center bg-background">
         <p className="text-muted-foreground/40 text-sm">Loading...</p>
@@ -404,22 +395,24 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {isBinaryViewer(filePath) && !isContentDetectedText ? (
-                <OpenExternalButton filePath={filePath} />
-              ) : (
+              {fileDescriptor.editable ? (
                 <>
                   <SaveStatus
                     status={documentSave.status}
                     error={documentSave.error}
                     onRetry={documentSave.retry}
                   />
-                  <TextStats
-                    text={liveText}
-                    countMode={settings.countMode}
-                    onCountModeChange={(countMode) => updateSettings({ countMode })}
-                  />
+                  {fileDescriptor.showTextStats && (
+                    <TextStats
+                      text={liveText}
+                      countMode={settings.countMode}
+                      onCountModeChange={(countMode) => updateSettings({ countMode })}
+                    />
+                  )}
                 </>
-              )}
+              ) : fileDescriptor.canOpenExternally ? (
+                <OpenExternalButton filePath={filePath} />
+              ) : null}
             </div>
           </>
         )}
@@ -439,7 +432,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
             onCmReady={setCmView}
             showStyleBar={settings.showStyleBar}
             onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
-            forceText={isContentDetectedText}
+            descriptor={fileDescriptor}
           />
         </main>
         {mdFile && editorInstance && mainEl && (

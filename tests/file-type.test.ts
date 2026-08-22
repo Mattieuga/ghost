@@ -1,5 +1,53 @@
 import { describe, expect, it } from "vitest";
-import { isMarkdown, isTextEditable, requiresMarkdownSourceMode } from "../src/lib/file-type";
+import {
+  classifyFile,
+  isTextBackedFile,
+  isMarkdown,
+  isTextEditable,
+  requiresMarkdownSourceMode,
+} from "../src/lib/file-type";
+
+describe("file classification", () => {
+  it.each([
+    ["notes.md", "markdown", "text", true],
+    ["Sources/App.swift", "code", "text", true],
+    ["Package.resolved", "code", "text", true],
+    ["records.csv", "csv", "text", true],
+    ["diagram.svg", "svg", "text", true],
+    ["photo.PNG", "image", "viewer-owned", false],
+    ["icon.icns", "image", "viewer-owned", false],
+    ["manual.pdf", "pdf", "viewer-owned", false],
+    ["typeface.woff2", "font", "viewer-owned", false],
+    ["archive.ghost-data", "unsupported", "probe-text", false],
+  ] as const)(
+    "classifies %s as a %s viewer",
+    (path, kind, loadMode, editable) => {
+      expect(classifyFile(path)).toMatchObject({ kind, loadMode, editable });
+    },
+  );
+
+  it("declares viewer capabilities instead of inferring them from binary status", () => {
+    expect(classifyFile("notes.md")).toMatchObject({
+      searchable: true,
+      showTextStats: true,
+      canOpenExternally: true,
+    });
+    expect(classifyFile("manual.pdf")).toMatchObject({
+      searchable: false,
+      showTextStats: false,
+      canOpenExternally: true,
+    });
+  });
+
+  it("uses the load mode, not editability, to decide whether content is text-backed", () => {
+    expect(isTextBackedFile(classifyFile("notes.md"))).toBe(true);
+    expect(isTextBackedFile({
+      ...classifyFile("notes.md"),
+      loadMode: "viewer-owned",
+      editable: true,
+    })).toBe(false);
+  });
+});
 
 describe("Markdown editing mode selection", () => {
   it("opens MDX in source mode instead of the rich Markdown editor", () => {

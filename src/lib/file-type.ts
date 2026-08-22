@@ -8,6 +8,95 @@ const PDF_EXTENSIONS = new Set(["pdf"]);
 const FONT_EXTENSIONS = new Set(["ttf", "otf", "woff", "woff2"]);
 const CSV_EXTENSIONS = new Set(["csv", "tsv"]);
 
+export type ViewerKind =
+  | "markdown"
+  | "code"
+  | "csv"
+  | "svg"
+  | "image"
+  | "pdf"
+  | "font"
+  | "unsupported";
+
+export type FileLoadMode = "text" | "probe-text" | "viewer-owned" | "asset-url";
+
+/**
+ * The complete set of decisions callers need after identifying a file.
+ * Keep this framework-independent: React routing belongs in FileViewer.
+ */
+export interface FileDescriptor {
+  readonly kind: ViewerKind;
+  readonly loadMode: FileLoadMode;
+  readonly editable: boolean;
+  readonly searchable: boolean;
+  readonly showTextStats: boolean;
+  readonly canOpenExternally: boolean;
+  readonly mimeType?: string;
+  readonly detectedByContent?: boolean;
+}
+
+const TEXT_CAPABILITIES = {
+  loadMode: "text",
+  editable: true,
+  searchable: true,
+  showTextStats: true,
+  canOpenExternally: true,
+} as const;
+
+const VIEWER_CAPABILITIES = {
+  loadMode: "viewer-owned",
+  editable: false,
+  searchable: false,
+  showTextStats: false,
+  canOpenExternally: true,
+} as const;
+
+const MARKDOWN_DESCRIPTOR: FileDescriptor = { kind: "markdown", ...TEXT_CAPABILITIES };
+const CODE_DESCRIPTOR: FileDescriptor = { kind: "code", ...TEXT_CAPABILITIES };
+const CSV_DESCRIPTOR: FileDescriptor = { kind: "csv", ...TEXT_CAPABILITIES };
+const SVG_DESCRIPTOR: FileDescriptor = {
+  kind: "svg",
+  ...TEXT_CAPABILITIES,
+  mimeType: "image/svg+xml",
+};
+
+const PDF_DESCRIPTOR: FileDescriptor = {
+  kind: "pdf",
+  ...VIEWER_CAPABILITIES,
+  mimeType: "application/pdf",
+};
+
+const UNSUPPORTED_DESCRIPTOR: FileDescriptor = {
+  kind: "unsupported",
+  loadMode: "probe-text",
+  editable: false,
+  searchable: false,
+  showTextStats: false,
+  canOpenExternally: true,
+};
+
+const IMAGE_MIME_TYPES: Readonly<Record<string, string>> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+  ico: "image/x-icon",
+  icns: "image/icns",
+  heic: "image/heic",
+  heif: "image/heif",
+  tiff: "image/tiff",
+  tif: "image/tiff",
+};
+
+const FONT_MIME_TYPES: Readonly<Record<string, string>> = {
+  ttf: "font/ttf",
+  otf: "font/otf",
+  woff: "font/woff",
+  woff2: "font/woff2",
+};
+
 // Extra extensions that CodeMirror's official language catalog does not
 // associate with a parser by default. Ambiguous .m files prefer Objective-C
 // because Ghost is a macOS app and commonly opens Apple-platform projects.
@@ -333,16 +422,58 @@ export function isTextEditable(filePath: string): boolean {
     || isKnownPlainTextFilename(filePath);
 }
 
-export function isBinaryViewer(filePath: string): boolean {
-  return !isMarkdown(filePath) && !isTextEditable(filePath) && !isCsv(filePath) && !isSvg(filePath);
+interface FileTypeDefinition {
+  matches(filePath: string): boolean;
+  describe(filePath: string): FileDescriptor;
 }
 
+/** Ordered from the most specific viewer to the generic text editor. */
+const FILE_TYPE_DEFINITIONS: readonly FileTypeDefinition[] = [
+  { matches: isMarkdown, describe: () => MARKDOWN_DESCRIPTOR },
+  {
+    matches: isImage,
+    describe: (filePath) => ({
+      kind: "image",
+      ...VIEWER_CAPABILITIES,
+      mimeType: IMAGE_MIME_TYPES[getExtension(filePath)],
+    }),
+  },
+  { matches: isPdf, describe: () => PDF_DESCRIPTOR },
+  {
+    matches: isFont,
+    describe: (filePath) => ({
+      kind: "font",
+      ...VIEWER_CAPABILITIES,
+      mimeType: FONT_MIME_TYPES[getExtension(filePath)],
+    }),
+  },
+  { matches: isSvg, describe: () => SVG_DESCRIPTOR },
+  { matches: isCsv, describe: () => CSV_DESCRIPTOR },
+  { matches: isTextEditable, describe: () => CODE_DESCRIPTOR },
+];
+
 /**
- * Unknown file types may still be ordinary UTF-8 text. Known image and PDF
- * formats keep their dedicated viewers instead of being guessed by content.
+ * Classify by the most specific known handler first. Unknown files are not
+ * assumed to be binary: the shared loader resolves their bounded text probe.
  */
-export function shouldProbeTextContent(filePath: string): boolean {
-  return isBinaryViewer(filePath) && !isImage(filePath) && !isPdf(filePath) && !isFont(filePath);
+export function classifyFile(filePath: string): FileDescriptor {
+  for (const definition of FILE_TYPE_DEFINITIONS) {
+    if (definition.matches(filePath)) return definition.describe(filePath);
+  }
+  return UNSUPPORTED_DESCRIPTOR;
+}
+
+/** Turn a successful unknown-file text probe into an ordinary code document. */
+export function resolveProbedText(descriptor: FileDescriptor): FileDescriptor {
+  if (descriptor.loadMode !== "probe-text") return descriptor;
+  return { ...CODE_DESCRIPTOR, detectedByContent: true };
+}
+
+/** True only when the shared loader supplied UTF-8 text for this descriptor. */
+export function isTextBackedFile(
+  descriptor: FileDescriptor | null | undefined,
+): descriptor is FileDescriptor & { loadMode: "text" } {
+  return descriptor?.loadMode === "text";
 }
 
 export async function getLanguageSupport(filePath: string): Promise<LanguageSupport | null> {

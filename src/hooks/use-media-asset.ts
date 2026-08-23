@@ -87,7 +87,15 @@ export function useMediaAsset(filePath: string): MediaAssetState {
     void refresh(false);
     void listen<string>("fs-change", (event) => {
       const changedPath = event.payload;
-      void refresh(changedPath === filePath || changedPath === canonicalPath);
+      const changedPathIsParent = (mediaPath: string | null) =>
+        Boolean(changedPath && mediaPath && mediaPath.startsWith(`${changedPath}/`));
+      if (
+        changedPath !== filePath
+        && changedPath !== canonicalPath
+        && !changedPathIsParent(filePath)
+        && !changedPathIsParent(canonicalPath)
+      ) return;
+      void refresh(true);
     }).then((stopListening) => {
       if (cancelled) stopListening();
       else unlisten = stopListening;

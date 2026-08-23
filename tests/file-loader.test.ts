@@ -54,6 +54,51 @@ describe("loadFileModel", () => {
     expect(reader.probeText).not.toHaveBeenCalled();
   });
 
+  it("leaves seekable video loading to the asset-backed viewer", async () => {
+    const reader = backend();
+
+    const model = await loadFileModel("recording.webm", reader);
+
+    expect(model).toMatchObject({
+      content: "",
+      descriptor: { kind: "video", loadMode: "asset-url", editable: false },
+    });
+    expect(reader.readText).not.toHaveBeenCalled();
+    expect(reader.probeText).not.toHaveBeenCalled();
+  });
+
+  it.each(["module.ts", "module.mts"])(
+    "resolves ambiguous %s text to the code viewer",
+    async (path) => {
+      const reader = backend({ probeText: vi.fn(async () => "export const answer = 42;\n") });
+
+      const model = await loadFileModel(path, reader);
+
+      expect(model).toMatchObject({
+        content: "export const answer = 42;\n",
+        descriptor: { kind: "code", loadMode: "text", editable: true },
+      });
+      expect(reader.readText).not.toHaveBeenCalled();
+      expect(reader.probeText).toHaveBeenCalledWith(path);
+    },
+  );
+
+  it.each(["capture.ts", "capture.mts"])(
+    "keeps ambiguous binary %s in the video viewer",
+    async (path) => {
+      const reader = backend({ probeText: vi.fn(async () => null) });
+
+      const model = await loadFileModel(path, reader);
+
+      expect(model).toMatchObject({
+        content: "",
+        descriptor: { kind: "video", loadMode: "probe-text", editable: false },
+      });
+      expect(reader.readText).not.toHaveBeenCalled();
+      expect(reader.probeText).toHaveBeenCalledWith(path);
+    },
+  );
+
   it("promotes an unknown UTF-8 file to the code viewer", async () => {
     const reader = backend({ probeText: vi.fn(async () => "title: Example\n") });
 

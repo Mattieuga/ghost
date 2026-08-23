@@ -51,12 +51,23 @@ Acceptance checks:
 
 ## Phase 3: Shared media and video
 
-Status: Planned
+Status: In progress 2026-08-22
 
-- Extract shared media resource, error, and lifecycle handling from audio.
-- Add video controls, aspect-ratio fitting, fullscreen, and optional captions.
-- Classify ambiguous containers such as MP4, MOV, Ogg, and WebM using track metadata or a runtime media probe.
-- Preserve hardware decoding by relying on the platform WebView rather than bundling codecs by default.
+- Extract shared HTMLMediaElement state, lifecycle, errors, and responsive Ghost controls from audio without changing its behavior.
+- Add a dedicated video viewer with contain-fit rendering, dimensions/file metadata, stable loading, and Open Externally fallback.
+- Route common and best-effort legacy video containers through the asset URL load mode; retain runtime codec failure handling.
+- Add capability-gated fullscreen, double-click fullscreen, and video keyboard controls.
+- Preserve hardware decoding by relying on the platform WebView rather than bundling codecs.
+- Defer Picture in Picture, captions, posters, and content-based track probing until the base viewer is verified.
+
+Acceptance checks:
+
+- Audio behavior and keyboard controls remain unchanged after extracting shared media code.
+- H.264/AAC MP4, MOV, and VP8/VP9 WebM samples play when supported by the installed WebKit.
+- Unsupported AVI, WMV, MKV, or codec combinations show a useful failure and Open Externally action.
+- Landscape, portrait, unusual-aspect, long, and large video files fit and seek without whole-file JavaScript loading.
+- Controls remain usable at minimum window width; fullscreen is never shown when unavailable.
+- Switching, renaming, deleting, replacing, or detaching a video releases the previous source and preserves focus behavior.
 
 ## Phase 4: Broad read-only coverage
 

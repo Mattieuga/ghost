@@ -26,6 +26,13 @@ so they open normally under Gatekeeper after being copied to `/Applications`.
 - [shadcn/ui](https://ui.shadcn.com) — accessible component primitives
 - [@dnd-kit](https://dndkit.com) — pointer-event drag and drop
 
+## Supported files
+
+Ghost edits Markdown, source code, structured text, and UTF-8 text files, and
+includes dedicated viewers for images, PDFs, fonts, audio, and video. See the
+[supported file formats](docs/supported-file-formats.md) guide for the complete
+matrix and media codec compatibility notes.
+
 ## Development
 
 ```bash

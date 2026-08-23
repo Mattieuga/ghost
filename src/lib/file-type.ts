@@ -14,6 +14,15 @@ const AUDIO_EXTENSIONS = new Set([
   "flac", "ogg", "oga", "opus",
   "au", "snd", "ac3", "eac3", "ec3",
 ]);
+const VIDEO_EXTENSIONS = new Set([
+  "mp4", "m4v", "mov", "qt", "webm", "ogv",
+  "mpeg", "mpg", "mpe", "m1v", "m2v",
+  "ts", "m2ts", "mts", "3gp", "3g2",
+  "mkv", "avi", "wmv", "asf", "flv", "f4v",
+]);
+// Both are TypeScript extensions as well as MPEG transport-stream extensions.
+// Probe their contents before deciding between the code and video viewers.
+const AMBIGUOUS_VIDEO_TEXT_EXTENSIONS = new Set(["ts", "mts"]);
 
 export type ViewerKind =
   | "markdown"
@@ -24,6 +33,7 @@ export type ViewerKind =
   | "pdf"
   | "font"
   | "audio"
+  | "video"
   | "unsupported";
 
 export type FileLoadMode = "text" | "probe-text" | "viewer-owned" | "asset-url";
@@ -126,6 +136,31 @@ const AUDIO_MIME_TYPES: Readonly<Record<string, string>> = {
   ac3: "audio/ac3",
   eac3: "audio/eac3",
   ec3: "audio/eac3",
+};
+
+const VIDEO_MIME_TYPES: Readonly<Record<string, string>> = {
+  mp4: "video/mp4",
+  m4v: "video/mp4",
+  mov: "video/quicktime",
+  qt: "video/quicktime",
+  webm: "video/webm",
+  ogv: "video/ogg",
+  mpeg: "video/mpeg",
+  mpg: "video/mpeg",
+  mpe: "video/mpeg",
+  m1v: "video/mpeg",
+  m2v: "video/mpeg",
+  ts: "video/mp2t",
+  m2ts: "video/mp2t",
+  mts: "video/mp2t",
+  "3gp": "video/3gpp",
+  "3g2": "video/3gpp2",
+  mkv: "video/x-matroska",
+  avi: "video/x-msvideo",
+  wmv: "video/x-ms-wmv",
+  asf: "video/x-ms-asf",
+  flv: "video/x-flv",
+  f4v: "video/mp4",
 };
 
 // Extra extensions that CodeMirror's official language catalog does not
@@ -450,6 +485,10 @@ export function isAudio(filePath: string): boolean {
   return AUDIO_EXTENSIONS.has(getExtension(filePath));
 }
 
+export function isVideo(filePath: string): boolean {
+  return VIDEO_EXTENSIONS.has(getExtension(filePath));
+}
+
 export function isTextEditable(filePath: string): boolean {
   const ext = getExtension(filePath);
   return getLanguageDescription(filePath) !== null
@@ -489,6 +528,17 @@ const FILE_TYPE_DEFINITIONS: readonly FileTypeDefinition[] = [
       ...VIEWER_CAPABILITIES,
       loadMode: "asset-url",
       mimeType: AUDIO_MIME_TYPES[getExtension(filePath)],
+    }),
+  },
+  {
+    matches: isVideo,
+    describe: (filePath) => ({
+      kind: "video",
+      ...VIEWER_CAPABILITIES,
+      loadMode: AMBIGUOUS_VIDEO_TEXT_EXTENSIONS.has(getExtension(filePath))
+        ? "probe-text"
+        : "asset-url",
+      mimeType: VIDEO_MIME_TYPES[getExtension(filePath)],
     }),
   },
   { matches: isSvg, describe: () => SVG_DESCRIPTOR },

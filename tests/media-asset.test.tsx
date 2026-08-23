@@ -94,6 +94,41 @@ describe("useMediaAsset", () => {
     expect(mocks.unlisten).toHaveBeenCalledOnce();
   });
 
+  it("ignores unrelated filesystem changes instead of cancelling a relevant refresh", async () => {
+    const { host } = await renderHarness();
+    expect(mocks.invoke).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      mocks.fsChange?.({ payload: "/project/unrelated.txt" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.invoke).toHaveBeenCalledOnce();
+    expect(JSON.parse(host.querySelector("output")?.textContent ?? "{}").sourceUrl)
+      .toBe("asset://localhost/canonical/song.mp3?ghost-media=100-1");
+
+    await act(async () => {
+      mocks.fsChange?.({ payload: "/canonical/song.mp3" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.invoke).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(host.querySelector("output")?.textContent ?? "{}").sourceUrl)
+      .toBe("asset://localhost/canonical/song.mp3?ghost-media=100-2");
+
+    await act(async () => {
+      mocks.fsChange?.({ payload: "/canonical" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.invoke).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(host.querySelector("output")?.textContent ?? "{}").sourceUrl)
+      .toBe("asset://localhost/canonical/song.mp3?ghost-media=100-3");
+  });
+
   it("recovers on focus after a transient media read failure", async () => {
     const { host } = await renderHarness();
     mocks.invoke.mockRejectedValueOnce(new Error("temporarily unavailable"));

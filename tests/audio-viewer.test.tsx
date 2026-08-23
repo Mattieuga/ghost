@@ -140,6 +140,13 @@ describe("AudioViewer", () => {
       audio.dispatchEvent(new Event("volumechange", { bubbles: true }));
     });
     expect(host.querySelector("[data-volume-level='muted']")).not.toBeNull();
+    const restoreVolume = host.querySelector<HTMLButtonElement>("[aria-label='Unmute']");
+    if (!restoreVolume) throw new Error("zero volume should expose an audible restore action");
+
+    act(() => restoreVolume.click());
+    expect(audio.volume).toBe(1);
+    expect(audio.muted).toBe(false);
+    expect(host.querySelector("[aria-label='Mute']")).not.toBeNull();
   });
 
   it("reflects WebKit playback-rate changes in Ghost's speed control", async () => {
@@ -208,5 +215,80 @@ describe("AudioViewer", () => {
     });
 
     expect(document.activeElement).toBe(player);
+  });
+
+  it("ignores a rejected play attempt after the media source changes", async () => {
+    let rejectPlayback: ((reason: Error) => void) | null = null;
+    mocks.play.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => {
+      rejectPlayback = reject;
+    }));
+    const host = createHost();
+    const root = createRoot(host);
+    mounted.push(root);
+
+    await act(async () => {
+      root.render(<AudioViewer filePath="/project/song.mp3" />);
+    });
+    const audio = host.querySelector("audio");
+    const player = host.querySelector<HTMLElement>("[data-viewer-focus-target]");
+    if (!audio || !player) throw new Error("audio viewer should render");
+    Object.defineProperty(audio, "paused", { configurable: true, value: true });
+
+    act(() => player.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true })));
+    expect(mocks.play).toHaveBeenCalledOnce();
+
+    mocks.asset.sourceUrl = "asset://localhost/song.mp3?ghost-media=200-2";
+    await act(async () => {
+      root.render(<AudioViewer filePath="/project/song.mp3" />);
+    });
+    await act(async () => {
+      rejectPlayback?.(new Error("old source was released"));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).not.toContain("playback could not start");
+    expect(host.querySelector("[aria-label='Play']")).not.toBeNull();
+  });
+
+  it("does not report an intentional aborted play request as a codec failure", async () => {
+    mocks.play.mockRejectedValueOnce({ name: "AbortError" });
+    const host = createHost();
+    const root = createRoot(host);
+    mounted.push(root);
+
+    await act(async () => {
+      root.render(<AudioViewer filePath="/project/song.mp3" />);
+    });
+    const audio = host.querySelector("audio");
+    const player = host.querySelector<HTMLElement>("[data-viewer-focus-target]");
+    if (!audio || !player) throw new Error("audio viewer should render");
+    Object.defineProperty(audio, "paused", { configurable: true, value: true });
+
+    await act(async () => {
+      player.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).not.toContain("playback could not start");
+    expect(host.querySelector("[aria-label='Play']")).not.toBeNull();
+  });
+
+  it("replaces failed playback controls with an external-open fallback", async () => {
+    const host = createHost();
+    const root = createRoot(host);
+    mounted.push(root);
+
+    await act(async () => {
+      root.render(<AudioViewer filePath="/project/archive.ogg" />);
+    });
+    const audio = host.querySelector("audio");
+    if (!audio) throw new Error("audio viewer should render its media engine");
+    Object.defineProperty(audio, "error", { configurable: true, value: { code: 4 } });
+
+    act(() => audio.dispatchEvent(new Event("error", { bubbles: true })));
+
+    expect(host.textContent).toContain("not supported by WebKit");
+    expect(host.querySelector("[aria-label='Play']")).toBeNull();
+    expect(host.querySelector("button")?.textContent).toContain("Open Externally");
   });
 });

@@ -26,17 +26,23 @@ export function versionedMediaAssetUrl(
   return `${assetUrl}${separator}ghost-media=${modifiedMs}-${revision}`;
 }
 
-export function mediaPlaybackError(code: number | undefined): string {
+export type MediaKind = "audio" | "video";
+
+export function mediaPlaybackError(
+  code: number | undefined,
+  kind: MediaKind = "audio",
+): string {
+  const label = kind === "video" ? "video" : "audio";
   switch (code) {
     case 1:
-      return "Audio playback was interrupted.";
+      return `${kind === "video" ? "Video" : "Audio"} playback was interrupted.`;
     case 2:
-      return "The audio file could not be read.";
+      return `The ${label} file could not be read.`;
     case 3:
-      return "WebKit could not decode this audio file.";
+      return `WebKit could not decode this ${label} file.`;
     case 4:
-      return "This audio format or codec is not supported by WebKit.";
+      return `This ${label} format or codec is not supported by WebKit.`;
     default:
-      return "The audio file could not be played.";
+      return `The ${label} file could not be played.`;
   }
 }

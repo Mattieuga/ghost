@@ -20,6 +20,8 @@ describe("file classification", () => {
     ["typeface.woff2", "font", "viewer-owned", false],
     ["recording.FLAC", "audio", "asset-url", false],
     ["audiobook.m4b", "audio", "asset-url", false],
+    ["demo.MP4", "video", "asset-url", false],
+    ["capture.webm", "video", "asset-url", false],
     ["archive.ghost-data", "unsupported", "probe-text", false],
   ] as const)(
     "classifies %s as a %s viewer",
@@ -70,6 +72,43 @@ describe("file classification", () => {
       loadMode: "asset-url",
       editable: false,
     });
+  });
+
+  it.each([
+    ["mp4", "video/mp4"],
+    ["m4v", "video/mp4"],
+    ["mov", "video/quicktime"],
+    ["qt", "video/quicktime"],
+    ["webm", "video/webm"],
+    ["ogv", "video/ogg"],
+    ["mpeg", "video/mpeg"],
+    ["mpg", "video/mpeg"],
+    ["mpe", "video/mpeg"],
+    ["m1v", "video/mpeg"],
+    ["m2v", "video/mpeg"],
+    ["ts", "video/mp2t"],
+    ["m2ts", "video/mp2t"],
+    ["mts", "video/mp2t"],
+    ["3gp", "video/3gpp"],
+    ["3g2", "video/3gpp2"],
+    ["mkv", "video/x-matroska"],
+    ["avi", "video/x-msvideo"],
+    ["wmv", "video/x-ms-wmv"],
+    ["asf", "video/x-ms-asf"],
+    ["flv", "video/x-flv"],
+    ["f4v", "video/mp4"],
+  ] as const)("routes .%s through the video viewer", (extension, mimeType) => {
+    expect(classifyFile(`clip.${extension}`)).toMatchObject({
+      kind: "video",
+      loadMode: extension === "ts" || extension === "mts" ? "probe-text" : "asset-url",
+      editable: false,
+      mimeType,
+    });
+  });
+
+  it("keeps Ogg audio and Ogg video extensions unambiguous", () => {
+    expect(classifyFile("sound.ogg").kind).toBe("audio");
+    expect(classifyFile("movie.ogv").kind).toBe("video");
   });
 });
 

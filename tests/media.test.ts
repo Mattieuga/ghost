@@ -27,5 +27,8 @@ describe("media presentation helpers", () => {
 
   it("explains unsupported codecs", () => {
     expect(mediaPlaybackError(4)).toContain("not supported");
+    expect(mediaPlaybackError(4, "video")).toBe(
+      "This video format or codec is not supported by WebKit.",
+    );
   });
 });

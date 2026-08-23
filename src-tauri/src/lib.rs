@@ -6,6 +6,8 @@ mod windows;
 mod context_menu;
 #[cfg(target_os = "macos")]
 mod traffic_lights;
+#[cfg(target_os = "macos")]
+mod webview_config;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -87,7 +89,10 @@ pub fn run() {
             {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.with_webview(|webview| {
-                        unsafe { context_menu::install_context_menu_hook(webview.inner()); }
+                        unsafe {
+                            context_menu::install_context_menu_hook(webview.inner());
+                            webview_config::enable_element_fullscreen(webview.inner());
+                        }
                     });
                     traffic_lights::setup(&window);
                 }

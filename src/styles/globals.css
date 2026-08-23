@@ -120,9 +120,9 @@
   animation: shake 0.4s ease-in-out;
 }
 
-/* Ghost renders one responsive control bar while WebKit's hidden audio element
-   continues to provide decoding, buffering, seeking, and playback. */
-.ghost-audio-control-shell {
+/* Ghost renders one responsive control bar while WebKit media elements provide
+   decoding, buffering, seeking, and playback. */
+.ghost-media-control-shell {
   container-type: inline-size;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent);
@@ -133,7 +133,7 @@
     0 8px 24px rgb(0 0 0 / 0.24);
 }
 
-.ghost-audio-controls {
+.ghost-media-controls {
   display: flex;
   min-width: 0;
   height: 2.5rem;
@@ -142,7 +142,7 @@
   padding: 0 0.625rem;
 }
 
-.ghost-audio-range {
+.ghost-media-range {
   --ghost-range-progress: 0%;
   height: 1rem;
   appearance: none;
@@ -150,7 +150,7 @@
   cursor: pointer;
 }
 
-.ghost-audio-range::-webkit-slider-runnable-track {
+.ghost-media-range::-webkit-slider-runnable-track {
   height: 0.1875rem;
   border-radius: 9999px;
   background: linear-gradient(
@@ -160,7 +160,7 @@
   );
 }
 
-.ghost-audio-range::-webkit-slider-thumb {
+.ghost-media-range::-webkit-slider-thumb {
   width: 0.625rem;
   height: 0.625rem;
   margin-top: -0.21875rem;
@@ -171,35 +171,65 @@
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
 }
 
-.ghost-audio-range:focus-visible {
+.ghost-media-range:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 3px;
   border-radius: 9999px;
 }
 
-.ghost-audio-range:disabled {
+.ghost-media-range:disabled {
   cursor: default;
   opacity: 0.45;
 }
 
 @container (max-width: 30rem) {
-  .ghost-audio-skip {
+  .ghost-media-skip {
     display: none;
   }
 
-  .ghost-audio-volume-range {
+  .ghost-media-volume-range {
     width: 2.75rem;
   }
 }
 
 @container (max-width: 23rem) {
-  .ghost-audio-current-time,
-  .ghost-audio-volume-range {
+  .ghost-media-current-time,
+  .ghost-media-volume-range {
     display: none;
   }
 
-  .ghost-audio-controls {
+  .ghost-media-controls {
     padding-inline: 0.5rem;
+  }
+}
+
+.ghost-video-stage:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  border: 0;
+  border-radius: 0;
+}
+
+.ghost-video-controls {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(0.25rem);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.ghost-video-controls[data-controls-visible="true"],
+.ghost-video-controls:focus-within,
+.ghost-video-controls:has([data-state="open"]) {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ghost-video-controls {
+    transition: none;
   }
 }
 

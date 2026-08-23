@@ -82,7 +82,10 @@ pub fn create_editor_window(app: &tauri::AppHandle, file_path: &str) -> Result<S
             #[cfg(target_os = "macos")]
             {
                 let _ = window.with_webview(|webview| {
-                    unsafe { super::context_menu::install_context_menu_hook(webview.inner()); }
+                    unsafe {
+                        super::context_menu::install_context_menu_hook(webview.inner());
+                        super::webview_config::enable_element_fullscreen(webview.inner());
+                    }
                 });
                 super::traffic_lights::setup(&window);
             }

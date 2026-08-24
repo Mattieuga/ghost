@@ -11,6 +11,7 @@ interface GhostWindow {
   __ghostNewFile?: () => void;
   __ghostFind?: () => void;
   __ghostFindAndReplace?: () => void;
+  __ghostViewerFind?: () => boolean;
   __ghostCopyAs?: (format: string) => Promise<void>;
   __ghostSearch?: GhostSearchCommands;
   __ghostCommandPalette?: () => void;

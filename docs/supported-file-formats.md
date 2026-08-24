@@ -23,6 +23,7 @@ and how the file was encoded.
 | Fonts | `.ttf`, `.otf`, `.woff`, `.woff2` | Read-only specimen with editable sample text and preview size |
 | Audio | See [Audio](#audio) | Custom player backed by WebKit |
 | Video | See [Video](#video) | Custom player backed by WebKit, with fullscreen when available |
+| Archives | See [Archives](#archives) | Read-only searchable browser with explicit macOS-backed extraction |
 | Source code and configuration | See [Code and text](#code-and-text) | Editable CodeMirror source editor |
 | Unknown UTF-8 text | Any other extension that passes Ghost's text probe | Editable plain-text source editor |
 | Other binary files | Any format without a viewer | File information and **Open Externally** |
@@ -175,10 +176,53 @@ References:
 - [WebKit: AV1 and media containers in Safari 17](https://webkit.org/blog/14445/webkit-features-in-safari-17-0/)
 - [WebKit: additional media codecs in Safari 17.4](https://webkit.org/blog/15063/webkit-features-in-safari-17-4/)
 
+## Archives
+
+Ghost recognizes these archive extensions:
+
+```text
+zip tar tar.gz tgz tar.bz2 tbz tbz2 tar.xz txz tar.zst tzst cpio cpgz 7z rar gz bz2
+```
+
+The archive browser shows a searchable folder hierarchy, entry sizes and
+timestamps, and compressed and uncompressed totals without extracting the
+archive. ZIP, TAR, and the common compressed TAR variants are the reliable
+baseline. CPIO, 7-Zip, RAR, and Zstandard support depends on the libarchive
+version included with the installed macOS release; unsupported, corrupt, or
+encrypted archives show an error and **Open Externally**.
+
+Select a regular file and press **Space** or **Return**, double-click it, or use
+**Preview** to open a read-only preview beside the archive tree. This works
+through the same macOS archive reader for every archive family above whenever
+that macOS version can read the container. Ghost reuses its source, image, PDF,
+font, audio, and video viewers; directories, links, duplicate paths, nested
+archives, encrypted entries, and unidentified binary payloads are not opened.
+
+Preview decompression goes only to Ghost's session cache, never beside the
+archive. Expanded text is limited to 10 MiB, images/PDF/fonts to 100 MiB, and
+audio/video to 256 MiB, with a 30-second operation limit and 512 MiB cache
+budget. Partial and abandoned previews are removed automatically, and the
+session cache is cleared when Ghost quits or next launches after a crash.
+
+**Extract…** asks for a parent folder, creates a new collision-free directory
+named after the archive, extracts with macOS's `/usr/bin/tar`, and reveals the
+result in Finder. Ghost never extracts merely because an archive was opened.
+The system extractor's absolute-path, parent-traversal, and symlink protections
+remain enabled, existing destination folders are not overwritten, and full
+archived ownership or special permission bits are not restored.
+
+Raw `.gz` and `.bz2` compression streams appear as one-file archives and use
+the same bounded preview cache plus macOS's built-in gzip and bzip2 tools for
+explicit extraction. Ghost preserves
+the original filename stored in a gzip header when present; bzip2 does not store
+a filename, so Ghost removes the `.bz2` suffix. Raw `.xz` and `.zst` streams do
+not yet have a dedicated viewer because macOS does not ship standalone decoders
+for them. Their TAR-wrapped forms remain platform-dependent as described above.
+
 ## Not currently previewed
 
 Office documents (`.doc`, `.docx`, `.xls`, `.xlsx`, `.ppt`, `.pptx`, `.odt`,
-`.ods`, `.odp`), archives, disk images, executables, and other binary formats do
+`.ods`, `.odp`), disk images, executables, and other binary formats do
 not have built-in viewers. Ghost leaves them untouched and offers **Open
 Externally**. RTF is editable as raw text source; it is not rendered as a rich
 text document.

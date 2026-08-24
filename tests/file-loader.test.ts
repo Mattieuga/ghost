@@ -67,6 +67,19 @@ describe("loadFileModel", () => {
     expect(reader.probeText).not.toHaveBeenCalled();
   });
 
+  it("leaves archive inspection to the archive viewer", async () => {
+    const reader = backend();
+
+    const model = await loadFileModel("source.tar.gz", reader);
+
+    expect(model).toMatchObject({
+      content: "",
+      descriptor: { kind: "archive", loadMode: "viewer-owned", editable: false },
+    });
+    expect(reader.readText).not.toHaveBeenCalled();
+    expect(reader.probeText).not.toHaveBeenCalled();
+  });
+
   it.each(["module.ts", "module.mts"])(
     "resolves ambiguous %s text to the code viewer",
     async (path) => {

@@ -4,13 +4,15 @@ const MIME_MAP: Record<string, string> = {
   png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
   gif: "image/gif", webp: "image/webp", bmp: "image/bmp", ico: "image/x-icon",
   heic: "image/heic", heif: "image/heif", tiff: "image/tiff", tif: "image/tiff",
+  svg: "image/svg+xml",
 };
 
 interface ImageViewerProps {
   filePath: string;
+  displayName?: string;
 }
 
-export function ImageViewer({ filePath }: ImageViewerProps) {
+export function ImageViewer({ filePath, displayName }: ImageViewerProps) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<{ w: number; h: number } | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
@@ -51,7 +53,7 @@ export function ImageViewer({ filePath }: ImageViewerProps) {
     };
   }, [filePath]);
 
-  const fileName = filePath.split("/").pop() ?? filePath;
+  const fileName = displayName ?? filePath.split("/").pop() ?? filePath;
 
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;

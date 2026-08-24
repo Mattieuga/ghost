@@ -28,6 +28,11 @@ pub fn run() {
         .manage(windows::ClosingEditorWindows(Mutex::new(HashSet::new())))
         .manage(menu::ShowMainMenuItem(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
+            commands::archive::list_archive,
+            commands::archive::extract_archive,
+            commands::archive_preview::materialize_archive_entry,
+            commands::archive_preview::cancel_archive_preview,
+            commands::archive_preview::release_archive_preview,
             commands::fs::is_directory,
             commands::fs::read_directory,
             commands::fs::read_file,
@@ -60,6 +65,9 @@ pub fn run() {
             windows::emit_file_deleted,
         ])
         .setup(|app| {
+            app.manage(commands::archive_preview::ArchivePreviewCache::new(
+                app.handle(),
+            )?);
             menu::setup_menu(app)?;
 
             // Use dev icon for dock when in debug mode
@@ -104,6 +112,13 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             match &event {
+                RunEvent::Exit => {
+                    if let Some(cache) = app_handle
+                        .try_state::<commands::archive_preview::ArchivePreviewCache>()
+                    {
+                        cache.cleanup_session();
+                    }
+                }
                 RunEvent::Opened { urls } => {
                     for url in urls {
                         if url.scheme() == "file" {

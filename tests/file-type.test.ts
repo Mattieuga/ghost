@@ -22,6 +22,11 @@ describe("file classification", () => {
     ["audiobook.m4b", "audio", "asset-url", false],
     ["demo.MP4", "video", "asset-url", false],
     ["capture.webm", "video", "asset-url", false],
+    ["bundle.ZIP", "archive", "viewer-owned", false],
+    ["source.tar.gz", "archive", "viewer-owned", false],
+    ["backup.7z", "archive", "viewer-owned", false],
+    ["picture.gz", "archive", "viewer-owned", false],
+    ["picture.bz2", "archive", "viewer-owned", false],
     ["archive.ghost-data", "unsupported", "probe-text", false],
   ] as const)(
     "classifies %s as a %s viewer",
@@ -109,6 +114,31 @@ describe("file classification", () => {
   it("keeps Ogg audio and Ogg video extensions unambiguous", () => {
     expect(classifyFile("sound.ogg").kind).toBe("audio");
     expect(classifyFile("movie.ogv").kind).toBe("video");
+  });
+
+  it.each([
+    ["zip", "application/zip"],
+    ["tar", "application/x-tar"],
+    ["tar.gz", "application/gzip"],
+    ["tgz", "application/gzip"],
+    ["tar.bz2", "application/x-bzip2"],
+    ["tbz2", "application/x-bzip2"],
+    ["tar.xz", "application/x-xz"],
+    ["txz", "application/x-xz"],
+    ["tar.zst", "application/zstd"],
+    ["cpio", "application/x-cpio"],
+    ["cpgz", "application/gzip"],
+    ["7z", "application/x-7z-compressed"],
+    ["rar", "application/vnd.rar"],
+    ["gz", "application/gzip"],
+    ["bz2", "application/x-bzip2"],
+  ] as const)("routes .%s through the archive viewer", (extension, mimeType) => {
+    expect(classifyFile(`bundle.${extension}`)).toMatchObject({
+      kind: "archive",
+      loadMode: "viewer-owned",
+      editable: false,
+      mimeType,
+    });
   });
 });
 

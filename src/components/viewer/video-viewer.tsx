@@ -15,6 +15,7 @@ import { OpenExternalButton } from "@/components/viewer/open-external-button";
 
 interface VideoViewerProps {
   filePath: string;
+  displayName?: string;
 }
 
 interface VideoDimensions {
@@ -24,7 +25,7 @@ interface VideoDimensions {
 
 const CONTROLS_HIDE_DELAY_MS = 2_000;
 
-export function VideoViewer({ filePath }: VideoViewerProps) {
+export function VideoViewer({ filePath, displayName }: VideoViewerProps) {
   const asset = useMediaAsset(filePath);
   const playerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -49,8 +50,8 @@ export function VideoViewer({ filePath }: VideoViewerProps) {
     onMetadata: handleMetadata,
   });
 
-  const fileName = filePath.split("/").pop() ?? filePath;
-  const extension = fileName.split(".").pop()?.toUpperCase() ?? "VIDEO";
+  const fileName = displayName ?? filePath.split("/").pop() ?? filePath;
+  const extension = filePath.split(".").pop()?.toUpperCase() ?? "VIDEO";
   const displayError = asset.error || playback.error;
 
   const clearControlsHideTimer = useCallback(() => {

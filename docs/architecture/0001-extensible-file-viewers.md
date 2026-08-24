@@ -38,7 +38,61 @@ Container extensions select a likely viewer but do not assert codec support. For
 
 Media features backed by WebKit presentation APIs, such as fullscreen and Picture in Picture, are exposed only after runtime capability detection. On macOS, Ghost explicitly enables WKWebView's element-fullscreen preference because embedded webviews disable the DOM Fullscreen API by default. Fullscreen is part of the initial video phase; Picture in Picture and sidecar captions remain follow-ups until their Tauri/WKWebView behavior is manually verified.
 
-Interactive read-only viewers expose one primary keyboard destination with the `data-viewer-focus-target` attribute. Editor-focus commands and focus that would otherwise stop on the surrounding scroll surface are redirected there. This keeps keyboard ownership consistent between the sidebar and the active viewer without adding viewer-specific branches to the window layouts.
+Interactive read-only viewers expose one primary keyboard destination with the `data-viewer-focus-target` attribute. Editor-focus commands and focus that would otherwise stop on the surrounding scroll surface are redirected there. This keeps keyboard ownership consistent between the sidebar and the active viewer without adding viewer-specific branches to the window layouts. A viewer with its own read-only filtering interface may register the viewer-find command while mounted so both the native Find menu item and Command-F target that interface without advertising editable document search or replacement capabilities.
+
+Archive files use a dedicated read-only browser backed by macOS's bundled
+`bsdtar`/libarchive rather than loading compressed bytes into JavaScript or
+bundling a second decompression library. Ghost asks `bsdtar` to convert the
+archive directory to an mtree manifest, parses that bounded manifest into
+structured entry metadata, and renders the hierarchy in React. Unsupported,
+encrypted, corrupt, or excessively large manifests fail without changing the
+archive and retain the Open Externally path.
+
+Raw gzip and bzip2 files are single-file compression streams, not containers,
+but reuse the archive viewer as a one-entry manifest. Ghost reads only bounded
+gzip header metadata to recover an embedded filename when present; bzip2 output
+names are derived from the source filename. It does not decompress either
+stream merely to list it or calculate its expanded size. Explicit extraction
+streams `/usr/bin/gzip -dc` or `/usr/bin/bzip2 -dc` directly into a newly-created
+file without a shell or loading decompressed bytes into application memory.
+
+Extraction is a separate, explicit capability rather than a side effect of
+opening an archive. The user chooses a parent directory; Ghost atomically
+creates a new, collision-free child directory derived from the archive name
+and invokes `/usr/bin/tar` without a shell. Extraction keeps libarchive's
+default absolute-path, `..`, and symlink traversal protections, adds
+keep-existing semantics, and never runs with preserve-permissions or
+absolute-path options. A failed extraction removes only the new directory
+Ghost created; if cleanup fails, the error identifies the partial directory.
+Password entry and selective extraction are deferred.
+
+Archive entry preview is a separate read-only materialization capability shared
+by every archive family the operating-system reader can list. Previewing still
+requires decompression, but never writes beside the source archive: Ghost
+streams one unique regular-file entry into a session-scoped directory under
+Tauri's application cache, classifies the completed artifact by filename and
+bounded content inspection, and passes it to an existing viewer. Raw gzip and
+bzip2 streams use the same path with their single synthetic entry. Directories,
+links, duplicate paths, encrypted entries, nested archives, and unsupported
+payloads are not rendered; failed or unrenderable temporary artifacts remain
+subject to the same lease and cleanup rules.
+
+Materialization is explicit and bounded by the decompressed result, not the
+compressed input or untrusted manifest metadata. Text-like artifacts stop at
+10 MiB, images/PDF/fonts at 100 MiB, and audio/video at 256 MiB; 256 MiB is the
+absolute per-artifact ceiling. A request may be cancelled and partial output is
+removed. Completed artifacts are atomically published, leased while visible,
+and retained only in the current session. The cache evicts inactive least-
+recently-used entries above 512 MiB, is removed on normal exit, and abandoned
+session or partial directories are removed on the next launch. Only the exact
+completed artifact is admitted to the WebView asset scope.
+
+Archive preview stays inside the archive viewer so selection and provenance
+remain visible. Wide layouts use a tree/detail split; narrow layouts drill into
+the detail with an explicit Back action. Selection never decompresses by
+itself: Space, Enter, double-click, or Preview starts materialization. A future
+pop-out must use a dedicated read-only preview window and cache lease rather
+than reusing the editable accessory-window contract.
 
 ## File detection policy
 
@@ -62,6 +116,8 @@ An extension is a routing hint, not proof that a container's codec is playable. 
 - Capabilities make read-only, searchable, and editable behavior explicit.
 - The same media substrate can support audio first and video later.
 - Shared controls keep audio and video interaction consistent without merging their layouts.
+- Archive inspection and extraction reuse the operating system's maintained
+  format support while keeping compressed data out of the webview.
 
 ### Costs
 
@@ -70,6 +126,8 @@ An extension is a routing hint, not proof that a container's codec is playable. 
 - Native Quick Look and media asset scoping still require platform-specific Rust work.
 - Content signatures, non-UTF-8 encodings, and large-text editing remain separate follow-up projects.
 - Broad video routing improves fallback behavior but cannot make an unsupported codec playable.
+- Archive behavior depends on the libarchive version supplied by the running
+  macOS release, so recognized legacy formats can still fail gracefully.
 
 ## Alternatives considered
 
@@ -95,4 +153,5 @@ Rejected as the primary path because Ghost's dedicated viewers provide a more co
 2. Route existing viewers and chrome from descriptors; remove negative binary checks from callers.
 3. Add WebKit-backed audio through the scoped asset protocol.
 4. Reuse the media substrate for video and ambiguous media containers.
-5. Add broader fallbacks such as Quick Look, archives, and an incremental hex viewer.
+5. Add a read-only archive browser and explicit OS-backed extraction.
+6. Add broader fallbacks such as Quick Look and an incremental hex viewer.

@@ -15,9 +15,10 @@ import { OpenExternalButton } from "@/components/viewer/open-external-button";
 
 interface AudioViewerProps {
   filePath: string;
+  displayName?: string;
 }
 
-export function AudioViewer({ filePath }: AudioViewerProps) {
+export function AudioViewer({ filePath, displayName }: AudioViewerProps) {
   const asset = useMediaAsset(filePath);
   const playback = useMediaPlayback<HTMLAudioElement>({
     sourceUrl: asset.sourceUrl,
@@ -26,8 +27,8 @@ export function AudioViewer({ filePath }: AudioViewerProps) {
   const playerRef = useRef<HTMLDivElement>(null);
   const [showLoading, setShowLoading] = useState(false);
 
-  const fileName = filePath.split("/").pop() ?? filePath;
-  const extension = fileName.split(".").pop()?.toUpperCase() ?? "AUDIO";
+  const fileName = displayName ?? filePath.split("/").pop() ?? filePath;
+  const extension = filePath.split(".").pop()?.toUpperCase() ?? "AUDIO";
 
   useEffect(() => {
     setShowLoading(false);

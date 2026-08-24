@@ -20,6 +20,25 @@ const VIDEO_EXTENSIONS = new Set([
   "ts", "m2ts", "mts", "3gp", "3g2",
   "mkv", "avi", "wmv", "asf", "flv", "f4v",
 ]);
+const ARCHIVE_MIME_TYPES: Readonly<Record<string, string>> = {
+  ".tar.bz2": "application/x-bzip2",
+  ".tar.gz": "application/gzip",
+  ".tar.xz": "application/x-xz",
+  ".tar.zst": "application/zstd",
+  ".tbz2": "application/x-bzip2",
+  ".cpgz": "application/gzip",
+  ".tgz": "application/gzip",
+  ".tbz": "application/x-bzip2",
+  ".txz": "application/x-xz",
+  ".tzst": "application/zstd",
+  ".cpio": "application/x-cpio",
+  ".zip": "application/zip",
+  ".tar": "application/x-tar",
+  ".7z": "application/x-7z-compressed",
+  ".rar": "application/vnd.rar",
+  ".bz2": "application/x-bzip2",
+  ".gz": "application/gzip",
+};
 // Both are TypeScript extensions as well as MPEG transport-stream extensions.
 // Probe their contents before deciding between the code and video viewers.
 const AMBIGUOUS_VIDEO_TEXT_EXTENSIONS = new Set(["ts", "mts"]);
@@ -34,6 +53,7 @@ export type ViewerKind =
   | "font"
   | "audio"
   | "video"
+  | "archive"
   | "unsupported";
 
 export type FileLoadMode = "text" | "probe-text" | "viewer-owned" | "asset-url";
@@ -489,6 +509,15 @@ export function isVideo(filePath: string): boolean {
   return VIDEO_EXTENSIONS.has(getExtension(filePath));
 }
 
+function archiveSuffix(filePath: string): string | null {
+  const lowerName = (filePath.split("/").pop() ?? filePath).toLowerCase();
+  return Object.keys(ARCHIVE_MIME_TYPES).find((suffix) => lowerName.endsWith(suffix)) ?? null;
+}
+
+export function isArchive(filePath: string): boolean {
+  return archiveSuffix(filePath) !== null;
+}
+
 export function isTextEditable(filePath: string): boolean {
   const ext = getExtension(filePath);
   return getLanguageDescription(filePath) !== null
@@ -540,6 +569,17 @@ const FILE_TYPE_DEFINITIONS: readonly FileTypeDefinition[] = [
         : "asset-url",
       mimeType: VIDEO_MIME_TYPES[getExtension(filePath)],
     }),
+  },
+  {
+    matches: isArchive,
+    describe: (filePath) => {
+      const suffix = archiveSuffix(filePath);
+      return {
+        kind: "archive",
+        ...VIEWER_CAPABILITIES,
+        mimeType: suffix ? ARCHIVE_MIME_TYPES[suffix] : undefined,
+      };
+    },
   },
   { matches: isSvg, describe: () => SVG_DESCRIPTOR },
   { matches: isCsv, describe: () => CSV_DESCRIPTOR },

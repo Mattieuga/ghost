@@ -310,6 +310,7 @@ export function GhostLayout() {
 
   // openSearch wrapper: only open if a file is active
   const openSearchIfFile = useCallback((mode: "find" | "replace") => {
+    if (mode === "find" && window.__ghostViewerFind?.()) return;
     if (!activeFileRef.current || !fileDescriptorRef.current?.searchable) return;
     openSearch(mode);
   }, [openSearch]);

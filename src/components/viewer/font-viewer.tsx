@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 interface FontViewerProps {
   filePath: string;
+  displayName?: string;
 }
 
 const DEFAULT_SAMPLE = "The quick brown fox jumps over the lazy dog.";
@@ -17,15 +18,15 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function FontViewer({ filePath }: FontViewerProps) {
+export function FontViewer({ filePath, displayName }: FontViewerProps) {
   const [fontFamily, setFontFamily] = useState<string | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
   const [fontSize, setFontSize] = useState(48);
   const [sample, setSample] = useState(DEFAULT_SAMPLE);
   const [error, setError] = useState<string | null>(null);
 
-  const fileName = filePath.split("/").pop() ?? filePath;
-  const extension = fileName.split(".").pop()?.toUpperCase() ?? "FONT";
+  const fileName = displayName ?? filePath.split("/").pop() ?? filePath;
+  const extension = filePath.split(".").pop()?.toUpperCase() ?? "FONT";
   const previewFamily = useMemo(
     () => `ghost-font-preview-${++nextFontPreviewId}`,
     [filePath]

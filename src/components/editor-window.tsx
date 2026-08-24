@@ -295,6 +295,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   // Register window globals for Rust menu events
   useEffect(() => {
     window.__ghostFind = () => {
+      if (window.__ghostViewerFind?.()) return;
       if (fileDescriptorRef.current?.searchable) search.openSearch("find");
     };
     window.__ghostFindAndReplace = () => {
@@ -314,6 +315,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       const meta = e.metaKey || e.ctrlKey;
       if (meta && e.key === "f" && !e.altKey) {
         e.preventDefault();
+        if (window.__ghostViewerFind?.()) return;
         if (fileDescriptorRef.current?.searchable) search.openSearch("find");
       } else if (meta && e.altKey && e.key === "f") {
         e.preventDefault();

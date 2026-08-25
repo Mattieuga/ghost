@@ -81,7 +81,16 @@ export default defineConfig(async ({ command }) => ({
         }
       : undefined,
     watch: {
-      ignored: ["**/src-tauri/**", "**/*.md", "**/docs/**", "**/AppIcons/**"],
+      // Tailwind v4 registers scanned content files as HMR dependencies and
+      // requests a full page reload when they change. Ghost edits these
+      // repo-local fixtures at runtime, so they are data, not app source.
+      ignored: [
+        "**/src-tauri/**",
+        "**/*.md",
+        "**/docs/**",
+        "**/AppIcons/**",
+        "**/example test files/**",
+      ],
     },
   },
 }));

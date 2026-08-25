@@ -26,11 +26,16 @@ font-kit = "0.14"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 trash = "5"
+memchr = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = "0.3"
 objc2-app-kit = { version = "0.3", features = ["NSView", "NSMenu", "NSMenuItem", "NSEvent", "NSResponder", "NSPasteboard", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSApplication", "NSRunningApplication", "NSWindow", "NSButton", "NSControl"] }
+objc2-image-io = { version = "0.3.2", features = ["CGImageSource"] }
+objc2-core-graphics = { version = "0.3.2", features = ["CGImage"] }
+objc2-core-foundation = "0.3.2"
+objc2-pdf-kit = "0.3.2"
 
 [target."cfg(unix)".dependencies]
 xattr = "1.6.1"

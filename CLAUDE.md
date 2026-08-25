@@ -18,6 +18,13 @@ When you finish a change:
 
 Relaunch the app only when the user explicitly asks (they will have quit the other Ghost first). Start it from this worktree with `pnpm tauri dev`. The sidebar badge shows a slice of the workspace name so they can see which worktree is running.
 
+Repo-local viewer fixtures under `example test files/` are runtime data, not
+frontend source. Keep that directory excluded from both Tailwind's content scan
+in `src/styles/globals.css` and Vite's watcher in `vite.config.ts`. Tailwind v4
+registers scanned files as HMR dependencies and deliberately sends a full page
+reload when they change; without both exclusions, saving a fixture through the
+dev app can look like a Ghost crash even though its native save completed.
+
 ## Architecture decisions and plans
 
 Durable architecture decisions live in `docs/architecture/` as ADRs. Multi-phase implementation plans live in `docs/plans/`. The extensible file-viewer decision is `docs/architecture/0001-extensible-file-viewers.md`, and its phased roadmap is `docs/plans/file-viewer-roadmap.md`.

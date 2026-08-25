@@ -2,6 +2,7 @@
 
 - Created: 2026-08-21
 - Architecture: [`../architecture/0001-extensible-file-viewers.md`](../architecture/0001-extensible-file-viewers.md)
+- Large-file architecture: [`../architecture/0002-bounded-large-file-loading.md`](../architecture/0002-bounded-large-file-loading.md)
 
 ## Goals
 
@@ -116,7 +117,19 @@ Acceptance checks:
 - Malformed, encrypted, and unsupported archives show a useful error and Open
   Externally action.
 
-## Phase 5: Broad read-only coverage
+## Phase 5: Large-file hardening
+
+Status: Implemented; manual large-file and PDFKit acceptance passes pending — see [`large-file-hardening.md`](large-file-hardening.md)
+
+- Resolve metadata and resource budgets before loading content.
+- Keep large source editable with reduced features and streamed loading/saving;
+  reserve chunked read-only inspection for the validated in-memory ceiling.
+- Move images and fonts away from whole-byte IPC and bound decoder resources.
+- Validate the implemented native PDFKit path against the integration and
+  quality bar; consider other PDF backends only if it does not meet that bar.
+- Bound incidental preview, font, copy, and reload reads.
+
+## Phase 6: Broad read-only coverage
 
 Status: Planned
 
@@ -128,6 +141,7 @@ Status: Planned
 
 - Add bounded signature/MIME detection for unknown and mislabeled files.
 - Record text encoding and line-ending metadata; preserve them when editing non-UTF-8 text.
-- Add a large-text mode rather than mounting enormous documents in the normal CodeMirror configuration.
+- Run and record the manual large-file/PDFKit acceptance matrices in
+  [`large-file-hardening.md`](large-file-hardening.md).
 - Centralize viewer resource cleanup, external file refresh, and metadata formatting.
 - Keep classification tests table-driven so each new extension declares its viewer, load mode, and capabilities.

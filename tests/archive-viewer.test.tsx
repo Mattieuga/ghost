@@ -40,6 +40,7 @@ const mounted: Array<ReturnType<typeof createRoot>> = [];
 const hosts: HTMLElement[] = [];
 
 beforeEach(() => {
+  mocks.manifest.entries[1].size_bytes = 12;
   mocks.invoke.mockReset().mockImplementation(async (command: string) => {
     if (command === "list_archive") return mocks.manifest;
     if (command === "get_file_metadata") return { size_bytes: 1024, modified_ms: 100 };
@@ -148,6 +149,23 @@ describe("ArchiveViewer", () => {
     if (!close) throw new Error("archive preview should render a close button");
     await act(async () => { close.click(); });
     expect(mocks.invoke).toHaveBeenCalledWith("release_archive_preview", { token: "preview-1" });
+  });
+
+  it("rejects an oversized known-text entry before materialization", async () => {
+    mocks.manifest.entries[1].size_bytes = 300 * 1024 * 1024;
+    const host = await renderArchive();
+    const readme = Array.from(host.querySelectorAll<HTMLElement>("[role='treeitem']"))
+      .find((item) => item.textContent?.includes("README.md"));
+    if (!readme) throw new Error("README entry should render");
+    await act(async () => { readme.click(); });
+    const previewButton = host.querySelector<HTMLButtonElement>("[aria-label='Preview selected archive entry']");
+    if (!previewButton) throw new Error("archive preview control should render");
+    expect(previewButton.disabled).toBe(true);
+    expect(host.textContent).toContain("Preview unavailable above 256.0 MB");
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      "materialize_archive_entry",
+      expect.anything(),
+    );
   });
 
   it("cancels an in-flight materialization when the preview is closed", async () => {

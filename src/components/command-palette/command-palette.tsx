@@ -20,6 +20,11 @@ interface SearchResults {
   files_searched: number;
 }
 
+interface TextPreview {
+  text: string;
+  truncated: boolean;
+}
+
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   return `${(bytes / 1024).toFixed(1)} KB`;
@@ -247,14 +252,21 @@ export function CommandPalette({
 
     const timer = setTimeout(async () => {
       try {
-        const [content, meta] = await Promise.all([
-          invoke<string>("read_file", { path }),
+        const [preview, meta] = await Promise.all([
+          invoke<TextPreview | null>("read_text_preview", { path, maxBytes: 64 * 1024 }),
           invoke<{ size_bytes: number; modified_ms: number }>("get_file_metadata", {
             path,
           }).catch(() => null),
         ]);
 
         if (cancelled) return;
+
+        if (!preview) {
+          setPreviewHtml("");
+          if (meta) setPreviewMeta({ size: meta.size_bytes, modified: meta.modified_ms });
+          return;
+        }
+        const content = preview.truncated ? `${preview.text}\n\n…` : preview.text;
 
         // Render markdown to HTML
         try {

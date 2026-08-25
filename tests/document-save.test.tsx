@@ -65,6 +65,7 @@ describe("useDocumentSave", () => {
     expect(invokeMock.mock.calls[0][1]).toMatchObject({
       content: "one",
       expectedContent: "original",
+      expectedVersion: null,
       force: false,
     });
 
@@ -76,6 +77,7 @@ describe("useDocumentSave", () => {
     expect(invokeMock.mock.calls[1][1]).toMatchObject({
       content: "two",
       expectedContent: "one",
+      expectedVersion: null,
       force: false,
     });
 
@@ -110,6 +112,7 @@ describe("useDocumentSave", () => {
     expect(invokeMock.mock.calls[1][1]).toMatchObject({
       content: "mine",
       expectedContent: null,
+      expectedVersion: null,
       force: true,
     });
     expect(state().status).toBe("saved");

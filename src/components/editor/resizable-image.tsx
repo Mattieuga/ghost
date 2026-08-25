@@ -1,10 +1,13 @@
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { startBlockDrag } from "./block-drag";
+import { versionedMediaAssetUrl } from "@/lib/media";
 
-// Module-level blob URL cache: path -> { url, refCount }
-const blobCache = new Map<string, { url: string; refCount: number }>();
+interface PreparedImageAsset {
+  canonical_path: string;
+  modified_ms: number;
+}
 
 function sampleCornerLuminance(img: HTMLImageElement): "light" | "dark" {
   try {
@@ -41,7 +44,9 @@ export function ResizableImageView({ node, updateAttributes, selected, editor, g
   const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
   const [lineColor, setLineColor] = useState("rgba(0,0,0,0.5)");
 
-  // Resolve local image paths to blob URLs (with cache)
+  // Resolve local paths through Tauri's exact-file asset grant. The image
+  // bytes stay in the range-capable native resource path instead of becoming
+  // a number[] plus Blob copy in JavaScript.
   useEffect(() => {
     if (!src) return;
 
@@ -64,49 +69,22 @@ export function ResizableImageView({ node, updateAttributes, selected, editor, g
     const dir = activeFile.substring(0, activeFile.lastIndexOf("/"));
     const absolutePath = `${dir}/${src}`;
 
-    // Check cache first
-    const cached = blobCache.get(absolutePath);
-    if (cached) {
-      cached.refCount++;
-      setResolvedSrc(cached.url);
-      return () => {
-        cached.refCount--;
-        if (cached.refCount <= 0) {
-          URL.revokeObjectURL(cached.url);
-          blobCache.delete(absolutePath);
-        }
-      };
-    }
-
-    let revoked = false;
-    invoke<number[]>("read_file_bytes", { path: absolutePath })
-      .then((data) => {
-        if (revoked) return;
-        const ext = src.split(".").pop()?.toLowerCase() || "png";
-        const mimeMap: Record<string, string> = {
-          png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
-          gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
-          bmp: "image/bmp", ico: "image/x-icon",
-        };
-        const blob = new Blob([new Uint8Array(data)], { type: mimeMap[ext] || "image/png" });
-        const url = URL.createObjectURL(blob);
-        blobCache.set(absolutePath, { url, refCount: 1 });
-        setResolvedSrc(url);
+    let cancelled = false;
+    invoke<PreparedImageAsset>("prepare_media_asset", { path: absolutePath })
+      .then((asset) => {
+        if (cancelled) return;
+        setResolvedSrc(versionedMediaAssetUrl(
+          convertFileSrc(asset.canonical_path),
+          asset.modified_ms,
+          1,
+        ));
       })
       .catch(() => {
         setResolvedSrc(null);
       });
 
     return () => {
-      revoked = true;
-      const entry = blobCache.get(absolutePath);
-      if (entry) {
-        entry.refCount--;
-        if (entry.refCount <= 0) {
-          URL.revokeObjectURL(entry.url);
-          blobCache.delete(absolutePath);
-        }
-      }
+      cancelled = true;
       setResolvedSrc(null);
     };
   }, [src]);

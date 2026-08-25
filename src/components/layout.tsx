@@ -32,6 +32,7 @@ import { TextStats } from "@/components/editor/text-stats";
 import { SaveStatus } from "@/components/editor/save-status";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
+import type { Text as CodeMirrorText } from "@codemirror/state";
 import {
   classifyFile,
   isTextBackedFile,
@@ -75,6 +76,13 @@ import { useUpdater } from "@/hooks/use-updater";
 import { useDocumentSave } from "@/hooks/use-document-save";
 import { retargetPath } from "@/lib/file-path";
 import { UpdateBanner } from "@/components/ui/update-banner";
+import type { FileVersionToken, SourceDocumentSnapshot } from "@/lib/source-document";
+import {
+  shouldTrackLiveTextStats,
+  type SourceInspection,
+  type SourceProfile,
+} from "@/lib/resource-policy";
+import type { FileOpenPerformanceTrace } from "@/lib/open-performance";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"]);
 
@@ -89,6 +97,7 @@ export function GhostLayout() {
   const forwardHistoryRef = useRef<string[]>([]);
   const recentCycleRef = useRef<{ paths: string[]; index: number } | null>(null);
   const openRequestRef = useRef(0);
+  const openAbortRef = useRef<AbortController | null>(null);
   const setActiveFile = useCallback((path: string | null) => {
     activeFileRef.current = path;
     _setActiveFile(path);
@@ -96,12 +105,18 @@ export function GhostLayout() {
   }, [activeFileStore]);
   const [fileContent, setFileContent] = useState<string>("");
   const [fileDescriptor, setFileDescriptor] = useState<FileDescriptor | null>(null);
+  const [sourceDocument, setSourceDocument] = useState<CodeMirrorText | null>(null);
+  const [sourceProfile, setSourceProfile] = useState<SourceProfile | null>(null);
+  const [sourceInspection, setSourceInspection] = useState<SourceInspection | null>(null);
+  const [sourceLineSeparator, setSourceLineSeparator] = useState("\n");
+  const [openPerformance, setOpenPerformance] = useState<FileOpenPerformanceTrace | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [isRenamingHeader, setIsRenamingHeader] = useState(false);
   const [headerRenameName, setHeaderRenameName] = useState("");
   const [activeDragName, setActiveDragName] = useState<string | null>(null);
   const [liveText, setLiveText] = useState("");
+  const [forceStaticTextStats, setForceStaticTextStats] = useState(false);
   const [newlyCreatedFile, setNewlyCreatedFile] = useState<string | null>(null);
   const [newlyCreatedFolder, setNewlyCreatedFolder] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -128,6 +143,7 @@ export function GhostLayout() {
   // we apply an external change. Deliberately NOT bound to fileContent state
   // (which only feeds the initial prop to <MarkdownEditor>).
   const fileContentRef = useRef<string | null>(null);
+  const fileVersionRef = useRef<FileVersionToken | null>(null);
   const editorInstanceRef = useRef<Editor | null>(null);
   editorInstanceRef.current = editorInstance;
   const cmViewRef = useRef<EditorView | null>(null);
@@ -138,6 +154,10 @@ export function GhostLayout() {
   const retargetPromiseRef = useRef<Promise<void> | null>(null);
   const fileDescriptorRef = useRef<FileDescriptor | null>(fileDescriptor);
   fileDescriptorRef.current = fileDescriptor;
+  const sourceProfileRef = useRef<SourceProfile | null>(sourceProfile);
+  sourceProfileRef.current = sourceProfile;
+  const sourceInspectionRef = useRef<SourceInspection | null>(sourceInspection);
+  sourceInspectionRef.current = sourceInspection;
   const styleBarRef = useRef(settings.showStyleBar);
   styleBarRef.current = settings.showStyleBar;
   const {
@@ -219,6 +239,9 @@ export function GhostLayout() {
 
   const openFile = useCallback(async (path: string, recordHistory = true): Promise<boolean> => {
     const requestId = ++openRequestRef.current;
+    openAbortRef.current?.abort();
+    const abortController = new AbortController();
+    openAbortRef.current = abortController;
     const previousPath = activeFileRef.current;
     if (activeFileRef.current && activeFileRef.current !== path) {
       try {
@@ -233,7 +256,7 @@ export function GhostLayout() {
       setShowSettings(false);
       closeSearch();
 
-      const model = await loadFileModel(path);
+      const model = await loadFileModel(path, undefined, abortController.signal);
 
       if (requestId !== openRequestRef.current) return false;
 
@@ -245,15 +268,25 @@ export function GhostLayout() {
       }
 
       fileContentRef.current = model.content;
+      fileVersionRef.current = model.version;
       setFileDescriptor(model.descriptor);
+      setSourceDocument(model.sourceDocument);
+      setSourceProfile(model.sourceProfile);
+      setSourceInspection(model.sourceInspection);
+      setSourceLineSeparator(model.lineSeparator);
+      setOpenPerformance(model.openPerformance);
       setActiveFile(path);
       setFileContent(model.content);
       setLiveText(model.content);
+      setForceStaticTextStats(false);
       addRecentFile(path);
       return true;
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return false;
       console.error("Failed to read file:", err);
       return false;
+    } finally {
+      if (openAbortRef.current === abortController) openAbortRef.current = null;
     }
   }, [closeSearch, addRecentFile, setActiveFile]);
 
@@ -318,8 +351,20 @@ export function GhostLayout() {
 
   const documentSave = useDocumentSave({
     knownDiskContent: fileContentRef,
+    knownDiskVersion: fileVersionRef,
     lastSaveTimestamp,
   });
+
+  useEffect(() => {
+    const flushAllSaves = async () => {
+      await window.__ghostFlushEditorSave?.();
+      await documentSave.flush();
+    };
+    window.__ghostFlushSave = flushAllSaves;
+    return () => {
+      if (window.__ghostFlushSave === flushAllSaves) delete window.__ghostFlushSave;
+    };
+  }, [documentSave.flush]);
 
   const handleContentChange = useCallback(
     async (markdown: string) => {
@@ -333,6 +378,27 @@ export function GhostLayout() {
       await documentSave.save(path, markdown);
     },
     [documentSave.save]
+  );
+
+  const handleSourceChange = useCallback(
+    async (snapshot: SourceDocumentSnapshot) => {
+      await retargetPromiseRef.current;
+      const path = activeFileRef.current;
+      if (!path) return;
+      // Saving walks the immutable CodeMirror tree in bounded chunks. Only
+      // small, fully featured documents may be flattened for header stats.
+      if (shouldTrackLiveTextStats(
+        sourceProfileRef.current,
+        sourceInspectionRef.current,
+        snapshot.document.length,
+      )) {
+        setLiveText(snapshot.document.toString());
+      } else {
+        setForceStaticTextStats(true);
+      }
+      await documentSave.saveSource(path, snapshot);
+    },
+    [documentSave.saveSource],
   );
 
   const handleFsChange = useCallback(() => {
@@ -351,10 +417,39 @@ export function GhostLayout() {
     getPath: () => isTextBackedFile(fileDescriptorRef.current) ? activeFileRef.current : null,
     applyContent: applyContentRef,
     contentRef: fileContentRef,
+    versionRef: fileVersionRef,
     lastSaveTimestamp,
     pendingSaveCount: documentSave.pendingSaveRef,
     hasFailedSave: documentSave.hasFailedSaveRef,
-    onContentApplied: (content) => setLiveText(content),
+    onContentApplied: (content) => {
+      setLiveText(content);
+      setForceStaticTextStats(!shouldTrackLiveTextStats(
+        sourceProfileRef.current,
+        sourceInspectionRef.current,
+        content.length,
+      ));
+    },
+    onVersionChanged: async (path) => {
+      const model = await loadFileModel(path);
+      if (activeFileRef.current !== path) return true;
+
+      if (sourceProfileRef.current === "normal" && model.sourceProfile === "normal") {
+        const applied = applyContentRef.current?.(model.content) ?? false;
+        if (!applied) return true;
+      } else {
+        setFileContent(model.content);
+        setSourceDocument(model.sourceDocument);
+      }
+      fileContentRef.current = model.content || null;
+      fileVersionRef.current = model.version;
+      setFileDescriptor(model.descriptor);
+      setSourceProfile(model.sourceProfile);
+      setSourceInspection(model.sourceInspection);
+      setSourceLineSeparator(model.lineSeparator);
+      setLiveText(model.sourceProfile === "normal" ? model.content : "");
+      setForceStaticTextStats(false);
+      return true;
+    },
   });
 
   const retargetNavigationHistory = useCallback((oldPath: string, newPath: string) => {
@@ -396,10 +491,19 @@ export function GhostLayout() {
 
       let content = fileContentRef.current ?? "";
       let descriptor = classifyFile(renamedPath);
+      let nextSourceDocument: CodeMirrorText | null = null;
+      let nextSourceProfile: SourceProfile | null = null;
+      let nextSourceInspection: SourceInspection | null = null;
+      let nextLineSeparator = "\n";
       try {
         const model = await loadFileModel(renamedPath);
         content = model.content;
         descriptor = model.descriptor;
+        fileVersionRef.current = model.version;
+        nextSourceDocument = model.sourceDocument;
+        nextSourceProfile = model.sourceProfile;
+        nextSourceInspection = model.sourceInspection;
+        nextLineSeparator = model.lineSeparator;
       } catch (error) {
         console.error("Failed to refresh renamed file:", error);
         if (isTextBackedFile(previousDescriptor) && descriptor.loadMode === "probe-text") {
@@ -415,7 +519,12 @@ export function GhostLayout() {
       lastSaveTimestamp.current = Date.now();
       setFileContent(content);
       setLiveText(content);
+      setForceStaticTextStats(false);
       setFileDescriptor(descriptor);
+      setSourceDocument(nextSourceDocument);
+      setSourceProfile(nextSourceProfile);
+      setSourceInspection(nextSourceInspection);
+      setSourceLineSeparator(nextLineSeparator);
       setActiveFile(renamedPath);
       return renamedPath;
     })();
@@ -453,7 +562,12 @@ export function GhostLayout() {
       if (currentFile && (currentFile === path || currentFile.startsWith(path + "/"))) {
         setActiveFile(null);
         setFileDescriptor(null);
+        setSourceDocument(null);
+        setSourceProfile(null);
+        setSourceInspection(null);
         setFileContent("");
+        setForceStaticTextStats(false);
+        fileVersionRef.current = null;
       }
       handleFsChange();
       // Notify accessory windows — they will auto-close
@@ -1423,6 +1537,8 @@ export function GhostLayout() {
                           text={liveText}
                           countMode={settings.countMode}
                           onCountModeChange={(countMode) => updateSettings({ countMode })}
+                          sourceInspection={sourceInspection}
+                          forceStatic={forceStaticTextStats}
                         />
                       )}
                     </>
@@ -1449,6 +1565,7 @@ export function GhostLayout() {
               filePath={activeFile}
               content={fileContent}
               onContentChange={handleContentChange}
+              onSourceChange={handleSourceChange}
               searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
               replaceTerm={search.searchOpen ? search.replaceTerm : ""}
               onSearchResults={search.handleSearchResults}
@@ -1457,6 +1574,11 @@ export function GhostLayout() {
               showStyleBar={settings.showStyleBar}
               onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
               descriptor={fileDescriptor}
+              sourceDocument={sourceDocument}
+              sourceProfile={sourceProfile}
+              sourceInspection={sourceInspection}
+              lineSeparator={sourceLineSeparator}
+              openPerformance={openPerformance}
             />
           ) : (
             <div className="flex h-full items-center justify-center">

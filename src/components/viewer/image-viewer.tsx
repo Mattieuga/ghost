@@ -1,91 +1,103 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-const MIME_MAP: Record<string, string> = {
-  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
-  gif: "image/gif", webp: "image/webp", bmp: "image/bmp", ico: "image/x-icon",
-  heic: "image/heic", heif: "image/heif", tiff: "image/tiff", tif: "image/tiff",
-  svg: "image/svg+xml",
-};
+import { useMediaAsset } from "@/hooks/use-media-asset";
+import { OpenExternalButton } from "@/components/viewer/open-external-button";
+
+interface ImageInspection {
+  width: number;
+  height: number;
+  frame_count: number;
+  estimated_decoded_bytes: number;
+  needs_thumbnail: boolean;
+  format: string | null;
+}
 
 interface ImageViewerProps {
   filePath: string;
   displayName?: string;
 }
 
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function ImageViewer({ filePath, displayName }: ImageViewerProps) {
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
-  const [dimensions, setDimensions] = useState<{ w: number; h: number } | null>(null);
-  const [fileSize, setFileSize] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const urlRef = useRef<string | null>(null);
+  const asset = useMediaAsset(filePath);
+  const [inspection, setInspection] = useState<ImageInspection | null>(null);
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const thumbnailRef = useRef<string | null>(null);
+  const fileName = displayName ?? filePath.split("/").pop() ?? filePath;
 
   useEffect(() => {
+    if (!asset.sourceUrl) return;
     let cancelled = false;
+    setInspection(null);
+    setPreviewError(null);
+    setThumbnailUrl(null);
+    if (thumbnailRef.current) {
+      URL.revokeObjectURL(thumbnailRef.current);
+      thumbnailRef.current = null;
+    }
 
-    setBlobUrl(null);
-    setDimensions(null);
-    setError(null);
+    const prepare = async () => {
+      try {
+        const details = await invoke<ImageInspection>("inspect_image", { path: filePath });
+        if (cancelled) return;
+        setInspection(details);
+        if (!details.needs_thumbnail) return;
 
-    Promise.all([
-      invoke<number[]>("read_image_preview", { path: filePath }),
-      invoke<{ size_bytes: number }>("get_file_metadata", { path: filePath }),
-    ])
-      .then(([data, metadata]) => {
-        const ext = filePath.split(".").pop()?.toLowerCase() ?? "png";
-        const mimeType = ext === "icns" ? "image/png" : MIME_MAP[ext] || "image/png";
-        const blob = new Blob([new Uint8Array(data)], { type: mimeType });
-        const url = URL.createObjectURL(blob);
+        const data = await invoke<number[]>("read_image_thumbnail", {
+          path: filePath,
+          maxPixelSize: 3072,
+        });
+        const url = URL.createObjectURL(new Blob([new Uint8Array(data)], { type: "image/png" }));
         if (cancelled) {
           URL.revokeObjectURL(url);
           return;
         }
-        setFileSize(metadata.size_bytes);
-        urlRef.current = url;
-        setBlobUrl(url);
-      })
-      .catch((reason) => {
-        if (!cancelled) setError(String(reason));
-      });
+        thumbnailRef.current = url;
+        setThumbnailUrl(url);
+      } catch (reason) {
+        if (!cancelled) setPreviewError(String(reason));
+      }
+    };
+    void prepare();
 
     return () => {
       cancelled = true;
-      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+      if (thumbnailRef.current) {
+        URL.revokeObjectURL(thumbnailRef.current);
+        thumbnailRef.current = null;
+      }
     };
-  }, [filePath]);
+  }, [asset.sourceUrl, filePath]);
 
-  const fileName = displayName ?? filePath.split("/").pop() ?? filePath;
-
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
+  const source = inspection?.needs_thumbnail ? thumbnailUrl : asset.sourceUrl;
+  const error = asset.error ?? previewError;
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Image */}
-      <div className="flex-1 flex items-center justify-center p-8 pt-16 min-h-0">
+    <div className="flex h-full flex-col">
+      <div className="flex min-h-0 flex-1 items-center justify-center p-8 pt-16">
         {error ? (
-          <span className="text-sm text-destructive">Unable to preview image: {error}</span>
-        ) : blobUrl ? (
-          <img
-            src={blobUrl}
-            alt={fileName}
-            className="max-w-full max-h-full object-contain rounded-md"
-            onLoad={(e) => {
-              const img = e.currentTarget;
-              setDimensions({ w: img.naturalWidth, h: img.naturalHeight });
-            }}
-          />
+          <div className="flex max-w-md flex-col items-center gap-4 text-center">
+            <span className="text-sm text-destructive">Unable to preview image: {error}</span>
+            <OpenExternalButton filePath={filePath} />
+          </div>
+        ) : source ? (
+          <img src={source} alt={fileName} className="max-h-full max-w-full rounded-md object-contain" />
         ) : (
-          <span className="text-sm text-muted-foreground">Loading...</span>
+          <span className="text-sm text-muted-foreground">Loading…</span>
         )}
       </div>
 
-      {/* Footer */}
-      <div className="flex items-center justify-center gap-4 px-4 py-3 text-[11px] text-ring shrink-0">
-        {dimensions && <span>{dimensions.w} × {dimensions.h}</span>}
-        {fileSize !== null && <span>{formatSize(fileSize)}</span>}
+      <div className="flex shrink-0 items-center justify-center gap-4 px-4 py-3 text-[11px] text-ring">
+        {inspection && <span>{inspection.width} × {inspection.height}</span>}
+        {asset.sizeBytes !== null && <span>{formatSize(asset.sizeBytes)}</span>}
+        {inspection && inspection.frame_count > 1 && <span>{inspection.frame_count} frames</span>}
+        {inspection?.needs_thumbnail && <span>bounded preview · original not decoded</span>}
       </div>
     </div>
   );

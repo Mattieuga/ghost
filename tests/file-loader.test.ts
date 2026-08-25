@@ -3,6 +3,7 @@ import {
   loadFileModel,
   type FileLoaderBackend,
 } from "../src/lib/file-loader";
+import { EXTREME_SOURCE_MAX_BYTES } from "../src/lib/resource-policy";
 
 function backend(overrides: Partial<FileLoaderBackend> = {}): FileLoaderBackend {
   return {
@@ -13,6 +14,14 @@ function backend(overrides: Partial<FileLoaderBackend> = {}): FileLoaderBackend 
 }
 
 describe("loadFileModel", () => {
+  const version = {
+    canonical_path: "/tmp/large.log",
+    size_bytes: 25 * 1024 * 1024,
+    modified_ns: "1",
+    device_id: "1",
+    file_id: "2",
+  };
+
   it("reads known text without probing it", async () => {
     const reader = backend();
 
@@ -144,4 +153,58 @@ describe("loadFileModel", () => {
       },
     });
   });
+
+  it("builds a large source document from bounded chunks without readText", async () => {
+    const readSourceChunk = vi.fn(async (_path: string, offset: number) => offset === 0
+      ? { text: "hello\r\n", next_offset: 7, eof: false }
+      : { text: "world😀", next_offset: version.size_bytes, eof: true });
+    const reader = backend({
+      inspectSource: vi.fn(async () => ({
+        version,
+        size_bytes: version.size_bytes,
+        line_count: 2,
+        line_count_complete: true,
+        max_line_bytes: 8,
+        looks_textual: true,
+        line_separator: "\r\n",
+      })),
+      readSourceChunk,
+    });
+
+    const model = await loadFileModel("large.log", reader);
+
+    expect(model.sourceProfile).toBe("large");
+    expect(model.content).toBe("");
+    expect(model.sourceDocument?.toString()).toBe("hello\nworld😀");
+    expect(model.lineSeparator).toBe("\r\n");
+    expect(reader.readText).not.toHaveBeenCalled();
+    expect(readSourceChunk).toHaveBeenCalledTimes(2);
+  });
+
+  it("routes source beyond the safety ceiling without reading its body", async () => {
+    const hugeVersion = {
+      ...version,
+      size_bytes: EXTREME_SOURCE_MAX_BYTES + 1,
+    };
+    const readSourceChunk = vi.fn();
+    const reader = backend({
+      inspectSource: vi.fn(async () => ({
+        version: hugeVersion,
+        size_bytes: hugeVersion.size_bytes,
+        line_count: 10,
+        line_count_complete: true,
+        max_line_bytes: 8,
+        looks_textual: true,
+        line_separator: "\n",
+      })),
+      readSourceChunk,
+    });
+
+    const model = await loadFileModel("huge.log", reader);
+    expect(model.sourceProfile).toBe("extreme");
+    expect(model.descriptor.editable).toBe(false);
+    expect(readSourceChunk).not.toHaveBeenCalled();
+    expect(reader.readText).not.toHaveBeenCalled();
+  });
+
 });

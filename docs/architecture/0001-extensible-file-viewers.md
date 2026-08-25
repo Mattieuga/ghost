@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-08-21
 - Related plan: [`../plans/file-viewer-roadmap.md`](../plans/file-viewer-roadmap.md)
+- Related decision: [`0002-bounded-large-file-loading.md`](0002-bounded-large-file-loading.md)
+  (capability degradation and bounded resource handling)
 
 ## Context
 
@@ -78,9 +80,12 @@ payloads are not rendered; failed or unrenderable temporary artifacts remain
 subject to the same lease and cleanup rules.
 
 Materialization is explicit and bounded by the decompressed result, not the
-compressed input or untrusted manifest metadata. Text-like artifacts stop at
-10 MiB, images/PDF/fonts at 100 MiB, and audio/video at 256 MiB; 256 MiB is the
-absolute per-artifact ceiling. A request may be cancelled and partial output is
+compressed input or untrusted manifest metadata. Declared expanded sizes above
+the absolute ceiling are checked before extraction starts. After at most 16 KiB
+is decompressed for content sniffing, the declared size is compared with the
+real text/document/media budget so mislabeled extensions stay safe. Text-like artifacts stop at 10 MiB,
+images/PDF/fonts at 100 MiB, and audio/video at 256 MiB; 256 MiB is the absolute
+per-artifact ceiling. A request may be cancelled and partial output is
 removed. Completed artifacts are atomically published, leased while visible,
 and retained only in the current session. The cache evicts inactive least-
 recently-used entries above 512 MiB, is removed on normal exit, and abandoned
@@ -124,7 +129,9 @@ An extension is a routing hint, not proof that a container's codec is playable. 
 - Open-file state now includes a descriptor in addition to path and content.
 - Some existing convenience predicates become compatibility helpers or disappear.
 - Native Quick Look and media asset scoping still require platform-specific Rust work.
-- Content signatures, non-UTF-8 encodings, and large-text editing remain separate follow-up projects.
+- Content signatures and non-UTF-8 encodings remain separate follow-up projects;
+  ADR 0002 defines large-source editing, extreme-text inspection, and
+  format-specific decode budgets.
 - Broad video routing improves fallback behavior but cannot make an unsupported codec playable.
 - Archive behavior depends on the libarchive version supplied by the running
   macOS release, so recognized legacy formats can still fail gracefully.
@@ -154,4 +161,6 @@ Rejected as the primary path because Ghost's dedicated viewers provide a more co
 3. Add WebKit-backed audio through the scoped asset protocol.
 4. Reuse the media substrate for video and ambiguous media containers.
 5. Add a read-only archive browser and explicit OS-backed extraction.
-6. Add broader fallbacks such as Quick Look and an incremental hex viewer.
+6. Apply ADR 0002's streamed source editing, capability degradation,
+   extreme-text inspection, and binary-viewer budgets.
+7. Add broader fallbacks such as Quick Look and an incremental hex viewer.

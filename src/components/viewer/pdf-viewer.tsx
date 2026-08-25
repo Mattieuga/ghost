@@ -1,16 +1,17 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import * as pdfjsLib from "pdfjs-dist";
-import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { listen } from "@tauri-apps/api/event";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Maximize2, Minus, Plus, Search, X } from "lucide-react";
+import { OpenExternalButton } from "@/components/viewer/open-external-button";
+import type { FileVersionToken } from "@/lib/source-document";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+let nextPdfViewId = 0;
 
-const MIN_SCALE = 0.5;
-const MAX_SCALE = 4;
-const PINCH_SETTLE_MS = 100;
-
-function clampScale(scale: number): number {
-  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
+interface PdfNativeState {
+  page_count: number;
+  current_page: number;
+  scale_factor: number;
+  locked: boolean;
 }
 
 interface PdfViewerProps {
@@ -18,265 +19,268 @@ interface PdfViewerProps {
 }
 
 export function PdfViewer({ filePath }: PdfViewerProps) {
-  const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [scale, setScale] = useState(1.5);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const [nativeState, setNativeState] = useState<PdfNativeState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const pagesRef = useRef<HTMLDivElement>(null);
-  const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
-  const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-  const renderTasksRef = useRef<Map<number, pdfjsLib.RenderTask>>(new Map());
-  const scaleRef = useRef(scale);
-  const pinchScaleRef = useRef(scale);
-  const pinchTimerRef = useRef<number | null>(null);
-  const pinchAnchorRef = useRef<{ x: number; y: number } | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [matchCount, setMatchCount] = useState<number | null>(null);
+  const [matchIndex, setMatchIndex] = useState<number | null>(null);
+  const [searching, setSearching] = useState(false);
+  const findInputRef = useRef<HTMLInputElement>(null);
+  const activeViewIdRef = useRef<string | null>(null);
+  const searchRequestRef = useRef(0);
+  const [revision, setRevision] = useState(0);
+
+  const frame = useCallback(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return null;
+    const rect = surface.getBoundingClientRect();
+    return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
+    let mounted = false;
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    const sequence = ++nextPdfViewId;
+    const generation = Date.now() * 1000 + sequence;
+    const viewId = `pdf-${generation}`;
+    activeViewIdRef.current = viewId;
+    setNativeState(null);
+    setError(null);
 
-    invoke<number[]>("read_file_bytes", { path: filePath }).then(async (data) => {
-      if (cancelled) return;
+    const mount = async () => {
+      const bounds = frame();
+      if (!bounds) return;
       try {
-        const doc = await pdfjsLib.getDocument({ data: new Uint8Array(data) }).promise;
-        if (cancelled) { doc.destroy(); return; }
-        setPdf(doc);
-        setCurrentPage(1);
+        const state = await invoke<PdfNativeState>("show_pdf_view", {
+          path: filePath,
+          viewId,
+          generation,
+          ...bounds,
+        });
+        mounted = true;
+        if (cancelled) {
+          await invoke("hide_pdf_view", { viewId }).catch(() => undefined);
+          return;
+        }
+        setNativeState(state);
         setError(null);
-      } catch {
-        if (!cancelled) setError("Failed to load PDF");
+      } catch (reason) {
+        if (!cancelled) {
+          if (activeViewIdRef.current === viewId) activeViewIdRef.current = null;
+          setError(String(reason));
+        }
       }
-    });
+    };
+    void mount();
+
+    let resizeTimer: number | null = null;
+    const updateFrame = () => {
+      if (!mounted) return;
+      if (resizeTimer !== null) cancelAnimationFrame(resizeTimer);
+      resizeTimer = requestAnimationFrame(() => {
+        resizeTimer = null;
+        const bounds = frame();
+        if (bounds) void invoke("update_pdf_view_frame", { viewId, ...bounds });
+      });
+    };
+    const observer = new ResizeObserver(updateFrame);
+    observer.observe(surface);
+    window.addEventListener("resize", updateFrame);
 
     return () => {
       cancelled = true;
-      setPdf((prev) => { prev?.destroy(); return null; });
-      renderTasksRef.current.forEach((task) => task.cancel());
-      renderTasksRef.current.clear();
+      observer.disconnect();
+      window.removeEventListener("resize", updateFrame);
+      if (resizeTimer !== null) cancelAnimationFrame(resizeTimer);
+      if (activeViewIdRef.current === viewId) activeViewIdRef.current = null;
+      void invoke("hide_pdf_view", { viewId });
+    };
+  }, [filePath, frame, revision]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+    let signature: string | null = null;
+
+    const refresh = async () => {
+      try {
+        const version = await invoke<FileVersionToken>("get_file_version", { path: filePath });
+        if (cancelled) return;
+        const nextSignature = JSON.stringify(version);
+        if (signature === null) {
+          signature = nextSignature;
+          if (activeViewIdRef.current === null) {
+            setRevision((value) => value + 1);
+          }
+        } else if (signature !== nextSignature) {
+          signature = nextSignature;
+          setRevision((value) => value + 1);
+        }
+      } catch (reason) {
+        if (cancelled || signature === null) return;
+        signature = null;
+        const viewId = activeViewIdRef.current;
+        if (viewId) await invoke("hide_pdf_view", { viewId }).catch(() => undefined);
+        if (activeViewIdRef.current === viewId) activeViewIdRef.current = null;
+        setNativeState(null);
+        setError(`Unable to refresh PDF: ${String(reason)}`);
+      }
+    };
+
+    void refresh();
+    void listen<string>("fs-change", (event) => {
+      const changedPath = event.payload;
+      if (changedPath !== filePath && !filePath.startsWith(`${changedPath}/`)) return;
+      void refresh();
+    }).then((stopListening) => {
+      if (cancelled) stopListening();
+      else unlisten = stopListening;
+    });
+    const handleFocus = () => { void refresh(); };
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+      window.removeEventListener("focus", handleFocus);
     };
   }, [filePath]);
 
-  const renderPage = useCallback(async (pageNum: number) => {
-    if (!pdf) return;
-    const canvas = canvasRefs.current.get(pageNum);
-    if (!canvas) return;
+  useEffect(() => {
+    if (!nativeState) return;
+    const timer = window.setInterval(() => {
+      const viewId = activeViewIdRef.current;
+      if (!viewId) return;
+      void invoke<PdfNativeState>("get_pdf_view_state", { viewId })
+        .then((state) => {
+          if (activeViewIdRef.current === viewId) setNativeState(state);
+        })
+        .catch(() => undefined);
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [Boolean(nativeState)]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const previousTask = renderTasksRef.current.get(pageNum);
-    if (previousTask) {
-      previousTask.cancel();
-      try {
-        await previousTask.promise;
-      } catch {
-        // Cancellation is expected when the zoom level changes.
-      }
-    }
+  useEffect(() => {
+    window.__ghostViewerFind = () => {
+      setFindOpen(true);
+      requestAnimationFrame(() => findInputRef.current?.focus());
+      return true;
+    };
+    return () => { delete window.__ghostViewerFind; };
+  }, []);
 
-    // A newer zoom request superseded this callback while it was waiting for
-    // the previous render to finish.
-    if (scaleRef.current !== scale || canvasRefs.current.get(pageNum) !== canvas) return;
-
-    let renderTask: pdfjsLib.RenderTask | null = null;
+  const action = useCallback(async (name: string, page?: number) => {
+    const viewId = activeViewIdRef.current;
+    if (!viewId) return;
     try {
-      const page = await pdf.getPage(pageNum);
-      if (scaleRef.current !== scale || canvasRefs.current.get(pageNum) !== canvas) return;
-      const viewport = page.getViewport({ scale });
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = viewport.width * dpr;
-      canvas.height = viewport.height * dpr;
-      canvas.style.width = `${viewport.width}px`;
-      canvas.style.height = `${viewport.height}px`;
+      const state = await invoke<PdfNativeState>("pdf_view_action", { viewId, action: name, page });
+      if (activeViewIdRef.current === viewId) setNativeState(state);
+    } catch (reason) {
+      // The native surface sits above WebKit, so a DOM error overlay cannot
+      // safely replace it after mount. A stale action is non-fatal; lifecycle
+      // errors are handled by the mount path and external-open fallback.
+      console.error("PDFKit action failed", reason);
+    }
+  }, []);
 
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      renderTask = page.render({ canvasContext: ctx, viewport });
-      renderTasksRef.current.set(pageNum, renderTask);
-      await renderTask.promise;
-    } catch (e) {
-      if (e instanceof pdfjsLib.RenderingCancelledException) return;
-      console.warn(`Failed to render page ${pageNum}:`, e);
+  const search = useCallback(async (requestedIndex = 0) => {
+    if (!query) return;
+    const viewId = activeViewIdRef.current;
+    if (!viewId) return;
+    const requestId = ++searchRequestRef.current;
+    setSearching(true);
+    try {
+      const result = await invoke<{ count: number; current_index: number | null }>("search_pdf_view", {
+        viewId,
+        query,
+        matchIndex: Math.max(0, requestedIndex),
+      });
+      if (activeViewIdRef.current !== viewId || searchRequestRef.current !== requestId) return;
+      setMatchCount(result.count);
+      setMatchIndex(result.current_index);
+      const state = await invoke<PdfNativeState>("get_pdf_view_state", { viewId });
+      if (activeViewIdRef.current === viewId && searchRequestRef.current === requestId) {
+        setNativeState(state);
+      }
+    } catch (reason) {
+      if (activeViewIdRef.current !== viewId || searchRequestRef.current !== requestId) return;
+      setMatchCount(null);
+      setMatchIndex(null);
+      console.error("PDFKit search failed", reason);
     } finally {
-      if (renderTask && renderTasksRef.current.get(pageNum) === renderTask) {
-        renderTasksRef.current.delete(pageNum);
+      if (activeViewIdRef.current === viewId && searchRequestRef.current === requestId) {
+        setSearching(false);
       }
     }
-  }, [pdf, scale]);
+  }, [query]);
 
-  const commitScale = useCallback((requestedScale: number) => {
-    if (pinchTimerRef.current !== null) {
-      window.clearTimeout(pinchTimerRef.current);
-      pinchTimerRef.current = null;
+  const selectMatch = useCallback((offset: number) => {
+    if (!matchCount) {
+      void search(0);
+      return;
     }
-    const nextScale = clampScale(requestedScale);
-    const previousScale = scaleRef.current;
-    const pages = pagesRef.current;
-    const container = containerRef.current;
-    const visualZoom = Number.parseFloat(pages?.style.zoom || "1") || 1;
-    const visualScale = previousScale * visualZoom;
-    const canvasRatio = nextScale / previousScale;
-
-    // Preserve the live pinch preview while replacing CSS zoom with correctly
-    // sized canvases. PDF.js then refreshes their backing pixels at full DPR.
-    canvasRefs.current.forEach((canvas) => {
-      const width = Number.parseFloat(canvas.style.width);
-      const height = Number.parseFloat(canvas.style.height);
-      if (Number.isFinite(width)) canvas.style.width = `${width * canvasRatio}px`;
-      if (Number.isFinite(height)) canvas.style.height = `${height * canvasRatio}px`;
-    });
-    if (pages) pages.style.zoom = "1";
-
-    if (container) {
-      const anchor = pinchAnchorRef.current ?? {
-        x: container.clientWidth / 2,
-        y: container.clientHeight / 2,
-      };
-      const visualRatio = nextScale / visualScale;
-      container.scrollLeft = (container.scrollLeft + anchor.x) * visualRatio - anchor.x;
-      container.scrollTop = (container.scrollTop + anchor.y) * visualRatio - anchor.y;
-    }
-
-    scaleRef.current = nextScale;
-    pinchScaleRef.current = nextScale;
-    pinchAnchorRef.current = null;
-    setScale(nextScale);
-  }, []);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    const pages = pagesRef.current;
-    if (!container || !pages || !pdf) return;
-
-    const handleWheel = (event: WheelEvent) => {
-      // macOS WebKit reports trackpad pinch gestures as control-modified
-      // wheel events. Ordinary two-finger scrolling remains untouched.
-      if (!event.ctrlKey) return;
-      event.preventDefault();
-
-      const rect = container.getBoundingClientRect();
-      const anchor = {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-      };
-      const previousPinchScale = pinchScaleRef.current;
-      const nextPinchScale = clampScale(
-        previousPinchScale * Math.exp(-event.deltaY * 0.01)
-      );
-      if (nextPinchScale === previousPinchScale) return;
-
-      const incrementalRatio = nextPinchScale / previousPinchScale;
-      pages.style.zoom = String(nextPinchScale / scaleRef.current);
-      container.scrollLeft =
-        (container.scrollLeft + anchor.x) * incrementalRatio - anchor.x;
-      container.scrollTop =
-        (container.scrollTop + anchor.y) * incrementalRatio - anchor.y;
-
-      pinchScaleRef.current = nextPinchScale;
-      pinchAnchorRef.current = anchor;
-      if (pinchTimerRef.current !== null) window.clearTimeout(pinchTimerRef.current);
-      pinchTimerRef.current = window.setTimeout(() => {
-        pinchTimerRef.current = null;
-        commitScale(pinchScaleRef.current);
-      }, PINCH_SETTLE_MS);
-    };
-
-    container.addEventListener("wheel", handleWheel, { passive: false });
-    return () => {
-      container.removeEventListener("wheel", handleWheel);
-      if (pinchTimerRef.current !== null) {
-        window.clearTimeout(pinchTimerRef.current);
-        pinchTimerRef.current = null;
-      }
-      pages.style.zoom = "1";
-    };
-  }, [pdf, commitScale]);
-
-  const setCanvasRef = useCallback((pageNum: number, el: HTMLCanvasElement | null) => {
-    if (el) {
-      canvasRefs.current.set(pageNum, el);
-      renderPage(pageNum);
-    } else {
-      canvasRefs.current.delete(pageNum);
-    }
-  }, [renderPage]);
-
-  const setPageRef = useCallback((pageNum: number, el: HTMLDivElement | null) => {
-    if (el) pageRefs.current.set(pageNum, el);
-    else pageRefs.current.delete(pageNum);
-  }, []);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !pdf) return;
-
-    const observer = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          const num = Number(entry.target.getAttribute("data-page"));
-          if (num) setCurrentPage(num);
-        }
-      }
-    }, { root: container, threshold: 0.5 });
-
-    pageRefs.current.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, [pdf, scale]);
-
-  const scrollToPage = useCallback((pageNum: number) => {
-    const el = pageRefs.current.get(pageNum);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
-
-  const totalPages = pdf?.numPages ?? 0;
+    const current = matchIndex ?? 0;
+    void search((current + offset + matchCount) % matchCount);
+  }, [matchCount, matchIndex, search]);
 
   return (
-    <div className="flex flex-col h-full pt-12">
-      {error ? (
-        <div className="flex items-center justify-center flex-1">
-          <span className="text-sm text-destructive">{error}</span>
-        </div>
-      ) : pdf ? (
-        <>
-          <div ref={containerRef} className="flex-1 overflow-auto min-h-0">
-            <div ref={pagesRef} className="flex flex-col items-center gap-4 p-4">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((num) => (
-                <div
-                  key={num}
-                  ref={(el) => setPageRef(num, el)}
-                  data-page={num}
-                >
-                  <canvas ref={(el) => setCanvasRef(num, el)} />
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center justify-center gap-3 px-4 py-2 text-[11px] text-ring shrink-0">
-            <button
-              className="hover:text-foreground disabled:opacity-30"
-              disabled={currentPage <= 1}
-              onClick={() => scrollToPage(currentPage - 1)}
-            >
-              ← Prev
-            </button>
-            <span>{currentPage} / {totalPages}</span>
-            <button
-              className="hover:text-foreground disabled:opacity-30"
-              disabled={currentPage >= totalPages}
-              onClick={() => scrollToPage(currentPage + 1)}
-            >
-              Next →
-            </button>
-            <span className="mx-2 text-border">|</span>
-            <button className="hover:text-foreground" onClick={() => commitScale(pinchScaleRef.current - 0.25)}>−</button>
-            <span>{Math.round(scale * 100)}%</span>
-            <button className="hover:text-foreground" onClick={() => commitScale(pinchScaleRef.current + 0.25)}>+</button>
-          </div>
-        </>
-      ) : (
-        <div className="flex items-center justify-center flex-1">
-          <span className="text-sm text-muted-foreground">Loading...</span>
+    <div
+      className="flex h-full flex-col pt-12 outline-none"
+      data-viewer-focus-target
+      tabIndex={0}
+      onFocus={(event) => {
+        if (event.target === event.currentTarget) void action("focus");
+      }}
+    >
+      {findOpen && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-background px-3 py-2">
+          <input ref={findInputRef} value={query} onChange={(event) => {
+            searchRequestRef.current += 1;
+            setSearching(false);
+            setQuery(event.target.value);
+            setMatchCount(null);
+            setMatchIndex(null);
+            const viewId = activeViewIdRef.current;
+            if (viewId) {
+              void invoke("search_pdf_view", { viewId, query: "", matchIndex: 0 }).catch(() => undefined);
+            }
+          }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); selectMatch(event.shiftKey ? -1 : 1); } if (event.key === "Escape") setFindOpen(false); }} placeholder="Find in PDF…" className="h-7 min-w-56 rounded border border-border bg-muted/30 px-2 text-sm outline-none focus:border-ring" />
+          <button onClick={() => void search(0)} disabled={!query || searching} className="rounded px-2 py-1 text-xs hover:bg-muted disabled:opacity-40">{searching ? "Searching…" : "Find"}</button>
+          {matchCount !== null && <span className="min-w-16 text-center text-xs tabular-nums text-muted-foreground">{matchCount && matchIndex !== null ? `${matchIndex + 1} of ${matchCount}` : "No matches"}</span>}
+          <button title="Previous match (Shift-Return)" aria-label="Previous PDF match" onClick={() => selectMatch(-1)} disabled={!matchCount || searching} className="rounded p-1 hover:bg-muted disabled:opacity-30"><ChevronUp className="size-4" /></button>
+          <button title="Next match (Return)" aria-label="Next PDF match" onClick={() => selectMatch(1)} disabled={!matchCount || searching} className="rounded p-1 hover:bg-muted disabled:opacity-30"><ChevronDown className="size-4" /></button>
+          <div className="flex-1" />
+          <button onClick={() => setFindOpen(false)} className="rounded p-1 hover:bg-muted"><X className="size-4" /></button>
         </div>
       )}
+
+      <div className="relative min-h-0 flex-1">
+        <div ref={surfaceRef} className="absolute inset-0" />
+        {!nativeState && !error && <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading PDFKit…</div>}
+        {error && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-background px-8 text-center">
+            <span className="max-w-md text-sm text-destructive">Unable to preview PDF: {error}</span>
+            <OpenExternalButton filePath={filePath} />
+          </div>
+        )}
+      </div>
+
+      <div className="flex h-10 shrink-0 items-center justify-center gap-2 border-t border-border bg-background px-4 text-[11px] text-muted-foreground">
+        <button onClick={() => void action("previous")} disabled={!nativeState || nativeState.current_page <= 1} className="rounded p-1 hover:bg-muted hover:text-foreground disabled:opacity-30"><ChevronLeft className="size-4" /></button>
+        <span className="min-w-20 text-center tabular-nums">{nativeState ? `${nativeState.current_page} / ${nativeState.page_count}` : "—"}</span>
+        <button onClick={() => void action("next")} disabled={!nativeState || nativeState.current_page >= nativeState.page_count} className="rounded p-1 hover:bg-muted hover:text-foreground disabled:opacity-30"><ChevronRight className="size-4" /></button>
+        <span className="mx-1 h-4 w-px bg-border" />
+        <button onClick={() => void action("zoom-out")} className="rounded p-1 hover:bg-muted hover:text-foreground"><Minus className="size-4" /></button>
+        <span className="min-w-11 text-center tabular-nums">{nativeState ? `${Math.round(nativeState.scale_factor * 100)}%` : "—"}</span>
+        <button onClick={() => void action("zoom-in")} className="rounded p-1 hover:bg-muted hover:text-foreground"><Plus className="size-4" /></button>
+        <button title="Fit page" onClick={() => void action("fit")} className="rounded p-1 hover:bg-muted hover:text-foreground"><Maximize2 className="size-4" /></button>
+        <span className="mx-1 h-4 w-px bg-border" />
+        <button onClick={() => { setFindOpen(true); requestAnimationFrame(() => findInputRef.current?.focus()); }} className="flex items-center gap-1 rounded px-2 py-1 hover:bg-muted hover:text-foreground"><Search className="size-3.5" /> Find</button>
+      </div>
     </div>
   );
 }

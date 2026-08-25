@@ -53,3 +53,6 @@ PROJECT.md
 
 # Local user documents
 ghost-user-documents/
+
+# Runtime viewer fixtures (large local files, not source)
+/example test files/

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@source not "../../example test files";
 
 /* Theme is applied via CSS custom properties on :root, not via .dark class */
 

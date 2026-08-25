@@ -1,3 +1,6 @@
+import { SearchCursor } from "@codemirror/search";
+import { Text } from "@codemirror/state";
+
 /**
  * Map an open file through a file or containing-folder rename.
  * Returns null when the renamed path does not contain the open file.
@@ -30,4 +33,27 @@ export function retargetCompanionAssetReferences(
   const newAssets = companionAssetsName(newFilePath);
   if (oldAssets === newAssets) return content;
   return content.split(oldAssets).join(newAssets);
+}
+
+/** Retarget companion asset paths without flattening a CodeMirror document. */
+export function retargetCompanionAssetDocument(
+  document: Text,
+  oldFilePath: string,
+  newFilePath: string,
+): Text {
+  const oldAssets = companionAssetsName(oldFilePath);
+  const newAssets = companionAssetsName(newFilePath);
+  if (oldAssets === newAssets) return document;
+
+  const matches: Array<{ from: number; to: number }> = [];
+  const cursor = new SearchCursor(document, oldAssets);
+  while (!cursor.next().done) matches.push(cursor.value);
+
+  let result = document;
+  const replacement = Text.of([newAssets]);
+  for (let index = matches.length - 1; index >= 0; index -= 1) {
+    const match = matches[index];
+    result = result.replace(match.from, match.to, replacement);
+  }
+  return result;
 }

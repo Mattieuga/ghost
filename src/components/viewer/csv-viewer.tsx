@@ -2,69 +2,31 @@ import { useMemo, useState, useRef, useCallback, useEffect } from "react";
 import { CodeEditor } from "@/components/editor/code-editor";
 import type { EditorView } from "@codemirror/view";
 import { Table2, FileText } from "lucide-react";
+import {
+  CSV_ROW_HEIGHT,
+  parseCsv,
+  serializeCsv,
+  visibleCsvRowRange,
+  type VisibleCsvRowRange,
+} from "@/lib/csv";
+import type { SourceDocumentSnapshot } from "@/lib/source-document";
 
 interface CsvViewerProps {
   filePath: string;
   content: string;
   onContentChange?: (text: string) => void;
+  onSourceChange: (snapshot: SourceDocumentSnapshot) => Promise<void>;
   searchTerm?: string;
   replaceTerm?: string;
   onSearchResults?: (count: number, currentIndex: number) => void;
   onEditorReady?: (view: EditorView | null) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  lineSeparator?: string;
 }
 
-function parseCsv(text: string, delimiter: string): string[][] {
-  const rows: string[][] = [];
-  let current: string[] = [];
-  let field = "";
-  let inQuotes = false;
+const FALLBACK_VIEWPORT_HEIGHT = 800;
 
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-
-    if (inQuotes) {
-      if (ch === '"' && text[i + 1] === '"') {
-        field += '"';
-        i++;
-      } else if (ch === '"') {
-        inQuotes = false;
-      } else {
-        field += ch;
-      }
-    } else if (ch === '"') {
-      inQuotes = true;
-    } else if (ch === delimiter) {
-      current.push(field);
-      field = "";
-    } else if (ch === "\n" || (ch === "\r" && text[i + 1] === "\n")) {
-      current.push(field);
-      field = "";
-      if (current.some((c) => c !== "")) rows.push(current);
-      current = [];
-      if (ch === "\r") i++;
-    } else {
-      field += ch;
-    }
-  }
-
-  current.push(field);
-  if (current.some((c) => c !== "")) rows.push(current);
-
-  return rows;
-}
-
-function serializeCsv(rows: string[][], delimiter: string): string {
-  return rows.map((row) =>
-    row.map((cell) => {
-      if (cell.includes(delimiter) || cell.includes('"') || cell.includes("\n")) {
-        return `"${cell.replace(/"/g, '""')}"`;
-      }
-      return cell;
-    }).join(delimiter)
-  ).join("\n");
-}
-
-export function CsvViewer({ filePath, content, onContentChange, searchTerm, replaceTerm, onSearchResults, onEditorReady }: CsvViewerProps) {
+export function CsvViewer({ filePath, content, onContentChange, onSourceChange, searchTerm, replaceTerm, onSearchResults, onEditorReady, onDirtyChange, lineSeparator = "\n" }: CsvViewerProps) {
   const ext = filePath.split(".").pop()?.toLowerCase();
   const delimiter = ext === "tsv" ? "\t" : ",";
 
@@ -83,21 +45,62 @@ export function CsvViewer({ filePath, content, onContentChange, searchTerm, repl
   const [editValue, setEditValue] = useState("");
   const [mode, setMode] = useState<"table" | "text">("table");
   const inputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [visibleRows, setVisibleRows] = useState<VisibleCsvRowRange>({ start: 0, end: 0 });
 
   const header = rows[0] ?? [];
-  const body = rows.slice(1);
-  const colCount = rows.length > 0 ? Math.max(...rows.map((r) => r.length)) : 0;
+  const bodyRowCount = Math.max(0, rows.length - 1);
+  const colCount = useMemo(
+    () => rows.reduce((maximum, row) => Math.max(maximum, row.length), 0),
+    [rows],
+  );
+  const columnWidths = useMemo(
+    () => Array.from({ length: colCount }, (_, index) => {
+      const headerLength = header[index]?.length ?? 0;
+      return Math.min(320, Math.max(100, headerLength * 7 + 32));
+    }),
+    [colCount, header],
+  );
+  const tableWidth = useMemo(
+    () => 48 + columnWidths.reduce((total, width) => total + width, 0),
+    [columnWidths],
+  );
+
+  const updateVisibleRows = useCallback(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    const next = visibleCsvRowRange(
+      scroll.scrollTop,
+      scroll.clientHeight || FALLBACK_VIEWPORT_HEIGHT,
+      bodyRowCount,
+    );
+    setVisibleRows((current) =>
+      current.start === next.start && current.end === next.end ? current : next,
+    );
+  }, [bodyRowCount]);
+
+  useEffect(() => {
+    if (mode !== "table") return;
+    updateVisibleRows();
+    const scroll = scrollRef.current;
+    if (!scroll || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updateVisibleRows);
+    observer.observe(scroll);
+    return () => observer.disconnect();
+  }, [mode, updateVisibleRows]);
 
   const commitEdit = useCallback(() => {
     if (!editing) return;
-    const newRows = rows.map((r) => [...r]);
     const rowIdx = editing.row;
-    while (newRows[rowIdx].length <= editing.col) newRows[rowIdx].push("");
-    newRows[rowIdx][editing.col] = editValue;
+    const newRows = [...rows];
+    const nextRow = [...(newRows[rowIdx] ?? [])];
+    while (nextRow.length <= editing.col) nextRow.push("");
+    nextRow[editing.col] = editValue;
+    newRows[rowIdx] = nextRow;
     setRows(newRows);
     setEditing(null);
-    onContentChange?.(serializeCsv(newRows, delimiter));
-  }, [editing, editValue, rows, delimiter, onContentChange]);
+    onContentChange?.(serializeCsv(newRows, delimiter, lineSeparator));
+  }, [editing, editValue, rows, delimiter, lineSeparator, onContentChange]);
 
   const startEdit = useCallback((row: number, col: number) => {
     const value = rows[row]?.[col] ?? "";
@@ -164,7 +167,7 @@ export function CsvViewer({ filePath, content, onContentChange, searchTerm, repl
       </div>
       <div className="flex-1" />
       <div className="flex items-center gap-4">
-        <span>{body.length.toLocaleString()} rows</span>
+        <span>{bodyRowCount.toLocaleString()} rows</span>
         <span>{colCount} columns</span>
       </div>
     </div>
@@ -175,16 +178,19 @@ export function CsvViewer({ filePath, content, onContentChange, searchTerm, repl
       <div className="flex flex-col h-full">
         <div className="flex-1 min-h-0">
           <CodeEditor
-            content={serializeCsv(rows, delimiter)}
-            onContentChange={(text) => {
+            content={serializeCsv(rows, delimiter, lineSeparator)}
+            onContentChange={(snapshot) => {
+              const text = snapshot.document.toString();
               setRows(parseCsv(text, delimiter));
-              onContentChange?.(text);
+              return onSourceChange(snapshot);
             }}
             activeFile={filePath}
             searchTerm={searchTerm}
             replaceTerm={replaceTerm}
             onSearchResults={onSearchResults}
             onEditorReady={onEditorReady}
+            onDirtyChange={onDirtyChange}
+            lineSeparator={lineSeparator}
           />
         </div>
         {modeToggle}
@@ -192,10 +198,29 @@ export function CsvViewer({ filePath, content, onContentChange, searchTerm, repl
     );
   }
 
+  const range = visibleRows.end > visibleRows.start
+    ? visibleRows
+    : { start: 0, end: Math.min(bodyRowCount, 40) };
+  const renderedBodyRows = rows.slice(range.start + 1, range.end + 1);
+  const topSpacerHeight = range.start * CSV_ROW_HEIGHT;
+  const bottomSpacerHeight = Math.max(0, (bodyRowCount - range.end) * CSV_ROW_HEIGHT);
+
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-auto min-h-0 px-4 pb-4 pt-14">
-        <table className="border-collapse text-[13px]">
+      <div
+        ref={scrollRef}
+        data-csv-scroll-container
+        onScroll={updateVisibleRows}
+        className="flex-1 overflow-auto min-h-0 px-4 pb-4 pt-14"
+      >
+        <table
+          className="table-fixed border-collapse text-[13px]"
+          style={{ width: tableWidth }}
+        >
+          <colgroup>
+            <col style={{ width: 48 }} />
+            {columnWidths.map((width, index) => <col key={index} style={{ width }} />)}
+          </colgroup>
           <thead className="sticky top-0 z-10">
             <tr>
               <th className="bg-muted text-muted-foreground text-[11px] font-medium px-3 py-2 text-right border-b border-border" style={{ width: 48 }}>#</th>
@@ -212,11 +237,22 @@ export function CsvViewer({ filePath, content, onContentChange, searchTerm, repl
             </tr>
           </thead>
           <tbody>
-            {body.map((row, ri) => {
-              const globalRow = ri + 1;
+            {topSpacerHeight > 0 && (
+              <tr aria-hidden="true">
+                <td colSpan={colCount + 1} className="border-0 p-0" style={{ height: topSpacerHeight }} />
+              </tr>
+            )}
+            {renderedBodyRows.map((row, visibleIndex) => {
+              const bodyIndex = range.start + visibleIndex;
+              const globalRow = bodyIndex + 1;
               return (
-                <tr key={ri} className={ri % 2 === 0 ? "" : "bg-muted/30"}>
-                  <td className="text-[11px] text-ring px-3 py-1.5 text-right border-b border-border/50 tabular-nums">{ri + 1}</td>
+                <tr
+                  key={globalRow}
+                  data-csv-row-index={globalRow}
+                  className={bodyIndex % 2 === 0 ? "" : "bg-muted/30"}
+                  style={{ height: CSV_ROW_HEIGHT }}
+                >
+                  <td className="text-[11px] text-ring px-3 py-1.5 text-right border-b border-border/50 tabular-nums">{globalRow}</td>
                   {Array.from({ length: colCount }, (_, ci) => (
                     <td
                       key={ci}
@@ -230,6 +266,11 @@ export function CsvViewer({ filePath, content, onContentChange, searchTerm, repl
                 </tr>
               );
             })}
+            {bottomSpacerHeight > 0 && (
+              <tr aria-hidden="true">
+                <td colSpan={colCount + 1} className="border-0 p-0" style={{ height: bottomSpacerHeight }} />
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

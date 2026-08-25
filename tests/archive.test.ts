@@ -7,6 +7,10 @@ import {
   flattenArchiveTree,
   type ArchiveEntry,
 } from "../src/lib/archive";
+import {
+  ARCHIVE_MEDIA_PREVIEW_MAX_BYTES,
+  archivePreviewLimitForPath,
+} from "../src/lib/archive-preview-policy";
 
 const entries: ArchiveEntry[] = [
   { path: "README.md", kind: "file", size_bytes: 12, modified_ms: 1, link_target: null },
@@ -16,6 +20,12 @@ const entries: ArchiveEntry[] = [
 ];
 
 describe("archive utilities", () => {
+  it("preflights known entry types before materialization", () => {
+    expect(archivePreviewLimitForPath("customers.csv")).toBe(ARCHIVE_MEDIA_PREVIEW_MAX_BYTES);
+    expect(archivePreviewLimitForPath("scan.tiff")).toBe(ARCHIVE_MEDIA_PREVIEW_MAX_BYTES);
+    expect(archivePreviewLimitForPath("recording.flac")).toBe(ARCHIVE_MEDIA_PREVIEW_MAX_BYTES);
+  });
+
   it("labels compound archive extensions before simple ones", () => {
     expect(archiveFormatLabel("backup.TAR.GZ")).toBe("GZIP TAR");
     expect(archiveFormatLabel("backup.tbz2")).toBe("BZIP2 TAR");

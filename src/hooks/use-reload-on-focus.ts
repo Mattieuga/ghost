@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import type { FileVersionToken } from "@/lib/source-document";
 
 interface UseReloadOnFocusParams {
   /** Returns the current file path. Return null to skip the reload. */
@@ -15,6 +16,8 @@ interface UseReloadOnFocusParams {
   applyContent: React.RefObject<((content: string) => boolean) | null>;
   /** Ref tracking last-known-on-disk content. Updated after a successful apply. */
   contentRef: React.RefObject<string | null>;
+  /** Compact native identity used when no complete source string is retained. */
+  versionRef?: React.RefObject<FileVersionToken | null>;
   /** Ref tracking the timestamp of the last successful save from handleContentChange. */
   lastSaveTimestamp: React.RefObject<number>;
   /** Number of queued or in-flight saves. External reloads wait until it is zero. */
@@ -23,6 +26,8 @@ interface UseReloadOnFocusParams {
   hasFailedSave?: React.RefObject<boolean>;
   /** Called after content is applied in place. Receives the new content. */
   onContentApplied?: (content: string) => void;
+  /** Metadata-first model reload for profiled source documents. */
+  onVersionChanged?: (path: string, version: FileVersionToken) => Promise<boolean>;
 }
 
 /**
@@ -39,15 +44,19 @@ export function useReloadOnFocus({
   getPath,
   applyContent,
   contentRef,
+  versionRef,
   lastSaveTimestamp,
   pendingSaveCount,
   hasFailedSave,
   onContentApplied,
+  onVersionChanged,
 }: UseReloadOnFocusParams) {
   const getPathRef = useRef(getPath);
   getPathRef.current = getPath;
   const onContentAppliedRef = useRef(onContentApplied);
   onContentAppliedRef.current = onContentApplied;
+  const onVersionChangedRef = useRef(onVersionChanged);
+  onVersionChangedRef.current = onVersionChanged;
 
   // Serializes handler invocations — rapid focus cycles would otherwise queue
   // concurrent reads and double-dispatch transactions that collapse selection.
@@ -67,6 +76,18 @@ export function useReloadOnFocus({
 
       inFlight.current = true;
       try {
+        const version = await invoke<FileVersionToken>("get_file_version", { path });
+
+        // Large source saves intentionally do not retain a flattened string.
+        // Metadata equality keeps focus reload from recreating one merely to
+        // compare it with disk.
+        if (
+          versionRef?.current
+          && JSON.stringify(version) === JSON.stringify(versionRef.current)
+        ) return;
+
+        if (await onVersionChangedRef.current?.(path, version)) return;
+
         const content = await invoke<string>("read_file", { path });
 
         // Race guard — user may have navigated away during await.
@@ -80,6 +101,7 @@ export function useReloadOnFocus({
         if (!applied) return;
 
         contentRef.current = content;
+        if (versionRef) versionRef.current = version;
         onContentAppliedRef.current?.(content);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -93,5 +115,5 @@ export function useReloadOnFocus({
 
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
-  }, [applyContent, contentRef, hasFailedSave, lastSaveTimestamp, pendingSaveCount]);
+  }, [applyContent, contentRef, hasFailedSave, lastSaveTimestamp, pendingSaveCount, versionRef]);
 }

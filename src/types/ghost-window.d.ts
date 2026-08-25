@@ -25,6 +25,7 @@ interface GhostWindow {
   __ghostSettings?: () => void;
   __ghostToggleStyleBar?: () => void;
   __ghostFlushSave?: () => Promise<void>;
+  __ghostFlushEditorSave?: () => Promise<void>;
 }
 
 declare global {

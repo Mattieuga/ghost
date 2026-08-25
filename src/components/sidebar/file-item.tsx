@@ -212,6 +212,7 @@ export const FileItem = React.memo(function FileItem({
       }
     } catch (err) {
       console.error("Failed to copy text:", err);
+      window.alert(`Ghost couldn't copy this file as text. ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 

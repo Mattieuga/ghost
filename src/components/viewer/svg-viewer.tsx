@@ -1,15 +1,18 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { CodeEditor } from "@/components/editor/code-editor";
 import type { EditorView } from "@codemirror/view";
+import type { SourceDocumentSnapshot } from "@/lib/source-document";
 
 interface SvgViewerProps {
   filePath: string;
   content: string;
-  onContentChange: (text: string) => void;
+  onSourceChange: (snapshot: SourceDocumentSnapshot) => Promise<void>;
   searchTerm?: string;
   replaceTerm?: string;
   onSearchResults?: (count: number, currentIndex: number) => void;
   onEditorReady?: (view: EditorView | null) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  lineSeparator?: string;
 }
 
 function svgToDataUrl(svgText: string): string {
@@ -19,11 +22,13 @@ function svgToDataUrl(svgText: string): string {
 export function SvgViewer({
   filePath,
   content,
-  onContentChange,
+  onSourceChange,
   searchTerm,
   replaceTerm,
   onSearchResults,
   onEditorReady,
+  onDirtyChange,
+  lineSeparator,
 }: SvgViewerProps) {
   const [preview, setPreview] = useState(content);
   const updateTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -34,11 +39,12 @@ export function SvgViewer({
     return () => { if (updateTimeout.current) clearTimeout(updateTimeout.current); };
   }, []);
 
-  const handleContentChange = useCallback((text: string) => {
-    onContentChange(text);
+  const handleContentChange = useCallback((snapshot: SourceDocumentSnapshot) => {
+    const text = snapshot.document.toString();
     if (updateTimeout.current) clearTimeout(updateTimeout.current);
     updateTimeout.current = setTimeout(() => setPreview(text), 300);
-  }, [onContentChange]);
+    return onSourceChange(snapshot);
+  }, [onSourceChange]);
 
   return (
     <div className="flex flex-col h-full">
@@ -68,6 +74,8 @@ export function SvgViewer({
           replaceTerm={replaceTerm}
           onSearchResults={onSearchResults}
           onEditorReady={onEditorReady}
+          onDirtyChange={onDirtyChange}
+          lineSeparator={lineSeparator}
         />
       </div>
     </div>

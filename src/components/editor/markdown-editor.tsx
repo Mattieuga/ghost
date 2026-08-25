@@ -353,8 +353,14 @@ export function MarkdownEditor({
 
   // Expose flush function for updater (and other consumers) to force-save before relaunch
   useEffect(() => {
-    window.__ghostFlushSave = flushPendingSave;
-    return () => { delete window.__ghostFlushSave; };
+    window.__ghostFlushEditorSave = flushPendingSave;
+    // A parent window normally installs the public coordinator. Preserve the
+    // standalone contract for tests and any future embedded editor consumer.
+    if (!window.__ghostFlushSave) window.__ghostFlushSave = flushPendingSave;
+    return () => {
+      if (window.__ghostFlushEditorSave === flushPendingSave) delete window.__ghostFlushEditorSave;
+      if (window.__ghostFlushSave === flushPendingSave) delete window.__ghostFlushSave;
+    };
   }, [flushPendingSave]);
 
   // Cleanup timeout on unmount

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { retargetCompanionAssetReferences, retargetPath } from "../src/lib/file-path";
+import { Text } from "@codemirror/state";
+import {
+  retargetCompanionAssetDocument,
+  retargetCompanionAssetReferences,
+  retargetPath,
+} from "../src/lib/file-path";
 
 describe("retargetPath", () => {
   it("retargets an open file after that file is renamed", () => {
@@ -40,5 +45,22 @@ describe("retargetCompanionAssetReferences", () => {
         "/notes/draft.markdown",
       ),
     ).toBe("![Diagram](draft.assets/diagram.png)");
+  });
+
+  it("retargets an immutable CodeMirror tree without changing the original", () => {
+    const original = Text.of([
+      "![One](draft.assets/one.png)",
+      "![Two](draft.assets/two.png)",
+    ]);
+    const retargeted = retargetCompanionAssetDocument(
+      original,
+      "/notes/draft.md",
+      "/notes/final.md",
+    );
+
+    expect(original.toString()).toContain("draft.assets");
+    expect(retargeted.toString()).toBe(
+      "![One](final.assets/one.png)\n![Two](final.assets/two.png)",
+    );
   });
 });

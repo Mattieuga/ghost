@@ -19,7 +19,7 @@ and how the file was encoded.
 | Tabular text | `.csv`, `.tsv` | Editable table and source modes |
 | SVG | `.svg` | Live image preview and editable XML source |
 | Raster images | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp`, `.ico`, `.icns`, `.heic`, `.heif`, `.tiff`, `.tif` | Read-only image preview |
-| PDF | `.pdf` | Multi-page read-only viewer with trackpad pinch zoom |
+| PDF | `.pdf` | Native PDFKit continuous read-only viewer with selection, Find, and zoom |
 | Fonts | `.ttf`, `.otf`, `.woff`, `.woff2` | Read-only specimen with editable sample text and preview size |
 | Audio | See [Audio](#audio) | Custom player backed by WebKit |
 | Video | See [Video](#video) | Custom player backed by WebKit, with fullscreen when available |
@@ -86,8 +86,9 @@ Extensionless and special filenames include `.env` variants, `Dockerfile`,
 `Vagrantfile`, `WORKSPACE`, and Bazel/Meson build files.
 
 Unknown files receive a bounded UTF-8 text probe. If the contents are valid,
-text-like UTF-8, Ghost opens the complete file in the source editor. Invalid
-UTF-8 and control-heavy binary data are never treated as editable text.
+text-like UTF-8, Ghost applies the same source-size policy as known text rather
+than first loading the complete file. Invalid UTF-8 and control-heavy binary
+data are never treated as editable text.
 
 The ambiguous `.ts` and `.mts` extensions are content-probed: textual files
 open as TypeScript, while binary MPEG transport streams open in the video
@@ -99,7 +100,7 @@ viewer.
 | --- | --- |
 | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp` | Standard WebKit/macOS image decoding |
 | `.ico` | Windows icon preview |
-| `.icns` | Ghost extracts and renders the largest available icon representation |
+| `.icns` | ImageIO renders an orientation-aware bounded icon thumbnail |
 | `.heic`, `.heif` | Availability depends on the installed macOS image codecs |
 | `.tiff`, `.tif` | TIFF preview |
 | `.svg` | Separate live preview plus editable source viewer |
@@ -108,12 +109,42 @@ Images display their intrinsic dimensions and file size when available.
 
 ## PDF and fonts
 
-PDFs are rendered with PDF.js as a continuous multi-page document. The viewer
-supports ordinary scrolling and two-finger pinch zoom, but does not edit or
-rewrite PDFs.
+PDFs are rendered by macOS PDFKit as a continuous multi-page document loaded
+directly from its file URL. The viewer supports native scrolling, trackpad
+zoom, selection/copy, page navigation, and Find without transferring the whole
+PDF through JavaScript. PDFs remain read-only; encrypted documents currently
+offer **Open Externally** for unlocking.
 
 TTF, OTF, WOFF, and WOFF2 fonts open in a specimen viewer. The sample text and
 preview size are adjustable, while the font file itself remains read-only.
+
+## Resource and large-file policy
+
+Ghost chooses capabilities from encoded size and format-specific working-set
+cost before loading a body. These are the current safety budgets, not claims
+that a valid file becomes invalid at the boundary.
+
+| Resource | Boundary | Behavior |
+| --- | --- | --- |
+| Source text | At most 20 MiB, 300,000 lines, and 200 KiB per line | Fully featured editable CodeMirror |
+| Large source text | Through 128 MiB, 5,000,000 lines, and 8 MiB per line | Editable CodeMirror; syntax, folding, wrapping, bracket helpers, and eager match counts disabled |
+| Extreme source text | Above 128 MiB, 5,000,000 lines, or 8 MiB for one line | Read-only 512 KiB windows with optimized native Find, active-match highlighting, and Open Externally |
+| Rich Markdown | Through 4 MiB and 100,000 lines | Rich Tiptap editor; larger documents open as exact editable source |
+| CSV/TSV table | Through 8 MiB and 100,000 rows | Virtualized table/source UI; larger files open as editable source |
+| Rendered SVG | Through 5 MiB | Rendered/source split; larger SVGs open as source only |
+| Ordinary image | At most 40 million decoded pixels and estimated 128 MiB RGBA | Direct scoped file URL |
+| Oversized image or ICNS | Above the image budget | ImageIO thumbnail, maximum 3,072 pixels on the longest edge and 32 MiB encoded output |
+| Font | Through 64 MiB encoded | Scoped file URL specimen; larger fonts fail safely |
+| Audio/video | No Ghost encoded-byte ceiling | Range-capable scoped URL; actual codec/platform limits still apply |
+| PDF | No Ghost encoded-byte ceiling | PDFKit file URL with a native visible-page working set |
+| Quick Open preview | 64 KiB | Prefix only; an ellipsis marks truncation |
+| Copy Text As | Through 20 MiB | Complete explicit copy; larger requests are rejected with guidance |
+
+CodeMirror saves use bounded chunks and atomic replacement, including for
+renames and CRLF/Unicode documents. The extreme viewer never autosaves a
+partial window. Clipboard/browser image insertion is capped at 64 MiB because
+the browser supplies a complete `File`; the file picker and filesystem drops
+copy larger image files natively, after which the decoded-pixel policy applies.
 
 ## Audio
 
@@ -199,10 +230,15 @@ font, audio, and video viewers; directories, links, duplicate paths, nested
 archives, encrypted entries, and unidentified binary payloads are not opened.
 
 Preview decompression goes only to Ghost's session cache, never beside the
-archive. Expanded text is limited to 10 MiB, images/PDF/fonts to 100 MiB, and
-audio/video to 256 MiB, with a 30-second operation limit and 512 MiB cache
-budget. Partial and abandoned previews are removed automatically, and the
-session cache is cleared when Ghost quits or next launches after a crash.
+archive. Declared entries above the absolute 256 MiB ceiling are rejected
+before extraction starts, and the Preview control is disabled for those known
+oversized entries. For smaller entries, Ghost sniffs at most 16 KiB and
+then rejects a declared size above the detected text/document/media budget.
+Expanded text is limited to 10 MiB,
+images/PDF/fonts to 100 MiB, and audio/video to 256 MiB, with a 30-second
+operation limit and 512 MiB cache budget. Partial and abandoned previews are
+removed automatically, and the session cache is cleared when Ghost quits or
+next launches after a crash.
 
 **Extract…** asks for a parent folder, creates a new collision-free directory
 named after the archive, extracts with macOS's `/usr/bin/tar`, and reveals the

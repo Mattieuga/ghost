@@ -29,6 +29,10 @@ import {
   flattenArchiveTree,
   type ArchiveTreeNode,
 } from "@/lib/archive";
+import {
+  archivePreviewLimitForPath,
+  archivePreviewTooLargeMessage,
+} from "@/lib/archive-preview-policy";
 import { formatMediaFileSize } from "@/lib/media";
 
 interface ArchiveViewerProps {
@@ -104,6 +108,13 @@ export function ArchiveViewer({ filePath }: ArchiveViewerProps) {
     () => visibleRows.find(({ node }) => node.id === selectedId)?.node ?? null,
     [selectedId, visibleRows],
   );
+  const selectedPreviewLimit = selectedNode?.kind === "file"
+    ? archivePreviewLimitForPath(selectedNode.path)
+    : null;
+  const selectedPreviewTooLarge = selectedNode?.kind === "file"
+    && selectedNode.sizeBytes !== null
+    && selectedPreviewLimit !== null
+    && selectedNode.sizeBytes > selectedPreviewLimit;
 
   const closeEntryPreview = useCallback((restoreTreeFocus = false) => {
     const requestId = previewRequestRef.current;
@@ -125,6 +136,10 @@ export function ArchiveViewer({ filePath }: ArchiveViewerProps) {
   const previewEntry = useCallback((node: ArchiveTreeNode) => {
     if (node.kind !== "file") return;
     closeEntryPreview(false);
+    const previewLimit = archivePreviewLimitForPath(node.path);
+    if (node.sizeBytes !== null && node.sizeBytes > previewLimit) {
+      return;
+    }
     const requestId = `archive-preview-${Date.now()}-${++previewCounterRef.current}`;
     previewRequestRef.current = requestId;
     setEntryPreview({ node, artifact: null, loading: true, error: null });
@@ -396,13 +411,20 @@ export function ArchiveViewer({ filePath }: ArchiveViewerProps) {
           )}
         </div>
         <span className="shrink-0 text-[10px] text-muted-foreground">
-          {normalizedQuery ? `${visibleRows.filter(({ node }) => node.kind !== "directory").length} matches` : "⌘F to search"}
+          {selectedPreviewTooLarge && selectedPreviewLimit !== null
+            ? `Preview unavailable above ${formatMediaFileSize(selectedPreviewLimit)}`
+            : normalizedQuery
+              ? `${visibleRows.filter(({ node }) => node.kind !== "directory").length} matches`
+              : "⌘F to search"}
         </span>
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          disabled={selectedNode?.kind !== "file"}
+          disabled={selectedNode?.kind !== "file" || selectedPreviewTooLarge}
+          title={selectedPreviewTooLarge && selectedPreviewLimit !== null
+            ? archivePreviewTooLargeMessage(selectedPreviewLimit)
+            : undefined}
           onClick={() => { if (selectedNode) previewEntry(selectedNode); }}
           aria-label="Preview selected archive entry"
         >

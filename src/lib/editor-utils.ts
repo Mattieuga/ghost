@@ -8,7 +8,29 @@ import {
 } from "../components/editor/markdown-source";
 
 export function countWords(text: string): number {
-  return text.trim().split(/\s+/).filter(Boolean).length;
+  let words = 0;
+  let inWord = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    const whitespace =
+      code <= 0x20
+      || code === 0x00a0
+      || code === 0x1680
+      || (code >= 0x2000 && code <= 0x200a)
+      || code === 0x2028
+      || code === 0x2029
+      || code === 0x202f
+      || code === 0x205f
+      || code === 0x3000
+      || code === 0xfeff;
+    if (whitespace) {
+      inWord = false;
+    } else if (!inWord) {
+      words += 1;
+      inWord = true;
+    }
+  }
+  return words;
 }
 
 /** Focus the primary keyboard target exposed by an interactive file viewer. */

@@ -641,6 +641,13 @@ fn materialize_to_file(
             sniff.extend_from_slice(&buffer[..count.min(remaining)]);
             if sniff.len() >= SNIFF_BYTES {
                 active_limit = preview_limit_for_sniff(&sniff);
+                if expected_size.is_some_and(|size| size > active_limit) {
+                    stop_reason.store(3, Ordering::Release);
+                    if let Ok(mut child) = child.lock() {
+                        let _ = child.kill();
+                    }
+                    break;
+                }
             }
         }
         total = total.saturating_add(count as u64);

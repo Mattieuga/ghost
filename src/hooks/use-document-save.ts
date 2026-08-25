@@ -1,5 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useRef, useState } from "react";
+import type { Text } from "@codemirror/state";
+import {
+  iterateSourceChunks,
+  type FileVersionToken,
+  type SourceDocumentSnapshot,
+} from "@/lib/source-document";
 
 export type DocumentSaveStatus = "saved" | "saving" | "error";
 
@@ -8,13 +14,13 @@ export interface DocumentSaveError {
   message: string;
 }
 
-interface FailedSave {
-  path: string;
-  content: string;
-}
+type FailedSave =
+  | { kind: "text"; path: string; content: string }
+  | { kind: "source"; path: string; snapshot: SourceDocumentSnapshot };
 
 interface UseDocumentSaveOptions {
   knownDiskContent: React.RefObject<string | null>;
+  knownDiskVersion?: React.RefObject<FileVersionToken | null>;
   lastSaveTimestamp: React.RefObject<number>;
 }
 
@@ -43,6 +49,7 @@ function normalizeSaveError(error: unknown): DocumentSaveError {
  */
 export function useDocumentSave({
   knownDiskContent,
+  knownDiskVersion,
   lastSaveTimestamp,
 }: UseDocumentSaveOptions) {
   const [status, setStatus] = useState<DocumentSaveStatus>("saved");
@@ -57,6 +64,11 @@ export function useDocumentSave({
   } | null>(null);
   const failedSaveRef = useRef<FailedSave | null>(null);
   const hasFailedSaveRef = useRef(false);
+  const latestQueuedSourceRef = useRef<{
+    path: string;
+    document: Text;
+    promise: Promise<void>;
+  } | null>(null);
 
   const save = useCallback(
     (path: string, content: string, force = false): Promise<void> => {
@@ -76,13 +88,15 @@ export function useDocumentSave({
       const promise = queueRef.current
         .catch(() => undefined)
         .then(async () => {
-          await invoke("write_file", {
+          const nextVersion = await invoke<FileVersionToken>("write_file", {
             path,
             content,
             expectedContent: force ? null : knownDiskContent.current,
+            expectedVersion: force ? null : knownDiskVersion?.current ?? null,
             force,
           });
           knownDiskContent.current = content;
+          if (knownDiskVersion) knownDiskVersion.current = nextVersion;
           lastSaveTimestamp.current = Date.now();
           failedSaveRef.current = null;
           hasFailedSaveRef.current = false;
@@ -99,7 +113,7 @@ export function useDocumentSave({
           }
         })
         .catch((saveError) => {
-          failedSaveRef.current = { path, content };
+          failedSaveRef.current = { kind: "text", path, content };
           hasFailedSaveRef.current = true;
           if (requestId === latestRequestRef.current) {
             setStatus("error");
@@ -108,20 +122,99 @@ export function useDocumentSave({
         })
         .finally(() => {
           pendingCountRef.current = Math.max(0, pendingCountRef.current - 1);
+          if (latestQueuedRef.current?.promise === promise) latestQueuedRef.current = null;
         });
 
       return promise;
     },
-    [knownDiskContent, lastSaveTimestamp],
+    [knownDiskContent, knownDiskVersion, lastSaveTimestamp],
+  );
+
+  const saveSource = useCallback(
+    (path: string, snapshot: SourceDocumentSnapshot, force = false): Promise<void> => {
+      const queued = latestQueuedSourceRef.current;
+      if (
+        !force
+        && pendingCountRef.current > 0
+        && queued?.path === path
+        && queued.document === snapshot.document
+      ) {
+        return queued.promise;
+      }
+
+      const requestId = ++latestRequestRef.current;
+      pendingCountRef.current += 1;
+      setStatus("saving");
+      setError(null);
+
+      const promise = queueRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          const handle = await invoke<{ session_id: number }>("begin_source_save", {
+            path,
+            expectedVersion: force ? null : knownDiskVersion?.current ?? null,
+            force,
+          });
+          let committed = false;
+          try {
+            for (const chunk of iterateSourceChunks(snapshot)) {
+              await invoke("append_source_save", { sessionId: handle.session_id, chunk });
+            }
+            const nextVersion = await invoke<FileVersionToken>("commit_source_save", {
+              sessionId: handle.session_id,
+            });
+            if (knownDiskVersion) knownDiskVersion.current = nextVersion;
+            committed = true;
+            // The source editor owns the canonical text tree. Keeping an old
+            // complete string here would make focus reload comparisons unsafe.
+            knownDiskContent.current = null;
+            lastSaveTimestamp.current = Date.now();
+            failedSaveRef.current = null;
+            hasFailedSaveRef.current = false;
+          } finally {
+            if (!committed) {
+              await invoke("abort_source_save", { sessionId: handle.session_id }).catch(() => undefined);
+            }
+          }
+        });
+
+      queueRef.current = promise;
+      latestQueuedSourceRef.current = { path, document: snapshot.document, promise };
+
+      promise
+        .then(() => {
+          if (requestId === latestRequestRef.current) {
+            setStatus("saved");
+            setError(null);
+          }
+        })
+        .catch((saveError) => {
+          failedSaveRef.current = { kind: "source", path, snapshot };
+          hasFailedSaveRef.current = true;
+          if (requestId === latestRequestRef.current) {
+            setStatus("error");
+            setError(normalizeSaveError(saveError));
+          }
+        })
+        .finally(() => {
+          pendingCountRef.current = Math.max(0, pendingCountRef.current - 1);
+          if (latestQueuedSourceRef.current?.promise === promise) latestQueuedSourceRef.current = null;
+        });
+
+      return promise;
+    },
+    [knownDiskContent, knownDiskVersion, lastSaveTimestamp],
   );
 
   const retry = useCallback(
     (force = false) => {
       const failed = failedSaveRef.current;
       if (!failed) return Promise.resolve();
-      return save(failed.path, failed.content, force);
+      return failed.kind === "text"
+        ? save(failed.path, failed.content, force)
+        : saveSource(failed.path, failed.snapshot, force);
     },
-    [save],
+    [save, saveSource],
   );
 
   const flush = useCallback(async () => {
@@ -134,6 +227,7 @@ export function useDocumentSave({
     pendingSaveRef: pendingCountRef,
     hasFailedSaveRef,
     save,
+    saveSource,
     retry,
     flush,
   };

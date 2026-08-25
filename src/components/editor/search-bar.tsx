@@ -40,7 +40,9 @@ export function SearchBar({
   }, [searchInputRef]);
 
   const resultText = searchTerm
-    ? resultCount > 0
+    ? resultCount < 0
+      ? "Large file"
+      : resultCount > 0
       ? `${resultIndex + 1} of ${resultCount}`
       : "No results"
     : "";

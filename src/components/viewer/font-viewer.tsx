@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useMediaAsset } from "@/hooks/use-media-asset";
 
 interface FontViewerProps {
   filePath: string;
@@ -11,6 +11,7 @@ const UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const LOWERCASE = "abcdefghijklmnopqrstuvwxyz";
 const NUMERALS = "0123456789  !? & @ # $ % ( ) [ ] { }";
 let nextFontPreviewId = 0;
+const FONT_PREVIEW_MAX_BYTES = 64 * 1024 * 1024;
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -19,6 +20,7 @@ function formatSize(bytes: number): string {
 }
 
 export function FontViewer({ filePath, displayName }: FontViewerProps) {
+  const asset = useMediaAsset(filePath);
   const [fontFamily, setFontFamily] = useState<string | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
   const [fontSize, setFontSize] = useState(48);
@@ -40,16 +42,21 @@ export function FontViewer({ filePath, displayName }: FontViewerProps) {
     setFileSize(null);
     setError(null);
 
-    invoke<{ size_bytes: number }>("get_file_metadata", { path: filePath })
-      .then((metadata) => {
-        if (!cancelled) setFileSize(metadata.size_bytes);
-      })
-      .catch(() => {});
+    if (asset.loading) return () => { cancelled = true; };
+    if (asset.error || !asset.sourceUrl) {
+      setError(`Unable to load font: ${asset.error ?? "The font asset is unavailable"}`);
+      return () => { cancelled = true; };
+    }
+    if ((asset.sizeBytes ?? 0) > FONT_PREVIEW_MAX_BYTES) {
+      setFileSize(asset.sizeBytes);
+      setError("This font exceeds Ghost's 64 MB preview safety ceiling");
+      return () => { cancelled = true; };
+    }
+    setFileSize(asset.sizeBytes);
 
-    invoke<number[]>("read_file_bytes", { path: filePath })
-      .then(async (data) => {
-        const bytes = new Uint8Array(data);
-        const face = new FontFace(previewFamily, bytes.buffer);
+    Promise.resolve()
+      .then(async () => {
+        const face = new FontFace(previewFamily, `url(${JSON.stringify(asset.sourceUrl)})`);
         const loaded = await face.load();
         if (cancelled) return;
 
@@ -65,7 +72,7 @@ export function FontViewer({ filePath, displayName }: FontViewerProps) {
       cancelled = true;
       if (loadedFace) document.fonts.delete(loadedFace);
     };
-  }, [filePath, previewFamily]);
+  }, [asset.error, asset.loading, asset.sizeBytes, asset.sourceUrl, previewFamily]);
 
   const previewStyle = fontFamily
     ? { fontFamily: `"${fontFamily}", sans-serif` }

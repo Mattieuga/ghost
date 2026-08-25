@@ -31,6 +31,11 @@ export async function handleImageFile(file: File): Promise<{ src: string } | nul
   const activeFile = getActiveFilePath();
   if (!activeFile) return null;
 
+  const inlineLimit = 64 * 1024 * 1024;
+  if (file.size > inlineLimit) {
+    throw new Error("Clipboard image imports are limited to 64 MiB. Use the image picker for larger files.");
+  }
+
   const buffer = await file.arrayBuffer();
   const data = Array.from(new Uint8Array(buffer));
   const rawName = file.name || `image-${Date.now()}.png`;
@@ -50,10 +55,7 @@ export async function handleImageFromPath(filePath: string): Promise<string | nu
   const activeFile = getActiveFilePath();
   if (!activeFile) return null;
 
-  const data = await invoke<number[]>("read_file_bytes", { path: filePath });
-  const filename = filePath.substring(filePath.lastIndexOf("/") + 1).replace(/\s+/g, "-");
-  const relativePath = await invoke<string>("save_image", { activeFile, filename, data });
-  return relativePath;
+  return invoke<string>("save_image_from_path", { activeFile, sourcePath: filePath });
 }
 
 export const ResizableImage = Image.extend({

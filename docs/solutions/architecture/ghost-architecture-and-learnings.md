@@ -115,6 +115,29 @@ React 19 + TypeScript (Vite 7)
 
 Every plugin operation requires an explicit permission grant in `src-tauri/capabilities/default.json`. Unlike v1's allowlist, v2 uses fine-grained capability system. Deny rules always take precedence.
 
+### 7. Tailwind v4 can turn repo-local data into HMR dependencies
+
+**Problem:** Editing and saving a large CSV fixture appeared to crash and
+restart Ghost, even though the chunked native save completed successfully.
+
+**Root cause:** Tailwind v4 automatically scans repository content for utility
+class candidates. The `@tailwindcss/vite` plugin registers every scanned file
+as a Vite watch dependency and explicitly sends `full-reload` when one changes.
+Because Ghost's editable viewer fixtures live inside the repository, saving a
+fixture caused the development WebView to navigate with reload semantics.
+Production builds were unaffected because they have no Vite development
+server.
+
+**Solution:** Exclude `example test files/` from Tailwind's scan with `@source
+not` in `src/styles/globals.css` and from `server.watch.ignored` in
+`vite.config.ts`. Treat any future generated or runtime-editable corpus inside
+the repository the same way.
+
+**Diagnostic takeaway:** Distinguish an application crash from a development
+reload before changing resource limits. Here, Ghost and WebKit PIDs stayed
+alive, the save committed in 249 ms, and preserved Web Inspector logs showed
+`pagehide` followed by a Vite connection and navigation type `reload`.
+
 ## File Organization
 
 ```

@@ -8,6 +8,8 @@ mod context_menu;
 mod traffic_lights;
 #[cfg(target_os = "macos")]
 mod webview_config;
+#[cfg(target_os = "macos")]
+mod pdf_view;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -24,6 +26,9 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(watcher::WatcherState::new())
         .manage(commands::fs::FileWriteState::new())
+        .manage(commands::fs::SourceSaveState::new())
+        .manage(commands::fs::LargeTextSearchState::new())
+        .manage(pdf_view::PdfViewState::new())
         .manage(windows::EditorWindowMap(Mutex::new(HashMap::new())))
         .manage(windows::ClosingEditorWindows(Mutex::new(HashSet::new())))
         .manage(menu::ShowMainMenuItem(Mutex::new(None)))
@@ -36,11 +41,23 @@ pub fn run() {
             commands::fs::is_directory,
             commands::fs::read_directory,
             commands::fs::read_file,
+            commands::fs::read_text_preview,
             commands::fs::read_file_if_text,
-            commands::fs::read_file_bytes,
-            commands::fs::read_image_preview,
+            commands::fs::inspect_source,
+            commands::fs::read_source_chunk,
+            commands::fs::read_source_chunk_raw,
+            commands::fs::read_text_window,
+            commands::fs::search_large_text,
+            commands::fs::cancel_large_text_search,
+            commands::fs::inspect_image,
+            commands::fs::read_image_thumbnail,
             commands::fs::list_directory_files,
             commands::fs::write_file,
+            commands::fs::get_file_version,
+            commands::fs::begin_source_save,
+            commands::fs::append_source_save,
+            commands::fs::commit_source_save,
+            commands::fs::abort_source_save,
             commands::fs::create_file,
             commands::fs::create_directory,
             commands::fs::move_file,
@@ -50,6 +67,7 @@ pub fn run() {
             commands::fs::reveal_in_finder,
             commands::fs::open_url,
             commands::fs::save_image,
+            commands::fs::save_image_from_path,
             commands::fs::markdown_to_html,
             commands::fs::markdown_to_plain_text,
             commands::fs::get_file_metadata,
@@ -57,6 +75,12 @@ pub fn run() {
             commands::fs::list_system_fonts,
             commands::fs::open_with_default_app,
             commands::search::search_file_contents,
+            pdf_view::show_pdf_view,
+            pdf_view::update_pdf_view_frame,
+            pdf_view::hide_pdf_view,
+            pdf_view::pdf_view_action,
+            pdf_view::get_pdf_view_state,
+            pdf_view::search_pdf_view,
             watcher::watch_directories,
             windows::open_editor_window,
             windows::list_editor_windows,
@@ -170,6 +194,11 @@ pub fn run() {
                             }
                         }
                         tauri::WindowEvent::Destroyed => {
+                            #[cfg(target_os = "macos")]
+                            if let Some(state) = app_handle.try_state::<pdf_view::PdfViewState>() {
+                                pdf_view::cleanup_pdf_view(&state, label);
+                            }
+
                             if label.starts_with("editor-") {
                                 if let Some(map) = app_handle.try_state::<windows::EditorWindowMap>() {
                                     if let Ok(mut map_lock) = map.0.lock() {

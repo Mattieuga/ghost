@@ -1,21 +1,29 @@
 import { useEffect, useRef, useCallback } from "react";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection } from "@codemirror/view";
-import { EditorState, StateEffect } from "@codemirror/state";
+import { EditorState, StateEffect, type Text } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, indentOnInput, foldGutter, foldKeymap } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { search, searchKeymap, setSearchQuery, SearchQuery, findNext, findPrevious, replaceNext, replaceAll, SearchCursor } from "@codemirror/search";
 import { getLanguageSupport } from "@/lib/file-type";
 import { ghostTheme } from "./codemirror-theme";
+import { detectLineSeparator, type SourceDocumentSnapshot } from "@/lib/source-document";
+import type { SourceProfile } from "@/lib/resource-policy";
+import { performanceNow, type FileOpenPerformanceTrace } from "@/lib/open-performance";
+import { installPointerFocusScrollGuard } from "@/lib/codemirror-scroll";
 
 interface CodeEditorProps {
-  content: string;
-  onContentChange: (text: string) => void | Promise<void>;
+  content: string | Text;
+  onContentChange: (snapshot: SourceDocumentSnapshot) => Promise<void>;
   searchTerm?: string;
   replaceTerm?: string;
   onSearchResults?: (count: number, currentIndex: number) => void;
   activeFile: string;
   onEditorReady?: (view: EditorView | null) => void;
+  sourceProfile?: SourceProfile;
+  lineSeparator?: string;
+  onDirtyChange?: (dirty: boolean) => void;
+  openPerformance?: FileOpenPerformanceTrace | null;
 }
 
 function countMatches(doc: import("@codemirror/state").Text, term: string): number {
@@ -45,12 +53,20 @@ export function CodeEditor({
   onSearchResults,
   activeFile,
   onEditorReady,
+  sourceProfile = "normal",
+  lineSeparator,
+  onDirtyChange,
+  openPerformance,
 }: CodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dirtyRef = useRef(false);
+  const lastSubmittedRef = useRef<Text | null>(null);
   const onContentChangeRef = useRef(onContentChange);
   onContentChangeRef.current = onContentChange;
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onDirtyChangeRef.current = onDirtyChange;
   const matchCountRef = useRef(0);
   const currentIndexRef = useRef(0);
 
@@ -60,24 +76,41 @@ export function CodeEditor({
       saveTimeout.current = null;
     }
     const view = viewRef.current;
-    if (view) {
-      await onContentChangeRef.current(view.state.doc.toString());
+    if (view && (dirtyRef.current || lastSubmittedRef.current !== view.state.doc)) {
+      const document = view.state.doc;
+      lastSubmittedRef.current = document;
+      await onContentChangeRef.current({ document, lineSeparator: view.state.lineBreak });
+      if (viewRef.current?.state.doc === document) {
+        dirtyRef.current = false;
+        onDirtyChangeRef.current?.(false);
+      }
     }
   }, []);
 
-  const debouncedSave = useCallback((text: string) => {
+  const debouncedSave = useCallback((document: Text) => {
     if (saveTimeout.current) {
       clearTimeout(saveTimeout.current);
     }
     saveTimeout.current = setTimeout(() => {
       saveTimeout.current = null;
-      void Promise.resolve(onContentChangeRef.current(text)).catch(() => {});
-    }, 1000);
-  }, []);
+      lastSubmittedRef.current = document;
+      const view = viewRef.current;
+      const lineSeparator = view?.state.lineBreak ?? "\n";
+      void Promise.resolve(onContentChangeRef.current({ document, lineSeparator }))
+        .then(() => {
+          if (viewRef.current?.state.doc === document) {
+            dirtyRef.current = false;
+            onDirtyChangeRef.current?.(false);
+          }
+        })
+        .catch(() => {});
+    }, sourceProfile === "large" ? 2500 : 1000);
+  }, [sourceProfile]);
 
   // Mount CodeMirror
   useEffect(() => {
     if (!containerRef.current) return;
+    openPerformance?.markViewerStarted();
 
     const saveKeymap = keymap.of([{
       key: "Mod-s",
@@ -86,47 +119,74 @@ export function CodeEditor({
 
     const updateListener = EditorView.updateListener.of((update) => {
       if (update.docChanged) {
-        debouncedSave(update.state.doc.toString());
+        if (!dirtyRef.current) {
+          dirtyRef.current = true;
+          onDirtyChangeRef.current?.(true);
+        }
+        debouncedSave(update.state.doc);
       }
     });
 
-    const state = EditorState.create({
-      doc: content,
-      extensions: [
+    const sharedExtensions = [
+        EditorState.lineSeparator.of(
+          lineSeparator ?? (typeof content === "string" ? detectLineSeparator(content) : "\n"),
+        ),
         saveKeymap,
         lineNumbers(),
-        highlightActiveLineGutter(),
-        highlightActiveLine(),
         drawSelection(),
-        indentOnInput(),
-        bracketMatching(),
-        closeBrackets(),
-        foldGutter(),
         history(),
         search({ top: true }),
         keymap.of([
-          ...closeBracketsKeymap,
           ...defaultKeymap,
           ...historyKeymap,
-          ...foldKeymap,
           ...searchKeymap,
           indentWithTab,
         ]),
         updateListener,
         ...ghostTheme,
-        EditorView.lineWrapping,
-      ],
-    });
+    ];
+    const normalExtensions = sourceProfile === "normal" ? [
+      highlightActiveLineGutter(),
+      highlightActiveLine(),
+      indentOnInput(),
+      bracketMatching(),
+      closeBrackets(),
+      foldGutter(),
+      keymap.of([...closeBracketsKeymap, ...foldKeymap]),
+      EditorView.lineWrapping,
+    ] : [];
 
+    let stageStarted = performanceNow();
+    const state = EditorState.create({
+      doc: content,
+      extensions: [...sharedExtensions, ...normalExtensions],
+    });
+    openPerformance?.recordViewer(
+      "Create CodeMirror editor state",
+      performanceNow() - stageStarted,
+      `${state.doc.lines.toLocaleString()} lines`,
+    );
+
+    stageStarted = performanceNow();
     const view = new EditorView({
       state,
       parent: containerRef.current,
     });
+    const removePointerFocusScrollGuard = installPointerFocusScrollGuard(view);
+    openPerformance?.recordViewer("Create CodeMirror view", performanceNow() - stageStarted);
+    openPerformance?.markViewCreated();
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => openPerformance?.finishAfterFirstPaint());
+    });
 
     viewRef.current = view;
+    lastSubmittedRef.current = view.state.doc;
+    dirtyRef.current = false;
+    onDirtyChangeRef.current?.(false);
     onEditorReady?.(view);
 
-    getLanguageSupport(activeFile).then((lang) => {
+    if (sourceProfile === "normal") getLanguageSupport(activeFile).then((lang) => {
       if (lang && viewRef.current === view) {
         view.dispatch({
           effects: StateEffect.appendConfig.of(lang),
@@ -135,11 +195,19 @@ export function CodeEditor({
     });
 
     return () => {
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame) cancelAnimationFrame(secondFrame);
       if (saveTimeout.current) {
         clearTimeout(saveTimeout.current);
         saveTimeout.current = null;
-        void Promise.resolve(onContentChangeRef.current(view.state.doc.toString())).catch(() => {});
+        const document = view.state.doc;
+        lastSubmittedRef.current = document;
+        void Promise.resolve(onContentChangeRef.current({
+          document,
+          lineSeparator: view.state.lineBreak,
+        })).catch(() => {});
       }
+      removePointerFocusScrollGuard();
       view.destroy();
       viewRef.current = null;
       onEditorReady?.(null);
@@ -155,8 +223,14 @@ export function CodeEditor({
 
   // Expose flush function for updater
   useEffect(() => {
-    window.__ghostFlushSave = flushSave;
-    return () => { delete window.__ghostFlushSave; };
+    window.__ghostFlushEditorSave = flushSave;
+    // Keep the editor useful in isolation (including component tests), while
+    // the window-level coordinator replaces this with editor + native queue.
+    if (!window.__ghostFlushSave) window.__ghostFlushSave = flushSave;
+    return () => {
+      if (window.__ghostFlushEditorSave === flushSave) delete window.__ghostFlushEditorSave;
+      if (window.__ghostFlushSave === flushSave) delete window.__ghostFlushSave;
+    };
   }, [flushSave]);
 
   // Search integration — recount matches only when searchTerm changes
@@ -180,12 +254,19 @@ export function CodeEditor({
       })),
     });
 
+    if (sourceProfile === "large") {
+      matchCountRef.current = -1;
+      currentIndexRef.current = 0;
+      onSearchResults?.(-1, 0);
+      return;
+    }
+
     const count = countMatches(view.state.doc, searchTerm);
     const idx = findCurrentIndex(view.state.doc, searchTerm, view.state.selection.main.from);
     matchCountRef.current = count;
     currentIndexRef.current = idx;
     onSearchResults?.(count, count > 0 ? idx : 0);
-  }, [searchTerm, replaceTerm, onSearchResults]);
+  }, [searchTerm, replaceTerm, onSearchResults, sourceProfile]);
 
   // Register window.__ghostSearch — navigation uses cached count
   useEffect(() => {

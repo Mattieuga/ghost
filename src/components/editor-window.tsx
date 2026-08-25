@@ -9,6 +9,7 @@ import { TextStats } from "@/components/editor/text-stats";
 import { SaveStatus } from "@/components/editor/save-status";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
+import type { Text as CodeMirrorText } from "@codemirror/state";
 import { applyContentInPlace, focusViewerTarget } from "@/lib/editor-utils";
 import { SearchBar } from "@/components/editor/search-bar";
 import { useSettings } from "@/hooks/use-settings";
@@ -24,13 +25,24 @@ import {
 import { loadFileModel } from "@/lib/file-loader";
 import { OpenExternalButton } from "@/components/viewer/open-external-button";
 import { useDocumentSave } from "@/hooks/use-document-save";
-import { retargetCompanionAssetReferences, retargetPath } from "@/lib/file-path";
+import {
+  retargetCompanionAssetDocument,
+  retargetCompanionAssetReferences,
+  retargetPath,
+} from "@/lib/file-path";
 import {
   getPendingMarkdownDocument,
   isMarkdownDocumentDirty,
   markMarkdownDocumentClean,
   serializeMarkdownDocument,
 } from "@/components/editor/markdown-source";
+import type { FileVersionToken, SourceDocumentSnapshot } from "@/lib/source-document";
+import {
+  shouldTrackLiveTextStats,
+  type SourceInspection,
+  type SourceProfile,
+} from "@/lib/resource-policy";
+import type { FileOpenPerformanceTrace } from "@/lib/open-performance";
 
 interface EditorWindowProps {
   filePath: string;
@@ -43,9 +55,19 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   const filePathRef = useRef(initialFilePath);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [fileDescriptor, setFileDescriptor] = useState<FileDescriptor | null>(null);
+  const [sourceDocument, setSourceDocument] = useState<CodeMirrorText | null>(null);
+  const [sourceProfile, setSourceProfile] = useState<SourceProfile | null>(null);
+  const [sourceInspection, setSourceInspection] = useState<SourceInspection | null>(null);
+  const [sourceLineSeparator, setSourceLineSeparator] = useState("\n");
+  const [openPerformance, setOpenPerformance] = useState<FileOpenPerformanceTrace | null>(null);
   const fileDescriptorRef = useRef<FileDescriptor | null>(null);
   fileDescriptorRef.current = fileDescriptor;
+  const sourceProfileRef = useRef<SourceProfile | null>(sourceProfile);
+  sourceProfileRef.current = sourceProfile;
+  const sourceInspectionRef = useRef<SourceInspection | null>(sourceInspection);
+  sourceInspectionRef.current = sourceInspection;
   const [liveText, setLiveText] = useState("");
+  const [forceStaticTextStats, setForceStaticTextStats] = useState(false);
   const lastSaveTimestamp = useRef(0);
   const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
@@ -53,6 +75,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   const styleBarRef = useRef(settings.showStyleBar);
   styleBarRef.current = settings.showStyleBar;
   const fileContentRef = useRef<string | null>(null);
+  const fileVersionRef = useRef<FileVersionToken | null>(null);
   const editorInstanceRef = useRef<Editor | null>(null);
   editorInstanceRef.current = editorInstance;
   const cmViewRef = useRef<EditorView | null>(null);
@@ -62,6 +85,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   const closingRef = useRef(false);
   const skipNextPathLoadRef = useRef(false);
   const liveTextRef = useRef("");
+  const sourceDirtyRef = useRef(false);
 
   // Apply theme
   useEffect(() => {
@@ -86,23 +110,33 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       return;
     }
     let cancelled = false;
+    const abortController = new AbortController();
 
     const loadFile = async () => {
       try {
-        const model = await loadFileModel(filePath);
+        const model = await loadFileModel(filePath, undefined, abortController.signal);
         if (cancelled) return;
         setFileDescriptor(model.descriptor);
+        setSourceDocument(model.sourceDocument);
+        setSourceProfile(model.sourceProfile);
+        setSourceInspection(model.sourceInspection);
+        setSourceLineSeparator(model.lineSeparator);
+        setOpenPerformance(model.openPerformance);
         setFileContent(model.content);
         fileContentRef.current = model.content;
+        fileVersionRef.current = model.version;
         setLiveText(model.content);
         liveTextRef.current = model.content;
+        setForceStaticTextStats(false);
       } catch (err) {
-        if (!cancelled) console.error("Failed to read file:", err);
+        if (!cancelled && !(err instanceof DOMException && err.name === "AbortError")) {
+          console.error("Failed to read file:", err);
+        }
       }
     };
 
     loadFile();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; abortController.abort(); };
   }, [filePath]);
 
   // Listen for file deletion — auto-close this window
@@ -126,8 +160,20 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
 
   const documentSave = useDocumentSave({
     knownDiskContent: fileContentRef,
+    knownDiskVersion: fileVersionRef,
     lastSaveTimestamp,
   });
+
+  useEffect(() => {
+    const flushAllSaves = async () => {
+      await window.__ghostFlushEditorSave?.();
+      await documentSave.flush();
+    };
+    window.__ghostFlushSave = flushAllSaves;
+    return () => {
+      if (window.__ghostFlushSave === flushAllSaves) delete window.__ghostFlushSave;
+    };
+  }, [documentSave.flush]);
 
   // Retarget detached editors after a file or containing folder rename. Read
   // the renamed disk snapshot before saving so Ghost's companion .assets
@@ -150,10 +196,19 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       filePathRef.current = renamedPath;
       let diskContent = renamedKnown;
       let descriptor = classifyFile(renamedPath);
+      let nextSourceDocument: CodeMirrorText | null = null;
+      let nextSourceProfile: SourceProfile | null = null;
+      let nextSourceInspection: SourceInspection | null = null;
+      let nextLineSeparator = "\n";
       try {
         const model = await loadFileModel(renamedPath);
         diskContent = model.content;
         descriptor = model.descriptor;
+        fileVersionRef.current = model.version;
+        nextSourceDocument = model.sourceDocument;
+        nextSourceProfile = model.sourceProfile;
+        nextSourceInspection = model.sourceInspection;
+        nextLineSeparator = model.lineSeparator;
       } catch (error) {
         console.error("Failed to refresh renamed document:", error);
         if (isTextBackedFile(previousDescriptor) && descriptor.loadMode === "probe-text") {
@@ -163,25 +218,24 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
         }
       }
 
-      const currentEditorText = () => {
+      const currentStringEditorText = () => {
         if (tiptapEditor && isMarkdownDocumentDirty(tiptapEditor)) {
           const pending = getPendingMarkdownDocument(tiptapEditor);
           return pending.markdown ?? serializeMarkdownDocument(tiptapEditor);
         }
-        return tiptapEditor
-          ? knownBefore
-          : cmViewRef.current?.state.doc.toString() ?? liveTextRef.current;
+        return tiptapEditor ? knownBefore : liveTextRef.current;
       };
       const retargetEditorText = (text: string) => isDirectFileRename
         ? retargetCompanionAssetReferences(text, oldPath, newPath)
         : text;
-      const editorText = currentEditorText();
-      const hadLocalChanges = tiptapEditor
+      const editorText = currentStringEditorText();
+      const hadStringLocalChanges = tiptapEditor
         ? isMarkdownDocumentDirty(tiptapEditor)
-        : editorText !== knownBefore;
+        : !cmViewRef.current && editorText !== knownBefore;
 
       let visibleContent = diskContent;
-      if (hadLocalChanges) {
+      let visibleSourceDocument = nextSourceDocument;
+      if (hadStringLocalChanges) {
         fileContentRef.current = renamedKnown;
         try {
           if (tiptapEditor) {
@@ -196,24 +250,59 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
               markMarkdownDocumentClean(tiptapEditor, pending.revision);
             }
           } else {
-            let sourceText = editorText;
-            while (true) {
-              visibleContent = retargetEditorText(sourceText);
-              await documentSave.save(renamedPath, visibleContent);
-              const latestText = cmViewRef.current?.state.doc.toString() ?? sourceText;
-              if (latestText === sourceText) break;
-              sourceText = latestText;
-            }
+            visibleContent = retargetEditorText(editorText);
+            await documentSave.save(renamedPath, visibleContent);
           }
         } catch (error) {
           // Preserve the newest local snapshot in the replacement editor.
           // documentSave.flush() keeps close/relaunch blocked until Retry or
           // Overwrite succeeds.
-          visibleContent = retargetEditorText(currentEditorText());
+          visibleContent = retargetEditorText(currentStringEditorText());
           console.error("Renamed document needs save recovery:", error);
         }
-      } else {
+      } else if (!cmViewRef.current) {
         fileContentRef.current = diskContent;
+      }
+
+      // CodeMirror documents can be hundreds of megabytes. Preserve a dirty
+      // immutable tree across the rename and stream it to the new path without
+      // ever creating one giant JavaScript string. The loop drains edits made
+      // while a prior snapshot is being written.
+      const sourceView = cmViewRef.current;
+      if (sourceView && sourceDirtyRef.current) {
+        let localDocument = sourceView.state.doc;
+        let visibleDocument = localDocument;
+        try {
+          while (true) {
+            visibleDocument = isDirectFileRename
+              ? retargetCompanionAssetDocument(localDocument, oldPath, newPath)
+              : localDocument;
+            await documentSave.saveSource(renamedPath, {
+              document: visibleDocument,
+              lineSeparator: sourceView.state.lineBreak,
+            });
+            const latestDocument = cmViewRef.current?.state.doc ?? localDocument;
+            if (latestDocument === localDocument) break;
+            localDocument = latestDocument;
+          }
+          sourceDirtyRef.current = false;
+        } catch (error) {
+          localDocument = cmViewRef.current?.state.doc ?? localDocument;
+          visibleDocument = isDirectFileRename
+            ? retargetCompanionAssetDocument(localDocument, oldPath, newPath)
+            : localDocument;
+          console.error("Renamed source document needs save recovery:", error);
+        }
+
+        const visibleProfile = nextSourceProfile ?? sourceProfileRef.current;
+        if (visibleProfile === "large") {
+          visibleSourceDocument = visibleDocument;
+          visibleContent = "";
+        } else {
+          // Normal source documents are bounded to 20 MiB by policy.
+          visibleSourceDocument = null;
+          visibleContent = visibleDocument.toString();
+        }
       }
 
       liveTextRef.current = visibleContent;
@@ -221,11 +310,16 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       skipNextPathLoadRef.current = true;
       setFileContent(visibleContent);
       setLiveText(visibleContent);
+      setForceStaticTextStats(false);
       setFileDescriptor(descriptor);
+      setSourceDocument(visibleSourceDocument);
+      setSourceProfile(nextSourceProfile);
+      setSourceInspection(nextSourceInspection);
+      setSourceLineSeparator(nextLineSeparator);
       setFilePath(renamedPath);
     });
     return () => { unlisten.then((fn) => fn()); };
-  }, [documentSave.save]);
+  }, [documentSave.save, documentSave.saveSource]);
 
   // Native close requests are paused in Rust until the current editor has
   // flushed its debounce and the write has actually completed. A failed save
@@ -277,10 +371,39 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
     getPath: () => isTextBackedFile(fileDescriptorRef.current) ? filePathRef.current : null,
     applyContent: applyContentRef,
     contentRef: fileContentRef,
+    versionRef: fileVersionRef,
     lastSaveTimestamp,
     pendingSaveCount: documentSave.pendingSaveRef,
     hasFailedSave: documentSave.hasFailedSaveRef,
-    onContentApplied: (content) => setLiveText(content),
+    onContentApplied: (content) => {
+      setLiveText(content);
+      setForceStaticTextStats(!shouldTrackLiveTextStats(
+        sourceProfileRef.current,
+        sourceInspectionRef.current,
+        content.length,
+      ));
+    },
+    onVersionChanged: async (path) => {
+      const model = await loadFileModel(path);
+      if (filePathRef.current !== path) return true;
+      if (sourceProfileRef.current === "normal" && model.sourceProfile === "normal") {
+        const applied = applyContentRef.current?.(model.content) ?? false;
+        if (!applied) return true;
+      } else {
+        setFileContent(model.content);
+        setSourceDocument(model.sourceDocument);
+      }
+      fileContentRef.current = model.content || null;
+      fileVersionRef.current = model.version;
+      setFileDescriptor(model.descriptor);
+      setSourceProfile(model.sourceProfile);
+      setSourceInspection(model.sourceInspection);
+      setSourceLineSeparator(model.lineSeparator);
+      setLiveText(model.sourceProfile === "normal" ? model.content : "");
+      liveTextRef.current = model.sourceProfile === "normal" ? model.content : "";
+      setForceStaticTextStats(false);
+      return true;
+    },
   });
 
   const handleContentChange = useCallback(
@@ -290,6 +413,24 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       return documentSave.save(filePathRef.current, text);
     },
     [documentSave.save]
+  );
+
+  const handleSourceChange = useCallback(
+    async (snapshot: SourceDocumentSnapshot) => {
+      if (shouldTrackLiveTextStats(
+        sourceProfileRef.current,
+        sourceInspectionRef.current,
+        snapshot.document.length,
+      )) {
+        const text = snapshot.document.toString();
+        setLiveText(text);
+        liveTextRef.current = text;
+      } else {
+        setForceStaticTextStats(true);
+      }
+      await documentSave.saveSource(filePathRef.current, snapshot);
+    },
+    [documentSave.saveSource],
   );
 
   // Register window globals for Rust menu events
@@ -409,6 +550,8 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
                       text={liveText}
                       countMode={settings.countMode}
                       onCountModeChange={(countMode) => updateSettings({ countMode })}
+                      sourceInspection={sourceInspection}
+                      forceStatic={forceStaticTextStats}
                     />
                   )}
                 </>
@@ -434,6 +577,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
             filePath={filePath}
             content={fileContent}
             onContentChange={handleContentChange}
+            onSourceChange={handleSourceChange}
             searchTerm={search.searchOpen ? search.debouncedSearchTerm : ""}
             replaceTerm={search.searchOpen ? search.replaceTerm : ""}
             onSearchResults={search.handleSearchResults}
@@ -442,6 +586,12 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
             showStyleBar={settings.showStyleBar}
             onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
             descriptor={fileDescriptor}
+            sourceDocument={sourceDocument}
+            sourceProfile={sourceProfile}
+            sourceInspection={sourceInspection}
+            lineSeparator={sourceLineSeparator}
+            openPerformance={openPerformance}
+            onSourceDirtyChange={(dirty) => { sourceDirtyRef.current = dirty; }}
           />
         </main>
         {mdFile && editorInstance && mainEl && (

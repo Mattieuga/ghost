@@ -13,6 +13,8 @@ describe("file classification", () => {
     ["Sources/App.swift", "code", "text", true],
     ["Package.resolved", "code", "text", true],
     ["records.csv", "csv", "text", true],
+    ["landing.HTML", "html", "text", true],
+    ["document.xhtml", "html", "text", true],
     ["diagram.svg", "svg", "text", true],
     ["photo.PNG", "image", "viewer-owned", false],
     ["icon.icns", "image", "viewer-owned", false],
@@ -53,6 +55,13 @@ describe("file classification", () => {
       editable: false,
       canOpenExternally: true,
       mimeType: "audio/mpeg",
+    });
+    expect(classifyFile("index.html")).toMatchObject({
+      kind: "html",
+      loadMode: "text",
+      searchable: true,
+      editable: true,
+      mimeType: "text/html",
     });
   });
 

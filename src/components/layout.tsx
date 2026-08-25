@@ -208,7 +208,12 @@ export function GhostLayout() {
     [settings.showAllFiles]
   );
 
-  const { flatFiles: allFiles, getEntries, getError, expandFolder, isSkippedDir } = useFileTree(folders, extensions, refreshTrigger);
+  const { flatFiles: allFiles, getEntries, getError, expandFolder, isSkippedDir } = useFileTree(
+    folders,
+    extensions,
+    refreshTrigger,
+    settings.showHiddenFiles,
+  );
 
   const { closeSearch, openSearch } = search;
 
@@ -892,7 +897,8 @@ export function GhostLayout() {
     }
     setSidebarCollapsed((c) => !c);
     setSidebarHovered(false);
-  }, [sidebarCollapsed, sidebarWidth]);
+    if (!willExpand) focusEditor();
+  }, [focusEditor, sidebarCollapsed, sidebarWidth]);
 
   const focusFileTree = useCallback(async () => {
     if (sidebarCollapsed) await toggleSidebar();

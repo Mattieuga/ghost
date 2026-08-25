@@ -7,6 +7,7 @@ const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "i
 const PDF_EXTENSIONS = new Set(["pdf"]);
 const FONT_EXTENSIONS = new Set(["ttf", "otf", "woff", "woff2"]);
 const CSV_EXTENSIONS = new Set(["csv", "tsv"]);
+const HTML_EXTENSIONS = new Set(["html", "htm", "xhtml"]);
 const AUDIO_EXTENSIONS = new Set([
   "mp3", "m4a", "m4b", "aac",
   "wav", "wave", "bwf",
@@ -47,6 +48,7 @@ export type ViewerKind =
   | "markdown"
   | "code"
   | "csv"
+  | "html"
   | "svg"
   | "image"
   | "pdf"
@@ -92,6 +94,11 @@ const VIEWER_CAPABILITIES = {
 const MARKDOWN_DESCRIPTOR: FileDescriptor = { kind: "markdown", ...TEXT_CAPABILITIES };
 const CODE_DESCRIPTOR: FileDescriptor = { kind: "code", ...TEXT_CAPABILITIES };
 const CSV_DESCRIPTOR: FileDescriptor = { kind: "csv", ...TEXT_CAPABILITIES };
+const HTML_DESCRIPTOR: FileDescriptor = {
+  kind: "html",
+  ...TEXT_CAPABILITIES,
+  mimeType: "text/html",
+};
 const SVG_DESCRIPTOR: FileDescriptor = {
   kind: "svg",
   ...TEXT_CAPABILITIES,
@@ -497,6 +504,10 @@ export function isCsv(filePath: string): boolean {
   return CSV_EXTENSIONS.has(getExtension(filePath));
 }
 
+export function isHtml(filePath: string): boolean {
+  return HTML_EXTENSIONS.has(getExtension(filePath));
+}
+
 export function isSvg(filePath: string): boolean {
   return getExtension(filePath) === "svg";
 }
@@ -581,6 +592,7 @@ const FILE_TYPE_DEFINITIONS: readonly FileTypeDefinition[] = [
       };
     },
   },
+  { matches: isHtml, describe: () => HTML_DESCRIPTOR },
   { matches: isSvg, describe: () => SVG_DESCRIPTOR },
   { matches: isCsv, describe: () => CSV_DESCRIPTOR },
   { matches: isTextEditable, describe: () => CODE_DESCRIPTOR },

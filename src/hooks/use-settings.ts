@@ -6,6 +6,7 @@ import { DEFAULT_THEME } from "@/lib/theme-engine";
 
 export interface Settings {
   showAllFiles: boolean;
+  showHiddenFiles: boolean;
   showStyleBar: boolean;
   theme: string;
   themeColors: ThemeColors;
@@ -25,6 +26,7 @@ export interface Settings {
 
 const DEFAULTS: Settings = {
   showAllFiles: true,
+  showHiddenFiles: false,
   showStyleBar: true,
   theme: "factory",
   themeColors: {

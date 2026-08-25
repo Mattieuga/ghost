@@ -137,7 +137,12 @@ pub struct FileEntry {
 }
 
 #[tauri::command]
-pub async fn read_directory(path: String, extensions: Vec<String>, max_depth: Option<usize>) -> Result<Vec<FileEntry>, String> {
+pub async fn read_directory(
+    path: String,
+    extensions: Vec<String>,
+    max_depth: Option<usize>,
+    show_hidden: Option<bool>,
+) -> Result<Vec<FileEntry>, String> {
     let dir_path = Path::new(&path);
     if !dir_path.exists() {
         return Err(format!("Directory does not exist: {}", path));
@@ -147,10 +152,37 @@ pub async fn read_directory(path: String, extensions: Vec<String>, max_depth: Op
     }
 
     let limit = max_depth.unwrap_or(32);
-    read_dir_recursive(dir_path, &extensions, 0, limit).map_err(|e| e.to_string())
+    read_dir_recursive(
+        dir_path,
+        &extensions,
+        0,
+        limit,
+        show_hidden.unwrap_or(false),
+    )
+    .map_err(|e| e.to_string())
 }
 
-fn read_dir_recursive(dir: &Path, extensions: &[String], depth: usize, max_depth: usize) -> Result<Vec<FileEntry>, std::io::Error> {
+#[cfg(target_os = "macos")]
+fn is_file_package(path: &Path) -> bool {
+    use objc2_app_kit::NSWorkspace;
+    use objc2_foundation::NSString;
+
+    let path = NSString::from_str(&path.to_string_lossy());
+    NSWorkspace::sharedWorkspace().isFilePackageAtPath(&path)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn is_file_package(_path: &Path) -> bool {
+    false
+}
+
+fn read_dir_recursive(
+    dir: &Path,
+    extensions: &[String],
+    depth: usize,
+    max_depth: usize,
+    show_hidden: bool,
+) -> Result<Vec<FileEntry>, std::io::Error> {
     if depth >= max_depth {
         return Ok(Vec::new());
     }
@@ -173,16 +205,22 @@ fn read_dir_recursive(dir: &Path, extensions: &[String], depth: usize, max_depth
     for entry in dir_entries {
         let name = entry.file_name().to_string_lossy().to_string();
 
-        // Skip hidden files/directories
-        if name.starts_with('.') {
+        if !show_hidden && name.starts_with('.') {
             continue;
         }
 
         let path = entry.path();
-        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        let is_dir =
+            entry.file_type().map(|t| t.is_dir()).unwrap_or(false) && !is_file_package(&path);
 
         if is_dir {
-            let children = read_dir_recursive(&path, extensions, depth + 1, max_depth)?;
+            let children = read_dir_recursive(
+                &path,
+                extensions,
+                depth + 1,
+                max_depth,
+                show_hidden,
+            )?;
             // Always show directories (even empty ones)
             entries.push(FileEntry {
                 name,
@@ -291,6 +329,24 @@ pub async fn inspect_source(path: String, probe_text: Option<bool>) -> Result<So
     let source_path = Path::new(&path);
     let version = file_version(source_path)
         .map_err(|error| format!("Failed to inspect source: {}", error))?;
+    // Finder packages such as .app bundles are directories on disk but behave
+    // like files in macOS. A bounded negative text probe lets the shared
+    // loader route them to the external viewer instead of failing to open.
+    if source_path.is_dir() {
+        return Ok(SourceInspection {
+            size_bytes: version.size_bytes,
+            version,
+            line_count: 0,
+            line_count_complete: true,
+            max_line_bytes: 0,
+            looks_textual: false,
+            line_separator: "\n".to_string(),
+            diagnostics: cfg!(debug_assertions).then(|| SourceReadDiagnostics {
+                elapsed_us: started_at.elapsed().as_micros().min(u64::MAX as u128) as u64,
+                bytes_read: 0,
+            }),
+        });
+    }
     let mut file = fs::File::open(source_path)
         .map_err(|error| format!("Failed to inspect source: {}", error))?;
     let mut buffer = vec![0u8; 64 * 1024];
@@ -1857,6 +1913,70 @@ pub async fn get_file_metadata(path: String) -> Result<FileMetadata, String> {
     read_file_metadata(Path::new(&path))
 }
 
+#[cfg(target_os = "macos")]
+fn file_icon_png(path: &Path, pixel_size: u32) -> Result<Option<Vec<u8>>, String> {
+    use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSWorkspace};
+    use objc2_foundation::{NSDictionary, NSSize, NSString};
+
+    if !path.exists() {
+        return Ok(None);
+    }
+    let path = NSString::from_str(&path.to_string_lossy());
+    let icon = NSWorkspace::sharedWorkspace().iconForFile(&path);
+    icon.setSize(NSSize::new(pixel_size as f64, pixel_size as f64));
+    let tiff = icon
+        .TIFFRepresentation()
+        .ok_or_else(|| "macOS did not provide icon image data".to_string())?;
+    let bitmap = NSBitmapImageRep::imageRepWithData(&tiff)
+        .ok_or_else(|| "Could not decode the macOS file icon".to_string())?;
+    let properties = NSDictionary::dictionary();
+    let png = unsafe {
+        bitmap.representationUsingType_properties(NSBitmapImageFileType::PNG, &properties)
+    }
+    .ok_or_else(|| "Could not encode the macOS file icon".to_string())?;
+    let bytes = png.to_vec();
+    if bytes.len() > 8 * 1024 * 1024 {
+        return Err("The macOS file icon exceeded the preview safety limit".to_string());
+    }
+    Ok(Some(bytes))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn file_icon_png(_path: &Path, _pixel_size: u32) -> Result<Option<Vec<u8>>, String> {
+    Ok(None)
+}
+
+/// Return the Finder icon for a file or package. Unsupported platforms and
+/// paths without an icon fall back to Ghost's generic file glyph.
+#[tauri::command]
+pub async fn read_file_icon(
+    path: String,
+    pixel_size: Option<u32>,
+) -> Result<Option<Vec<u8>>, String> {
+    file_icon_png(Path::new(&path), pixel_size.unwrap_or(128).clamp(32, 256))
+}
+
+/// Give a sandboxed HTML preview access to resources relative to its source
+/// file. Script execution and navigation remain disabled by the iframe.
+#[tauri::command]
+pub async fn prepare_html_preview(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<String, String> {
+    let canonical_path = fs::canonicalize(&path)
+        .map_err(|error| format!("Failed to prepare HTML preview: {}", error))?;
+    if !canonical_path.is_file() {
+        return Err("The HTML preview source is not a file".to_string());
+    }
+    let parent = canonical_path
+        .parent()
+        .ok_or_else(|| "The HTML preview source has no parent directory".to_string())?;
+    app.asset_protocol_scope()
+        .allow_directory(parent, true)
+        .map_err(|error| format!("Failed to allow HTML preview resources: {}", error))?;
+    Ok(parent.to_string_lossy().to_string())
+}
+
 /// Grant the asset protocol access to one existing file and return the stable,
 /// canonical path used by the WebView. The static asset scope stays empty so
 /// opening media never exposes an entire project or home directory.
@@ -1947,7 +2067,7 @@ pub async fn list_system_fonts() -> Result<Vec<String>, String> {
 #[tauri::command]
 pub async fn open_with_default_app(path: String) -> Result<(), String> {
     let meta = fs::metadata(&path).map_err(|e| format!("File not found: {}", e))?;
-    if !meta.is_file() {
+    if !meta.is_file() && !is_file_package(Path::new(&path)) {
         return Err("Path is not a file".to_string());
     }
     std::process::Command::new("open")
@@ -1961,8 +2081,9 @@ pub async fn open_with_default_app(path: String) -> Result<(), String> {
 mod tests {
     use super::{
         decode_text_bytes, duplicate_file, file_version, inspect_source, move_file,
-        read_file_if_text, read_source_chunk, read_source_chunk_raw, rename_file, write_file_checked,
-        WriteFileError, EXTREME_SOURCE_BYTES, TEMP_FILE_COUNTER, TEXT_PROBE_BYTES,
+        read_dir_recursive, read_file_if_text, read_source_chunk, read_source_chunk_raw,
+        rename_file, write_file_checked, WriteFileError, EXTREME_SOURCE_BYTES,
+        TEMP_FILE_COUNTER, TEXT_PROBE_BYTES,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -1979,6 +2100,66 @@ mod tests {
         ));
         fs::create_dir(&directory).expect("test directory should be created");
         directory
+    }
+
+    #[test]
+    fn directory_listing_hides_dotfiles_unless_requested() {
+        let directory = test_directory("hidden-files");
+        fs::write(directory.join("visible.txt"), "visible").expect("fixture should be written");
+        fs::write(directory.join(".hidden.txt"), "hidden").expect("fixture should be written");
+        fs::create_dir(directory.join(".hidden-folder"))
+            .expect("fixture directory should be created");
+
+        let hidden = read_dir_recursive(&directory, &[], 0, 1, false)
+            .expect("directory should be listed");
+        assert_eq!(
+            hidden
+                .iter()
+                .map(|entry| entry.name.as_str())
+                .collect::<Vec<_>>(),
+            ["visible.txt"]
+        );
+
+        let visible = read_dir_recursive(&directory, &[], 0, 1, true)
+            .expect("directory should be listed");
+        assert_eq!(
+            visible
+                .iter()
+                .map(|entry| entry.name.as_str())
+                .collect::<Vec<_>>(),
+            [".hidden-folder", ".hidden.txt", "visible.txt"],
+        );
+        fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[test]
+    fn directory_inspection_is_a_bounded_negative_text_probe() {
+        let directory = test_directory("package-inspection");
+        let inspection = tauri::async_runtime::block_on(inspect_source(
+            directory.to_string_lossy().into_owned(),
+            Some(true),
+        ))
+        .expect("directory metadata should be inspectable");
+
+        assert!(!inspection.looks_textual);
+        assert_eq!(inspection.line_count, 0);
+        assert_eq!(inspection.max_line_bytes, 0);
+        fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_application_bundles_are_listed_as_files() {
+        let directory = test_directory("application-package");
+        let application = directory.join("Example.app");
+        fs::create_dir(&application).expect("application package should be created");
+
+        let entries = read_dir_recursive(&directory, &[], 0, 1, false)
+            .expect("directory should be listed");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, application.to_string_lossy());
+        assert!(!entries[0].is_directory);
+        fs::remove_dir_all(directory).expect("test directory should be removed");
     }
 
     #[test]
@@ -2393,6 +2574,21 @@ mod tests {
         assert!(thumbnail.starts_with(b"\x89PNG\r\n\x1a\n"));
         assert!(thumbnail.len() <= super::IMAGE_THUMBNAIL_MAX_OUTPUT_BYTES);
         let _ = fs::remove_dir_all(directory);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn finder_file_icons_are_encoded_as_bounded_pngs() {
+        let directory = test_directory("finder-file-icon");
+        let path = directory.join("Example.app");
+        fs::create_dir(&path).expect("application package should be created");
+
+        let icon = super::file_icon_png(&path, 128)
+            .expect("Finder icon lookup should succeed")
+            .expect("Finder should provide an application icon");
+        assert!(icon.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert!(icon.len() <= 8 * 1024 * 1024);
+        fs::remove_dir_all(directory).expect("test directory should be removed");
     }
 
     #[test]

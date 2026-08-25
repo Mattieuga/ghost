@@ -5,6 +5,7 @@ import { PdfViewer } from "@/components/viewer/pdf-viewer";
 import { FontViewer } from "@/components/viewer/font-viewer";
 import { CsvViewer } from "@/components/viewer/csv-viewer";
 import { SvgViewer } from "@/components/viewer/svg-viewer";
+import { HtmlViewer } from "@/components/viewer/html-viewer";
 import { UnsupportedViewer } from "@/components/viewer/unsupported-viewer";
 import { AudioViewer } from "@/components/viewer/audio-viewer";
 import { VideoViewer } from "@/components/viewer/video-viewer";
@@ -170,6 +171,22 @@ export function FileViewer({
       if (sourceEditor) return sourceEditor;
       return (
         <SvgViewer
+          key={filePath}
+          filePath={filePath}
+          content={content}
+          onSourceChange={onSourceChange}
+          searchTerm={searchTerm}
+          replaceTerm={replaceTerm}
+          onSearchResults={onSearchResults}
+          onEditorReady={onCmReady}
+          onDirtyChange={onSourceDirtyChange}
+          lineSeparator={lineSeparator}
+        />
+      );
+    case "html":
+      if (sourceEditor) return sourceEditor;
+      return (
+        <HtmlViewer
           key={filePath}
           filePath={filePath}
           content={content}

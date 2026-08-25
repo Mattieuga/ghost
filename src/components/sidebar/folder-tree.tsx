@@ -733,27 +733,31 @@ const FileTree = React.memo(function FileTree({
   isSkippedDir?: (name: string) => boolean;
 }) {
   const PAGE_SIZE = 100;
+  const displayEntries = useMemo(
+    () => entries.filter((entry) => !entry.is_directory || !isSkippedDir?.(entry.name)),
+    [entries, isSkippedDir],
+  );
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [entries]);
+  }, [displayEntries]);
 
   useEffect(() => {
-    if (visibleCount >= entries.length || !sentinelRef.current) return;
+    if (visibleCount >= displayEntries.length || !sentinelRef.current) return;
     const observer = new IntersectionObserver((items) => {
       if (items[0]?.isIntersecting) {
-        setVisibleCount((v) => Math.min(v + PAGE_SIZE, entries.length));
+        setVisibleCount((v) => Math.min(v + PAGE_SIZE, displayEntries.length));
       }
     }, { rootMargin: "200px" });
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [visibleCount, entries.length]);
+  }, [visibleCount, displayEntries.length]);
 
   return (
     <>
-      {entries.slice(0, visibleCount).map((entry) =>
+      {displayEntries.slice(0, visibleCount).map((entry) =>
         entry.is_directory ? (
           <DroppableFolder
             key={entry.path}
@@ -810,13 +814,13 @@ const FileTree = React.memo(function FileTree({
             onAutoRenameDone={onNewFileRenamed}
             onAddProject={onAddProject}
             onDuplicated={onRefresh}
-            disableDnd={entries.length > 200}
+            disableDnd={displayEntries.length > 200}
           />
         )
       )}
-      {visibleCount < entries.length && (
+      {visibleCount < displayEntries.length && (
         <div ref={sentinelRef} className="px-4 py-1 text-[11px] text-ring">
-          {entries.length - visibleCount} more items...
+          {displayEntries.length - visibleCount} more items...
         </div>
       )}
     </>

@@ -5,6 +5,7 @@ import {
   LIVE_TEXT_STATS_MAX_BYTES,
   NORMAL_SOURCE_MAX_BYTES,
   NORMAL_SOURCE_MAX_LINE_BYTES,
+  RENDERED_HTML_MAX_BYTES,
   resolveSourceProfile,
   RICH_MARKDOWN_MAX_BYTES,
   shouldTrackLiveTextStats,
@@ -42,6 +43,17 @@ describe("resolveSourceProfile", () => {
     expect(resolveSourceProfile(
       classifyFile("data.csv"),
       inspection(TABLE_CSV_MAX_BYTES + 1),
+    )).toBe("large");
+  });
+
+  it("keeps oversized HTML editable while disabling rendered preview", () => {
+    expect(resolveSourceProfile(
+      classifyFile("page.html"),
+      inspection(RENDERED_HTML_MAX_BYTES),
+    )).toBe("normal");
+    expect(resolveSourceProfile(
+      classifyFile("page.html"),
+      inspection(RENDERED_HTML_MAX_BYTES + 1),
     )).toBe("large");
   });
 

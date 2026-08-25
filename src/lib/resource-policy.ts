@@ -14,6 +14,7 @@ export const RICH_MARKDOWN_MAX_BYTES = 4 * 1024 * 1024;
 export const RICH_MARKDOWN_MAX_LINES = 100_000;
 export const TABLE_CSV_MAX_BYTES = 8 * 1024 * 1024;
 export const TABLE_CSV_MAX_LINES = 100_000;
+export const RENDERED_HTML_MAX_BYTES = 5 * 1024 * 1024;
 export const RENDERED_SVG_MAX_BYTES = 5 * 1024 * 1024;
 // Text statistics are presentation metadata, not part of the editor or save
 // path. Keep them on a much smaller budget than editable source so counting
@@ -73,6 +74,7 @@ export function resolveSourceProfile(
       inspection.size_bytes > TABLE_CSV_MAX_BYTES
       || inspection.line_count > TABLE_CSV_MAX_LINES
     ))
+    || (descriptor.kind === "html" && inspection.size_bytes > RENDERED_HTML_MAX_BYTES)
     || (descriptor.kind === "svg" && inspection.size_bytes > RENDERED_SVG_MAX_BYTES);
 
   if (

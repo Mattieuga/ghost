@@ -17,6 +17,7 @@ and how the file was encoded.
 | Markdown | `.md`, `.markdown`, `.mkd`, `.mdown`, `.mkdn`, `.mdwn` | Rich editor; source mode when exact markup must be preserved |
 | MDX | `.mdx` | Source-code editor |
 | Tabular text | `.csv`, `.tsv` | Editable table and source modes |
+| HTML | `.html`, `.htm`, `.xhtml` | Editable source plus sandboxed rendered preview |
 | SVG | `.svg` | Live image preview and editable XML source |
 | Raster images | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp`, `.ico`, `.icns`, `.heic`, `.heif`, `.tiff`, `.tif` | Read-only image preview |
 | PDF | `.pdf` | Native PDFKit continuous read-only viewer with selection, Find, and zoom |
@@ -37,7 +38,11 @@ of being silently normalized. Ghost-owned resizable images and table metadata
 remain available in the rich editor.
 
 CSV and TSV files can switch between an editable table and their delimited text
-source. SVG files pair a live preview with an editable XML source view.
+source. HTML files can switch between editable source and a sandboxed preview;
+relative images, stylesheets, fonts, and media resolve from the file's folder,
+while scripts and page navigation are disabled. HTML files larger than 5 MiB
+open in reduced source mode without a rendered preview. SVG files pair a live
+preview with an editable XML source view.
 
 ## Code and text
 
@@ -48,7 +53,7 @@ languages include:
 - Apple development: Swift, Objective-C, Objective-C++, Metal, property lists,
   entitlements, storyboards, Xcode projects/configuration, and
   `Package.resolved`.
-- Web development: HTML, CSS, Sass, SCSS, Less, Stylus, JavaScript, JSX,
+- Web development: CSS, Sass, SCSS, Less, Stylus, JavaScript, JSX,
   TypeScript, TSX, Vue, Svelte, Astro, PHP, Pug, Liquid, Jinja, Handlebars, and
   common template formats.
 - Native and application development: C, C++, CUDA, C#, D, Dart, Go, Java,

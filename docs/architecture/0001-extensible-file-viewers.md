@@ -36,6 +36,14 @@ Audio playback uses an HTML `audio` element inside the Tauri WebView. This is a 
 
 Video follows the same media substrate with a dedicated `video` viewer kind and visible HTML `video` element. Audio and video share HTMLMediaElement lifecycle/state handling and Ghost's custom playback controls, while their presentation remains separate: audio uses a compact file card and video uses a responsive contain-fit stage. Ghost does not bundle FFmpeg or transcode media in this phase; WebKit retains hardware decoding and unsupported containers/codecs fail into an explicit Open Externally state.
 
+HTML uses a dedicated text-backed viewer with source and rendered modes. The
+rendered mode uses an opaque-origin sandboxed `srcdoc` iframe: scripts, forms,
+popups, and navigation are disabled. Ghost inserts a preview-only `<base>` URL
+so relative resources can resolve through Tauri's asset protocol without
+modifying the saved document. The runtime grant is limited to the canonical
+parent directory, and HTML beyond the rendered-preview budget remains editable
+in reduced source mode without constructing an iframe document.
+
 Container extensions select a likely viewer but do not assert codec support. Formats with established video-oriented extensions route to video, including best-effort legacy containers, and WebKit decides at metadata/decode time whether the tracks are playable. Ambiguous `.ogg` remains audio-oriented while `.ogv` is video-oriented. A future bounded track probe may replace these defaults without changing viewer callers.
 
 Media features backed by WebKit presentation APIs, such as fullscreen and Picture in Picture, are exposed only after runtime capability detection. On macOS, Ghost explicitly enables WKWebView's element-fullscreen preference because embedded webviews disable the DOM Fullscreen API by default. Fullscreen is part of the initial video phase; Picture in Picture and sidecar captions remain follow-ups until their Tauri/WKWebView behavior is manually verified.

@@ -19,6 +19,7 @@ function flattenEntries(
   function walk(items: FileEntry[]) {
     for (const entry of items) {
       if (entry.is_directory) {
+        if (SKIP_DIRS.has(entry.name)) continue;
         if (entry.children) walk(entry.children);
       } else {
         const dir = entry.path.substring(0, entry.path.lastIndexOf("/"));
@@ -59,7 +60,8 @@ interface FolderData {
 export function useFileTree(
   folders: string[],
   extensions: string[],
-  refreshTrigger: number
+  refreshTrigger: number,
+  showHiddenFiles = false,
 ) {
   const [dataByFolder, setDataByFolder] = useState<Record<string, FolderData>>({});
   const loadedDirs = useRef(new Set<string>());
@@ -80,6 +82,7 @@ export function useFileTree(
             path: folder,
             extensions,
             max_depth: 1,
+            showHidden: showHiddenFiles,
           });
           loadedDirs.current.add(folder);
           return { folder, entries, error: null };
@@ -106,6 +109,7 @@ export function useFileTree(
                 path: dir,
                 extensions,
                 max_depth: 1,
+                showHidden: showHiddenFiles,
               });
               loadedDirs.current.add(dir);
               return { dir, children };
@@ -135,7 +139,7 @@ export function useFileTree(
     });
 
     return () => { cancelled = true; };
-  }, [foldersKey, extensionsKey]);
+  }, [foldersKey, extensionsKey, showHiddenFiles]);
 
   useEffect(() => {
     return fetchAll();
@@ -150,6 +154,7 @@ export function useFileTree(
         path: folderPath,
         extensions,
         max_depth: 1,
+        showHidden: showHiddenFiles,
       });
 
       setDataByFolder((prev) => {
@@ -169,7 +174,7 @@ export function useFileTree(
     } catch {
       // Silently ignore — folder may have been deleted
     }
-  }, [extensionsKey]);
+  }, [extensionsKey, showHiddenFiles]);
 
   const isSkippedDir = useCallback((name: string) => SKIP_DIRS.has(name), []);
 

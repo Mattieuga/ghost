@@ -251,7 +251,7 @@ describe("FileTreeKeyboard", () => {
     expect(beta?.getAttribute("data-focused")).toBe("true");
     expect(tree.getAttribute("aria-activedescendant")).toContain("beta.md");
     expect(document.activeElement).toBe(tree);
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenLastCalledWith({ block: "center" });
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest" });
   });
 
   it("reveals palette selections without stealing focus from the editor", async () => {
@@ -268,6 +268,39 @@ describe("FileTreeKeyboard", () => {
     expect(document.activeElement).toBe(editor);
     expect(document.activeElement).not.toBe(tree);
     expect(HTMLElement.prototype.scrollIntoView).toHaveBeenLastCalledWith({ block: "center" });
+  });
+
+  it("does not scroll when focusing an active row that is already visible", async () => {
+    const { controllerRef, tree, host } = await renderTree();
+    const betaRow = host.querySelector('[data-label="Beta"] [data-tree-focus-target]') as HTMLElement;
+    vi.spyOn(tree, "getBoundingClientRect").mockReturnValue({
+      top: 0,
+      bottom: 300,
+      height: 300,
+      left: 0,
+      right: 200,
+      width: 200,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(betaRow, "getBoundingClientRect").mockReturnValue({
+      top: 100,
+      bottom: 130,
+      height: 30,
+      left: 0,
+      right: 200,
+      width: 200,
+      x: 0,
+      y: 100,
+      toJSON: () => ({}),
+    });
+    vi.mocked(HTMLElement.prototype.scrollIntoView).mockClear();
+
+    await act(async () => { await controllerRef.current?.focusActive(); });
+
+    expect(document.activeElement).toBe(tree);
+    expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("clears the visual focus ring outside the tree and does not jump on the next click", async () => {
@@ -376,6 +409,38 @@ describe("FileTreeKeyboard", () => {
     await press(tree, "Enter");
     expect(actions.activate).toHaveBeenCalledTimes(1);
     expect(focusEditor).toHaveBeenCalledTimes(1);
+    expect(focusEditor).toHaveBeenCalledWith("start");
+  });
+
+  it("waits for keyboard activation to finish before focusing the editor", async () => {
+    const { controllerRef, tree, actions, focusEditor } = await renderTree();
+    await act(async () => { await controllerRef.current?.focusPath("/project/alpha.md"); });
+
+    let finishActivation: ((opened: boolean) => void) | undefined;
+    actions.activate.mockImplementation(() => new Promise<boolean>((resolve) => {
+      finishActivation = resolve;
+    }));
+
+    await press(tree, "Enter");
+    expect(focusEditor).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finishActivation?.(true);
+      await Promise.resolve();
+    });
+    expect(focusEditor).toHaveBeenCalledTimes(1);
+    expect(focusEditor).toHaveBeenCalledWith("start");
+  });
+
+  it("keeps focus in the tree when keyboard activation fails", async () => {
+    const { controllerRef, tree, actions, focusEditor } = await renderTree();
+    await act(async () => { await controllerRef.current?.focusPath("/project/alpha.md"); });
+    actions.activate.mockResolvedValue(false);
+
+    await press(tree, "Enter");
+
+    expect(focusEditor).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(tree);
   });
 
   it("toggles folders with Space without leaving the tree", async () => {

@@ -31,7 +31,7 @@ import { FileViewer } from "@/components/editor/file-viewer";
 import { TextStats } from "@/components/editor/text-stats";
 import { SaveStatus } from "@/components/editor/save-status";
 import type { Editor } from "@tiptap/react";
-import type { EditorView } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import type { Text as CodeMirrorText } from "@codemirror/state";
 import {
   classifyFile,
@@ -167,15 +167,21 @@ export function GhostLayout() {
     removeRecentFiles,
   } = useRecentFiles();
 
-  const focusEditor = useCallback(() => {
+  const focusEditor = useCallback((placement: "preserve" | "start" = "preserve") => {
     requestAnimationFrame(() => {
       const tiptap = editorInstanceRef.current;
       if (tiptap && !tiptap.isDestroyed) {
-        tiptap.commands.focus();
+        tiptap.commands.focus(placement === "start" ? "start" : null);
         return;
       }
       const codeMirror = cmViewRef.current;
       if (codeMirror) {
+        if (placement === "start") {
+          codeMirror.dispatch({
+            selection: { anchor: 0 },
+            effects: EditorView.scrollIntoView(0, { y: "start" }),
+          });
+        }
         codeMirror.focus();
         return;
       }
@@ -268,6 +274,14 @@ export function GhostLayout() {
       const model = await loadFileModel(path, undefined, abortController.signal);
 
       if (requestId !== openRequestRef.current) return false;
+
+      // The main viewport is shared across viewer mounts. Without an explicit
+      // reset, keyboard previewing carries the previous document's scroll
+      // depth into the next file before its viewer has a chance to focus.
+      if (previousPath !== path && mainElRef.current) {
+        mainElRef.current.scrollTop = 0;
+        mainElRef.current.scrollLeft = 0;
+      }
 
       if (recordHistory && previousPath && previousPath !== path) {
         const back = backHistoryRef.current;
@@ -1572,6 +1586,7 @@ export function GhostLayout() {
         {/* Editor — scrolls behind the floating header */}
         <main
           ref={setMainEl}
+          data-editor-scroll-container
           tabIndex={-1}
           onFocus={(event) => {
             if (event.target === event.currentTarget) focusViewerTarget(event.currentTarget);

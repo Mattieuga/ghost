@@ -2,7 +2,7 @@ import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { Extension } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, Selection } from "@tiptap/pm/state";
 import Link from "@tiptap/extension-link";
 import { Focus } from "@tiptap/extensions";
 import Underline from "@tiptap/extension-underline";
@@ -80,6 +80,33 @@ const BulletToTask = Extension.create({
         },
       }),
     ];
+  },
+});
+
+/**
+ * ProseMirror deliberately leaves Cmd+ArrowUp to WebKit's native
+ * contenteditable behavior. WKWebView does not reliably move to the document
+ * boundary, even though the other Command+Arrow shortcuts work. Keep this
+ * narrowly scoped to the missing macOS command instead of replacing the rest
+ * of the platform's selection behavior.
+ */
+const MacDocumentStart = Extension.create({
+  name: "macDocumentStart",
+  addKeyboardShortcuts() {
+    return {
+      "Cmd-ArrowUp": () => {
+        const { state, view } = this.editor;
+        view.dispatch(state.tr.setSelection(Selection.atStart(state.doc)));
+
+        // Ghost's header overlays the shared content viewport. ProseMirror's
+        // generic scrollIntoView aligns the caret with that viewport's raw
+        // top edge, which leaves it behind the header. Document-start should
+        // instead restore the viewport's real beginning.
+        const viewport = view.dom.closest<HTMLElement>("[data-editor-scroll-container]");
+        if (viewport) viewport.scrollTop = 0;
+        return true;
+      },
+    };
   },
 });
 
@@ -164,6 +191,7 @@ export function MarkdownEditor({
       TaskList,
       TaskItem.configure({ nested: true }),
       BulletToTask,
+      MacDocumentStart,
       Link.configure({
         openOnClick: false,
         autolink: true,

@@ -103,7 +103,7 @@ interface FolderTreeProps {
   error: string | null;
   onRefreshFolder: () => void;
   activeDropFolder: string | null;
-  onFileSelect: (path: string) => void;
+  onFileSelect: (path: string) => void | boolean | Promise<void | boolean>;
 
   onRemoveFolder: (path: string) => void;
   onRootRenamed?: (oldPath: string, newPath: string) => void | Promise<void>;
@@ -727,7 +727,7 @@ const FileTree = React.memo(function FileTree({
   projectPath: string;
 
   activeDropFolder: string | null;
-  onFileSelect: (path: string) => void;
+  onFileSelect: (path: string) => void | boolean | Promise<void | boolean>;
 
   onFileRenamed: (oldPath: string, newPath: string) => void | Promise<void>;
   onFileDeleted: (path: string) => void;

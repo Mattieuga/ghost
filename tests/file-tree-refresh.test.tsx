@@ -76,6 +76,18 @@ afterEach(() => {
 });
 
 describe("file-tree refresh stability", () => {
+  it("requests only one directory level from the native bridge", async () => {
+    mocks.invoke.mockResolvedValue([]);
+
+    await render();
+
+    expect(mocks.invoke).toHaveBeenCalledWith("read_directory", expect.objectContaining({
+      path: "/project",
+      maxDepth: 1,
+    }));
+    expect(mocks.invoke.mock.calls[0]?.[1]).not.toHaveProperty("max_depth");
+  });
+
   it("keeps expanded rows mounted until a complete refresh is ready", async () => {
     const nestedRefresh = deferred<FileEntry[]>();
     let nestedReads = 0;

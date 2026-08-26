@@ -35,7 +35,8 @@ post-cloud sequence below.
 
 ## Phase 0: Technology and fidelity spike
 
-Status: Not started
+Status: In progress; the local slice is implemented and live Supabase
+validation is pending
 
 Build a disposable vertical slice before accepting ADR 0004 or creating
 production infrastructure.
@@ -59,6 +60,36 @@ Then build only this disposable slice:
 Do not build the Cloud tree, account onboarding, general sharing UI, or web
 product shell until this slice establishes that the preferred collaboration
 path is viable.
+
+### Progress as of 2026-08-26
+
+Implemented locally:
+
+- merged the pending Quick Look work and passed the frontend, production build,
+  and Rust baselines;
+- pinned `@supabase-labs/y-supabase` 0.1.0 (upstream commit `cec1e3b`) behind a
+  Ghost-owned `CollaborationAdapter`;
+- added a private, acknowledged Realtime wrapper and append-only Yjs update
+  persistence with distinct connection, synchronization, and durability state;
+- added IndexedDB recovery, the real Ghost Markdown schema, carets, a derived
+  Markdown view, and separate Alice, Bob, and Viewer sessions;
+- added a deny-by-default Supabase migration for one hard-coded room; and
+- added adapter tests covering persisted reload, private channel configuration,
+  durable editor writes, and viewer write suppression.
+
+Still requires a connected Supabase project:
+
+- run the migration and assign the three generated anonymous user IDs;
+- exercise Mac-to-web live editing, awareness, reload, disconnect, and offline
+  convergence;
+- attack both Realtime Broadcast and Postgres persistence using the viewer JWT;
+- record fidelity, payload, latency, failure-boundary, and process-kill results;
+  and
+- compare the failure/security cases with Hocuspocus and current Liveblocks
+  terms before accepting ADR 0004.
+
+Setup and the live test script are recorded in
+[`../spikes/cloud-collaboration-prototype.md`](../spikes/cloud-collaboration-prototype.md).
 
 ### Scope
 

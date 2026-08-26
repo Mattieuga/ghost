@@ -28,7 +28,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' asset: http://asset.localhost; img-src 'self' data: blob: asset: tauri: https: http:; font-src 'self' data: asset: http://asset.localhost; media-src 'self' blob: asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost",
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' asset: http://asset.localhost; img-src 'self' data: blob: asset: tauri: https: http:; font-src 'self' data: asset: http://asset.localhost; media-src 'self' blob: asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost https://*.supabase.co wss://*.supabase.co http://127.0.0.1:54321 ws://127.0.0.1:54321",
       "assetProtocol": {
         "enable": true,
         "scope": []

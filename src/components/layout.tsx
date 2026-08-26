@@ -39,7 +39,8 @@ import {
   resolveProbedText,
   type FileDescriptor,
 } from "@/lib/file-type";
-import { loadFileModel } from "@/lib/file-loader";
+import { localDocumentRef } from "@/lib/document-ref";
+import { tauriLocalDocumentSource } from "@/lib/local-document-source";
 import { OpenExternalButton } from "@/components/viewer/open-external-button";
 import { ActiveFileStore, ActiveFileProvider } from "@/components/sidebar/sidebar-context";
 import { applyContentInPlace, focusViewerTarget } from "@/lib/editor-utils";
@@ -271,7 +272,10 @@ export function GhostLayout() {
       setShowSettings(false);
       closeSearch();
 
-      const model = await loadFileModel(path, undefined, abortController.signal);
+      const model = await tauriLocalDocumentSource.load(
+        localDocumentRef(path),
+        abortController.signal,
+      );
 
       if (requestId !== openRequestRef.current) return false;
 
@@ -398,7 +402,7 @@ export function GhostLayout() {
       const path = activeFileRef.current;
       if (!path) return;
       setLiveText(markdown);
-      await documentSave.save(path, markdown);
+      await documentSave.save(localDocumentRef(path), markdown);
     },
     [documentSave.save]
   );
@@ -419,7 +423,7 @@ export function GhostLayout() {
       } else {
         setForceStaticTextStats(true);
       }
-      await documentSave.saveSource(path, snapshot);
+      await documentSave.saveSource(localDocumentRef(path), snapshot);
     },
     [documentSave.saveSource],
   );
@@ -437,7 +441,12 @@ export function GhostLayout() {
   // Reload active file when the main window regains focus (picks up edits
   // from accessory windows). Applies external changes in place, no remount.
   useReloadOnFocus({
-    getPath: () => isTextBackedFile(fileDescriptorRef.current) ? activeFileRef.current : null,
+    getDocument: () => {
+      const path = activeFileRef.current;
+      return isTextBackedFile(fileDescriptorRef.current) && path
+        ? localDocumentRef(path)
+        : null;
+    },
     applyContent: applyContentRef,
     contentRef: fileContentRef,
     versionRef: fileVersionRef,
@@ -452,9 +461,9 @@ export function GhostLayout() {
         content.length,
       ));
     },
-    onVersionChanged: async (path) => {
-      const model = await loadFileModel(path);
-      if (activeFileRef.current !== path) return true;
+    onVersionChanged: async (ref) => {
+      const model = await tauriLocalDocumentSource.load(ref);
+      if (activeFileRef.current !== ref.path) return true;
 
       if (sourceProfileRef.current === "normal" && model.sourceProfile === "normal") {
         const applied = applyContentRef.current?.(model.content) ?? false;
@@ -519,7 +528,7 @@ export function GhostLayout() {
       let nextSourceInspection: SourceInspection | null = null;
       let nextLineSeparator = "\n";
       try {
-        const model = await loadFileModel(renamedPath);
+        const model = await tauriLocalDocumentSource.load(localDocumentRef(renamedPath));
         content = model.content;
         descriptor = model.descriptor;
         fileVersionRef.current = model.version;

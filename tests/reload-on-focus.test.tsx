@@ -11,6 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { useReloadOnFocus } from "../src/hooks/use-reload-on-focus";
+import { localDocumentRef } from "../src/lib/document-ref";
 
 function Harness({ failed }: { failed: RefObject<boolean> }) {
   const applyContent = useRef(vi.fn(() => true));
@@ -19,7 +20,7 @@ function Harness({ failed }: { failed: RefObject<boolean> }) {
   const pendingSaveCount = useRef(0);
 
   useReloadOnFocus({
-    getPath: () => "/tmp/notes.md",
+    getDocument: () => localDocumentRef("/tmp/notes.md"),
     applyContent,
     contentRef,
     lastSaveTimestamp,

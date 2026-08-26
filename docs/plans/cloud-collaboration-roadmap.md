@@ -169,6 +169,16 @@ package boundaries, secrets, migrations, and tests are deliberately rebuilt.
 Status: In progress for provider-neutral work; provider acceptance remains
 blocked on the remaining Phase 0 gates
 
+### Progress as of 2026-08-26
+
+- Added exhaustive local/cloud `DocumentRef` identities and a source
+  capability matrix covering persistence, subscriptions, filesystem-only
+  actions, sharing, and assets.
+- Added a local-only document source gateway and routed both editor surfaces,
+  version-checked writes, streamed source writes, and focus reloads through it.
+- Preserved the current Rust file commands and local save/conflict behavior;
+  cloud references cannot be passed to this gateway without a type error.
+
 ### Scope
 
 - Introduce `DocumentRef` with local and cloud variants.

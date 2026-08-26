@@ -1,10 +1,14 @@
 import { useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import type { LocalDocumentRef } from "@/lib/document-ref";
+import {
+  tauriLocalDocumentSource,
+  type LocalDocumentSource,
+} from "@/lib/local-document-source";
 import type { FileVersionToken } from "@/lib/source-document";
 
 interface UseReloadOnFocusParams {
-  /** Returns the current file path. Return null to skip the reload. */
-  getPath: () => string | null;
+  /** Returns the current local document. Return null to skip the reload. */
+  getDocument: () => LocalDocumentRef | null;
   /**
    * Apply new content to the editor in place. Called after we verify the disk
    * content differs from what we last wrote. The implementation is editor-
@@ -27,7 +31,8 @@ interface UseReloadOnFocusParams {
   /** Called after content is applied in place. Receives the new content. */
   onContentApplied?: (content: string) => void;
   /** Metadata-first model reload for profiled source documents. */
-  onVersionChanged?: (path: string, version: FileVersionToken) => Promise<boolean>;
+  onVersionChanged?: (ref: LocalDocumentRef, version: FileVersionToken) => Promise<boolean>;
+  source?: LocalDocumentSource;
 }
 
 /**
@@ -41,7 +46,7 @@ interface UseReloadOnFocusParams {
  * land once.
  */
 export function useReloadOnFocus({
-  getPath,
+  getDocument,
   applyContent,
   contentRef,
   versionRef,
@@ -50,9 +55,10 @@ export function useReloadOnFocus({
   hasFailedSave,
   onContentApplied,
   onVersionChanged,
+  source = tauriLocalDocumentSource,
 }: UseReloadOnFocusParams) {
-  const getPathRef = useRef(getPath);
-  getPathRef.current = getPath;
+  const getDocumentRef = useRef(getDocument);
+  getDocumentRef.current = getDocument;
   const onContentAppliedRef = useRef(onContentApplied);
   onContentAppliedRef.current = onContentApplied;
   const onVersionChangedRef = useRef(onVersionChanged);
@@ -66,8 +72,8 @@ export function useReloadOnFocus({
     const handleFocus = async () => {
       if (inFlight.current) return;
 
-      const path = getPathRef.current();
-      if (!path) return;
+      const documentRef = getDocumentRef.current();
+      if (!documentRef) return;
       if ((pendingSaveCount?.current ?? 0) > 0) return;
       if (hasFailedSave?.current) return;
 
@@ -76,7 +82,7 @@ export function useReloadOnFocus({
 
       inFlight.current = true;
       try {
-        const version = await invoke<FileVersionToken>("get_file_version", { path });
+        const version = await source.getVersion(documentRef);
 
         // Large source saves intentionally do not retain a flattened string.
         // Metadata equality keeps focus reload from recreating one merely to
@@ -86,12 +92,12 @@ export function useReloadOnFocus({
           && JSON.stringify(version) === JSON.stringify(versionRef.current)
         ) return;
 
-        if (await onVersionChangedRef.current?.(path, version)) return;
+        if (await onVersionChangedRef.current?.(documentRef, version)) return;
 
-        const content = await invoke<string>("read_file", { path });
+        const content = await source.readText(documentRef);
 
         // Race guard — user may have navigated away during await.
-        if (getPathRef.current() !== path) return;
+        if (getDocumentRef.current()?.path !== documentRef.path) return;
 
         // Short-circuit if disk matches what we last wrote. No external change.
         if (content === contentRef.current) return;
@@ -115,5 +121,13 @@ export function useReloadOnFocus({
 
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
-  }, [applyContent, contentRef, hasFailedSave, lastSaveTimestamp, pendingSaveCount, versionRef]);
+  }, [
+    applyContent,
+    contentRef,
+    hasFailedSave,
+    lastSaveTimestamp,
+    pendingSaveCount,
+    source,
+    versionRef,
+  ]);
 }

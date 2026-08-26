@@ -22,7 +22,8 @@ import {
   resolveProbedText,
   type FileDescriptor,
 } from "@/lib/file-type";
-import { loadFileModel } from "@/lib/file-loader";
+import { localDocumentRef } from "@/lib/document-ref";
+import { tauriLocalDocumentSource } from "@/lib/local-document-source";
 import { OpenExternalButton } from "@/components/viewer/open-external-button";
 import { useDocumentSave } from "@/hooks/use-document-save";
 import {
@@ -114,7 +115,10 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
 
     const loadFile = async () => {
       try {
-        const model = await loadFileModel(filePath, undefined, abortController.signal);
+        const model = await tauriLocalDocumentSource.load(
+          localDocumentRef(filePath),
+          abortController.signal,
+        );
         if (cancelled) return;
         setFileDescriptor(model.descriptor);
         setSourceDocument(model.sourceDocument);
@@ -201,7 +205,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       let nextSourceInspection: SourceInspection | null = null;
       let nextLineSeparator = "\n";
       try {
-        const model = await loadFileModel(renamedPath);
+        const model = await tauriLocalDocumentSource.load(localDocumentRef(renamedPath));
         diskContent = model.content;
         descriptor = model.descriptor;
         fileVersionRef.current = model.version;
@@ -246,12 +250,12 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
               const pending = getPendingMarkdownDocument(tiptapEditor);
               const markdown = pending.markdown ?? serializeMarkdownDocument(tiptapEditor);
               visibleContent = retargetEditorText(markdown);
-              await documentSave.save(renamedPath, visibleContent);
+              await documentSave.save(localDocumentRef(renamedPath), visibleContent);
               markMarkdownDocumentClean(tiptapEditor, pending.revision);
             }
           } else {
             visibleContent = retargetEditorText(editorText);
-            await documentSave.save(renamedPath, visibleContent);
+            await documentSave.save(localDocumentRef(renamedPath), visibleContent);
           }
         } catch (error) {
           // Preserve the newest local snapshot in the replacement editor.
@@ -277,7 +281,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
             visibleDocument = isDirectFileRename
               ? retargetCompanionAssetDocument(localDocument, oldPath, newPath)
               : localDocument;
-            await documentSave.saveSource(renamedPath, {
+            await documentSave.saveSource(localDocumentRef(renamedPath), {
               document: visibleDocument,
               lineSeparator: sourceView.state.lineBreak,
             });
@@ -368,7 +372,9 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
   }, [documentSave.flush]);
 
   useReloadOnFocus({
-    getPath: () => isTextBackedFile(fileDescriptorRef.current) ? filePathRef.current : null,
+    getDocument: () => isTextBackedFile(fileDescriptorRef.current)
+      ? localDocumentRef(filePathRef.current)
+      : null,
     applyContent: applyContentRef,
     contentRef: fileContentRef,
     versionRef: fileVersionRef,
@@ -383,9 +389,9 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
         content.length,
       ));
     },
-    onVersionChanged: async (path) => {
-      const model = await loadFileModel(path);
-      if (filePathRef.current !== path) return true;
+    onVersionChanged: async (ref) => {
+      const model = await tauriLocalDocumentSource.load(ref);
+      if (filePathRef.current !== ref.path) return true;
       if (sourceProfileRef.current === "normal" && model.sourceProfile === "normal") {
         const applied = applyContentRef.current?.(model.content) ?? false;
         if (!applied) return true;
@@ -410,7 +416,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
     (text: string) => {
       liveTextRef.current = text;
       setLiveText(text);
-      return documentSave.save(filePathRef.current, text);
+      return documentSave.save(localDocumentRef(filePathRef.current), text);
     },
     [documentSave.save]
   );
@@ -428,7 +434,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       } else {
         setForceStaticTextStats(true);
       }
-      await documentSave.saveSource(filePathRef.current, snapshot);
+      await documentSave.saveSource(localDocumentRef(filePathRef.current), snapshot);
     },
     [documentSave.saveSource],
   );

@@ -1,6 +1,10 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useRef, useState } from "react";
 import type { Text } from "@codemirror/state";
+import type { LocalDocumentRef } from "@/lib/document-ref";
+import {
+  tauriLocalDocumentSource,
+  type LocalDocumentSource,
+} from "@/lib/local-document-source";
 import {
   iterateSourceChunks,
   type FileVersionToken,
@@ -15,13 +19,14 @@ export interface DocumentSaveError {
 }
 
 type FailedSave =
-  | { kind: "text"; path: string; content: string }
-  | { kind: "source"; path: string; snapshot: SourceDocumentSnapshot };
+  | { kind: "text"; ref: LocalDocumentRef; content: string }
+  | { kind: "source"; ref: LocalDocumentRef; snapshot: SourceDocumentSnapshot };
 
 interface UseDocumentSaveOptions {
   knownDiskContent: React.RefObject<string | null>;
   knownDiskVersion?: React.RefObject<FileVersionToken | null>;
   lastSaveTimestamp: React.RefObject<number>;
+  source?: LocalDocumentSource;
 }
 
 function normalizeSaveError(error: unknown): DocumentSaveError {
@@ -51,6 +56,7 @@ export function useDocumentSave({
   knownDiskContent,
   knownDiskVersion,
   lastSaveTimestamp,
+  source = tauriLocalDocumentSource,
 }: UseDocumentSaveOptions) {
   const [status, setStatus] = useState<DocumentSaveStatus>("saved");
   const [error, setError] = useState<DocumentSaveError | null>(null);
@@ -58,22 +64,27 @@ export function useDocumentSave({
   const pendingCountRef = useRef(0);
   const latestRequestRef = useRef(0);
   const latestQueuedRef = useRef<{
-    path: string;
+    ref: LocalDocumentRef;
     content: string;
     promise: Promise<void>;
   } | null>(null);
   const failedSaveRef = useRef<FailedSave | null>(null);
   const hasFailedSaveRef = useRef(false);
   const latestQueuedSourceRef = useRef<{
-    path: string;
+    ref: LocalDocumentRef;
     document: Text;
     promise: Promise<void>;
   } | null>(null);
 
   const save = useCallback(
-    (path: string, content: string, force = false): Promise<void> => {
+    (ref: LocalDocumentRef, content: string, force = false): Promise<void> => {
       const queued = latestQueuedRef.current;
-      if (!force && pendingCountRef.current > 0 && queued?.path === path && queued.content === content) {
+      if (
+        !force
+        && pendingCountRef.current > 0
+        && queued?.ref.path === ref.path
+        && queued.content === content
+      ) {
         return queued.promise;
       }
       if (!force && pendingCountRef.current === 0 && knownDiskContent.current === content) {
@@ -88,8 +99,7 @@ export function useDocumentSave({
       const promise = queueRef.current
         .catch(() => undefined)
         .then(async () => {
-          const nextVersion = await invoke<FileVersionToken>("write_file", {
-            path,
+          const nextVersion = await source.writeText(ref, {
             content,
             expectedContent: force ? null : knownDiskContent.current,
             expectedVersion: force ? null : knownDiskVersion?.current ?? null,
@@ -103,7 +113,7 @@ export function useDocumentSave({
         });
 
       queueRef.current = promise;
-      latestQueuedRef.current = { path, content, promise };
+      latestQueuedRef.current = { ref, content, promise };
 
       promise
         .then(() => {
@@ -113,7 +123,7 @@ export function useDocumentSave({
           }
         })
         .catch((saveError) => {
-          failedSaveRef.current = { kind: "text", path, content };
+          failedSaveRef.current = { kind: "text", ref, content };
           hasFailedSaveRef.current = true;
           if (requestId === latestRequestRef.current) {
             setStatus("error");
@@ -127,16 +137,16 @@ export function useDocumentSave({
 
       return promise;
     },
-    [knownDiskContent, knownDiskVersion, lastSaveTimestamp],
+    [knownDiskContent, knownDiskVersion, lastSaveTimestamp, source],
   );
 
   const saveSource = useCallback(
-    (path: string, snapshot: SourceDocumentSnapshot, force = false): Promise<void> => {
+    (ref: LocalDocumentRef, snapshot: SourceDocumentSnapshot, force = false): Promise<void> => {
       const queued = latestQueuedSourceRef.current;
       if (
         !force
         && pendingCountRef.current > 0
-        && queued?.path === path
+        && queued?.ref.path === ref.path
         && queued.document === snapshot.document
       ) {
         return queued.promise;
@@ -150,19 +160,16 @@ export function useDocumentSave({
       const promise = queueRef.current
         .catch(() => undefined)
         .then(async () => {
-          const handle = await invoke<{ session_id: number }>("begin_source_save", {
-            path,
+          const session = await source.beginSourceWrite(ref, {
             expectedVersion: force ? null : knownDiskVersion?.current ?? null,
             force,
           });
           let committed = false;
           try {
             for (const chunk of iterateSourceChunks(snapshot)) {
-              await invoke("append_source_save", { sessionId: handle.session_id, chunk });
+              await source.appendSourceWrite(session, chunk);
             }
-            const nextVersion = await invoke<FileVersionToken>("commit_source_save", {
-              sessionId: handle.session_id,
-            });
+            const nextVersion = await source.commitSourceWrite(session);
             if (knownDiskVersion) knownDiskVersion.current = nextVersion;
             committed = true;
             // The source editor owns the canonical text tree. Keeping an old
@@ -173,13 +180,13 @@ export function useDocumentSave({
             hasFailedSaveRef.current = false;
           } finally {
             if (!committed) {
-              await invoke("abort_source_save", { sessionId: handle.session_id }).catch(() => undefined);
+              await source.abortSourceWrite(session).catch(() => undefined);
             }
           }
         });
 
       queueRef.current = promise;
-      latestQueuedSourceRef.current = { path, document: snapshot.document, promise };
+      latestQueuedSourceRef.current = { ref, document: snapshot.document, promise };
 
       promise
         .then(() => {
@@ -189,7 +196,7 @@ export function useDocumentSave({
           }
         })
         .catch((saveError) => {
-          failedSaveRef.current = { kind: "source", path, snapshot };
+          failedSaveRef.current = { kind: "source", ref, snapshot };
           hasFailedSaveRef.current = true;
           if (requestId === latestRequestRef.current) {
             setStatus("error");
@@ -203,7 +210,7 @@ export function useDocumentSave({
 
       return promise;
     },
-    [knownDiskContent, knownDiskVersion, lastSaveTimestamp],
+    [knownDiskContent, knownDiskVersion, lastSaveTimestamp, source],
   );
 
   const retry = useCallback(
@@ -211,8 +218,8 @@ export function useDocumentSave({
       const failed = failedSaveRef.current;
       if (!failed) return Promise.resolve();
       return failed.kind === "text"
-        ? save(failed.path, failed.content, force)
-        : saveSource(failed.path, failed.snapshot, force);
+        ? save(failed.ref, failed.content, force)
+        : saveSource(failed.ref, failed.snapshot, force);
     },
     [save, saveSource],
   );

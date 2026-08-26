@@ -11,6 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { useDocumentSave } from "../src/hooks/use-document-save";
+import { localDocumentRef } from "../src/lib/document-ref";
 
 type SaveController = ReturnType<typeof useDocumentSave>;
 
@@ -56,8 +57,8 @@ describe("useDocumentSave", () => {
     let saveOne!: Promise<void>;
     let saveTwo!: Promise<void>;
     act(() => {
-      saveOne = state().save("/tmp/notes.md", "one");
-      saveTwo = state().save("/tmp/notes.md", "two");
+      saveOne = state().save(localDocumentRef("/tmp/notes.md"), "one");
+      saveTwo = state().save(localDocumentRef("/tmp/notes.md"), "two");
     });
     await act(async () => { await Promise.resolve(); });
 
@@ -95,7 +96,7 @@ describe("useDocumentSave", () => {
     const state = await mountHarness();
 
     await act(async () => {
-      await expect(state().save("/tmp/notes.md", "mine")).rejects.toMatchObject({
+      await expect(state().save(localDocumentRef("/tmp/notes.md"), "mine")).rejects.toMatchObject({
         kind: "conflict",
       });
     });

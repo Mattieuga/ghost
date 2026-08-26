@@ -10,6 +10,7 @@ import { UnsupportedViewer } from "@/components/viewer/unsupported-viewer";
 import { AudioViewer } from "@/components/viewer/audio-viewer";
 import { VideoViewer } from "@/components/viewer/video-viewer";
 import { ArchiveViewer } from "@/components/viewer/archive-viewer";
+import { QuickLookViewer } from "@/components/viewer/quick-look-viewer";
 import { requiresMarkdownSourceMode, type FileDescriptor } from "@/lib/file-type";
 import type { Editor } from "@tiptap/react";
 import type { EditorView } from "@codemirror/view";
@@ -167,6 +168,8 @@ export function FileViewer({
       return <VideoViewer key={filePath} filePath={filePath} />;
     case "archive":
       return <ArchiveViewer key={filePath} filePath={filePath} />;
+    case "quick-look":
+      return <QuickLookViewer key={filePath} filePath={filePath} />;
     case "svg":
       if (sourceEditor) return sourceEditor;
       return (

@@ -175,7 +175,7 @@ export function FolderTree({
         }
       }
     },
-    [refresh, onFileSelect, onNewFileCreated]
+    [onFileSelect, onNewFileCreated]
   );
 
   const handleCreateFolder = useCallback(
@@ -185,7 +185,6 @@ export function FolderTree({
       while (counter < 100) {
         try {
           const newPath = await invoke<string>("create_directory", { parent: parentDir, name });
-          refresh();
           onNewFolderCreated?.(newPath);
           return;
         } catch {
@@ -194,7 +193,7 @@ export function FolderTree({
         }
       }
     },
-    [refresh, onNewFolderCreated]
+    [onNewFolderCreated]
   );
 
   const activeFileStore = useActiveFileStore();
@@ -336,6 +335,10 @@ function DroppableFolder({
 
   const togglePadding = INDENT_BASE + depth * INDENT_STEP;
   const dotColor = isRoot && hasActiveFile ? "var(--ghost-amber)" : "var(--muted-foreground)";
+  // This is intentionally separate from data-folder-active. A collapsed root
+  // keeps its active dot, but has no visible descendant for the guide to point
+  // at, so SidebarGuide should clear rather than paint the whole root row.
+  const isCollapsedActiveRoot = isRoot && !open && hasActiveFile;
 
   useEffect(() => {
     if (isRenaming && renameInputRef.current) {
@@ -366,13 +369,14 @@ function DroppableFolder({
       return;
     }
     renameInFlightRef.current = true;
-    setDisplayFolderName(renameName);
-    setIsRenaming(false);
     try {
       await window.__ghostFlushSave?.();
       const newPath = await invoke<string>("rename_file", { oldPath: id, newName: renameName });
-      await onRenamed?.(id, newPath);
-      await focusTreePath(newPath, isRoot ? newPath : projectPath);
+      const renamed = onRenamed?.(id, newPath);
+      setDisplayFolderName(renameName);
+      setIsRenaming(false);
+      requestAnimationFrame(() => void focusTreePath(newPath, isRoot ? newPath : projectPath));
+      await renamed;
     } catch (err) {
       console.error("Failed to rename folder:", err);
       setDisplayFolderName(folderName);
@@ -646,7 +650,14 @@ function DroppableFolder({
               document.addEventListener("pointerup", onUp);
             }}
             data-folder-active={containsActiveFile || undefined}
-            className={`relative w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-card-foreground transition-colors cursor-pointer select-none rounded-[5px] ${containsActiveFile ? "bg-white/[0.06]" : "data-[state=open]:bg-white/[0.06]"} ${isFocused ? "ring-1 ring-inset ring-ghost-amber/80 bg-ghost-amber/[0.05]" : ""}`}
+            data-root-active-collapsed={isCollapsedActiveRoot || undefined}
+            className={`relative w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-card-foreground transition-colors cursor-pointer select-none rounded-[5px] ${
+              isFocused
+                ? "ring-1 ring-inset ring-ghost-amber/80 bg-ghost-amber/[0.05] hover:bg-ghost-amber/[0.09]"
+                : containsActiveFile
+                  ? "bg-white/[0.06] hover:bg-white/[0.09]"
+                  : "data-[state=open]:bg-white/[0.06] hover:bg-sidebar-accent/70"
+            }`}
             style={{ paddingLeft: `${togglePadding}px` }}
           >
             {/* Guide line rendered by SidebarGuide overlay */}
@@ -737,12 +748,26 @@ const FileTree = React.memo(function FileTree({
     () => entries.filter((entry) => !entry.is_directory || !isSkippedDir?.(entry.name)),
     [entries, isSkippedDir],
   );
+  const activeFileStore = useActiveFileStore();
+  const activePath = useSyncExternalStore(
+    useCallback((callback) => activeFileStore.subscribe(callback), [activeFileStore]),
+    () => activeFileStore.get(),
+  );
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [displayEntries]);
+    const requiredIndex = Math.max(
+      displayEntries.findIndex((entry) => entry.path === newlyCreatedFile),
+      displayEntries.findIndex((entry) => entry.path === newlyCreatedFolder),
+      displayEntries.findIndex((entry) => entry.path === activePath),
+    );
+    setVisibleCount((current) => Math.max(
+      Math.min(PAGE_SIZE, displayEntries.length),
+      Math.min(current, displayEntries.length),
+      requiredIndex + 1,
+    ));
+  }, [activePath, displayEntries, newlyCreatedFile, newlyCreatedFolder]);
 
   useEffect(() => {
     if (visibleCount >= displayEntries.length || !sentinelRef.current) return;

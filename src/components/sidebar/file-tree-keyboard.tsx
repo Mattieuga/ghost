@@ -317,6 +317,17 @@ export const FileTreeKeyboard = forwardRef<FileTreeKeyboardHandle, FileTreeKeybo
       [ensurePathVisible],
     );
 
+    // Row-local actions such as rename already begin near the target. Keep
+    // the row visible without recentering the entire sidebar when it remains
+    // inside the viewport.
+    const focusRowPath = useCallback(
+      (requestedPath: string, projectPath?: string) => ensurePathVisible(requestedPath, projectPath, {
+        focusTree: true,
+        block: "nearest",
+      }),
+      [ensurePathVisible],
+    );
+
     const revealPath = useCallback(
       (path: string) => ensurePathVisible(path, undefined, {
         focusTree: false,
@@ -592,8 +603,8 @@ export const FileTreeKeyboard = forwardRef<FileTreeKeyboardHandle, FileTreeKeybo
       registerNode,
       selectNode,
       restoreTreeFocus: restoreNodeFocus,
-      focusPath,
-    }), [focusPath, focusedKey, registerNode, restoreNodeFocus, selectNode, treeHasFocus]);
+      focusPath: focusRowPath,
+    }), [focusRowPath, focusedKey, registerNode, restoreNodeFocus, selectNode, treeHasFocus]);
 
     return (
       <FileTreeKeyboardContext.Provider value={contextValue}>

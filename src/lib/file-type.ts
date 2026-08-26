@@ -8,6 +8,38 @@ const PDF_EXTENSIONS = new Set(["pdf"]);
 const FONT_EXTENSIONS = new Set(["ttf", "otf", "woff", "woff2"]);
 const CSV_EXTENSIONS = new Set(["csv", "tsv"]);
 const HTML_EXTENSIONS = new Set(["html", "htm", "xhtml"]);
+const QUICK_LOOK_DOCUMENT_MIME_TYPES: Readonly<Record<string, string>> = {
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  docm: "application/vnd.ms-word.document.macroenabled.12",
+  dot: "application/msword",
+  dotx: "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+  dotm: "application/vnd.ms-word.template.macroenabled.12",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xlsm: "application/vnd.ms-excel.sheet.macroenabled.12",
+  xlsb: "application/vnd.ms-excel.sheet.binary.macroenabled.12",
+  xlt: "application/vnd.ms-excel",
+  xltx: "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
+  xltm: "application/vnd.ms-excel.template.macroenabled.12",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  pptm: "application/vnd.ms-powerpoint.presentation.macroenabled.12",
+  pps: "application/vnd.ms-powerpoint",
+  ppsx: "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
+  ppsm: "application/vnd.ms-powerpoint.slideshow.macroenabled.12",
+  pot: "application/vnd.ms-powerpoint",
+  potx: "application/vnd.openxmlformats-officedocument.presentationml.template",
+  potm: "application/vnd.ms-powerpoint.template.macroenabled.12",
+  pages: "application/vnd.apple.pages",
+  numbers: "application/vnd.apple.numbers",
+  key: "application/vnd.apple.keynote",
+  rtf: "application/rtf",
+  odt: "application/vnd.oasis.opendocument.text",
+  ods: "application/vnd.oasis.opendocument.spreadsheet",
+  odp: "application/vnd.oasis.opendocument.presentation",
+};
+const QUICK_LOOK_DOCUMENT_EXTENSIONS = new Set(Object.keys(QUICK_LOOK_DOCUMENT_MIME_TYPES));
 const AUDIO_EXTENSIONS = new Set([
   "mp3", "m4a", "m4b", "aac",
   "wav", "wave", "bwf",
@@ -56,6 +88,7 @@ export type ViewerKind =
   | "audio"
   | "video"
   | "archive"
+  | "quick-look"
   | "unsupported";
 
 export type FileLoadMode = "text" | "probe-text" | "viewer-owned" | "asset-url";
@@ -293,7 +326,7 @@ const FILENAME_LANGUAGE_ALIASES: Record<string, string> = {
 // open in CodeEditor with line numbers, search, folding, and normal editing.
 const PLAIN_TEXT_EXTENSIONS = new Set([
   // Plain text and generic configuration
-  "txt", "text", "log", "env", "cfg", "conf", "lock", "rtf", "rc",
+  "txt", "text", "log", "env", "cfg", "conf", "lock", "rc",
   "gitignore", "gitattributes", "gitmodules", "gitconfig", "gitkeep", "mailmap",
   "editorconfig", "dockerignore", "htaccess", "htpasswd",
   "npmrc", "nvmrc", "prettierrc", "eslintrc", "babelrc", "browserslistrc",
@@ -508,6 +541,10 @@ export function isHtml(filePath: string): boolean {
   return HTML_EXTENSIONS.has(getExtension(filePath));
 }
 
+export function isQuickLookDocument(filePath: string): boolean {
+  return QUICK_LOOK_DOCUMENT_EXTENSIONS.has(getExtension(filePath));
+}
+
 export function isSvg(filePath: string): boolean {
   return getExtension(filePath) === "svg";
 }
@@ -553,6 +590,14 @@ const FILE_TYPE_DEFINITIONS: readonly FileTypeDefinition[] = [
     }),
   },
   { matches: isPdf, describe: () => PDF_DESCRIPTOR },
+  {
+    matches: isQuickLookDocument,
+    describe: (filePath) => ({
+      kind: "quick-look",
+      ...VIEWER_CAPABILITIES,
+      mimeType: QUICK_LOOK_DOCUMENT_MIME_TYPES[getExtension(filePath)],
+    }),
+  },
   {
     matches: isFont,
     describe: (filePath) => ({

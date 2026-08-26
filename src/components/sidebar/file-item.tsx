@@ -121,9 +121,9 @@ export const FileItem = React.memo(function FileItem({
 
   const handleRename = async () => {
     if (renameInFlightRef.current) return;
-    onAutoRenameDone?.();
     if (!renameName || renameName === entry.name) {
       renameInFlightRef.current = true;
+      onAutoRenameDone?.();
       setIsRenaming(false);
       setRenameName(entry.name);
       requestAnimationFrame(() => {
@@ -133,16 +133,18 @@ export const FileItem = React.memo(function FileItem({
       return;
     }
     renameInFlightRef.current = true;
-    setDisplayName(renameName);
-    setIsRenaming(false);
     try {
       await window.__ghostFlushSave?.();
       const newPath = await invoke<string>("rename_file", {
         oldPath: entry.path,
         newName: renameName,
       });
-      await onRenamed?.(newPath);
-      await focusTreePath(newPath, projectPath);
+      onAutoRenameDone?.();
+      const renamed = onRenamed?.(newPath);
+      setDisplayName(renameName);
+      setIsRenaming(false);
+      requestAnimationFrame(() => void focusTreePath(newPath, projectPath));
+      await renamed;
     } catch (err) {
       console.error("Failed to rename:", err);
       setDisplayName(entry.name);
@@ -296,7 +298,13 @@ export const FileItem = React.memo(function FileItem({
           <div
             data-tree-focus-target
             data-file-active={isActive || undefined}
-            className={`mx-1.5 rounded-[5px] relative ${isActive ? "bg-white/[0.06]" : "data-[state=open]:bg-white/[0.06]"} ${isFocused ? "ring-1 ring-ghost-amber/80 bg-ghost-amber/[0.07]" : ""}`}
+            className={`mx-1.5 rounded-[5px] relative transition-colors ${
+              isFocused
+                ? "ring-1 ring-ghost-amber/80 bg-ghost-amber/[0.07] hover:bg-ghost-amber/[0.10]"
+                : isActive
+                  ? "bg-white/[0.06] hover:bg-white/[0.09]"
+                  : "data-[state=open]:bg-white/[0.06] hover:bg-sidebar-accent/70"
+            }`}
           >
           {/* Guide line rendered by SidebarGuide overlay */}
           <button

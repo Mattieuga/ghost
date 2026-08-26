@@ -36,7 +36,7 @@ describe("loadFileModel", () => {
     expect(reader.probeText).not.toHaveBeenCalled();
   });
 
-  it.each(["photo.jpg", "manual.pdf", "font.otf"])(
+  it.each(["photo.jpg", "manual.pdf", "font.otf", "proposal.docx", "budget.xlsx", "deck.pptx"])(
     "leaves known viewer content to the viewer for %s",
     async (path) => {
       const reader = backend();

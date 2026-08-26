@@ -258,33 +258,6 @@
   font: 0.62rem/1.4 ui-monospace, monospace;
 }
 
-.collaboration-carets__caret {
-  display: inline-block;
-  position: relative;
-  width: 0;
-  height: 1.15em;
-  border-left: 2px solid;
-  margin-left: -1px;
-  margin-right: -1px;
-  pointer-events: none;
-  vertical-align: text-bottom;
-}
-
-.collaboration-carets__label {
-  position: absolute;
-  left: -2px;
-  bottom: 100%;
-  border-radius: 3px 3px 3px 0;
-  padding: 0.12rem 0.35rem;
-  color: white;
-  font: 0.62rem/1.3 system-ui, sans-serif;
-  white-space: nowrap;
-}
-
-.collaboration-carets__selection {
-  opacity: 0.22;
-}
-
 @media (max-width: 760px) {
   .collaboration-spike-header,
   .collaboration-spike-footer {

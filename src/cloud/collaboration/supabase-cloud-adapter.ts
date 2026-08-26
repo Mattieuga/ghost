@@ -14,7 +14,10 @@ import {
   type CloudDocumentRole,
 } from "@/cloud/collaboration/types";
 
-const REMOTE_ORIGIN = "cloud-remote";
+// y-supabase applies received updates with this exact origin. Keep the value
+// aligned so a remote edit is not appended to the durable log again as if it
+// were a new local edit.
+const REMOTE_ORIGIN = "remote";
 const UPDATE_EVENT = "y-supabase-update";
 const STATE_VECTOR_EVENT = "y-supabase-state-vector";
 const AWARENESS_EVENT = "y-supabase-awareness";

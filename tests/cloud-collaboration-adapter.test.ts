@@ -92,6 +92,21 @@ describe("production Cloud collaboration adapter", () => {
     expect(backend.removedChannels()).toBe(1);
   });
 
+  it("does not echo a received remote update into the durable log", async () => {
+    const backend = createFakeBackend("editor");
+    const document = new Y.Doc();
+    const session = await SupabaseCloudAdapter.create({ ...OPTIONS, client: backend.client, document });
+    const remote = new Y.Doc();
+    remote.getText("probe").insert(0, "from another client");
+
+    Y.applyUpdate(document, Y.encodeStateAsUpdate(remote), "remote");
+    await session.flush();
+
+    expect(document.getText("probe").toString()).toBe("from another client");
+    expect(backend.persisted).toHaveLength(0);
+    await session.destroy();
+  });
+
   it("does not persist viewer mutations", async () => {
     const backend = createFakeBackend("viewer");
     const document = new Y.Doc();

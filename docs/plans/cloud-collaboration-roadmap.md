@@ -3,7 +3,7 @@
 - Status: Proposed; no implementation started
 - Date: 2026-08-25
 - Last updated: 2026-08-26
-- Architecture: [`../architecture/0003-cloud-collaborative-markdown-workspaces.md`](../architecture/0003-cloud-collaborative-markdown-workspaces.md)
+- Architecture: [`../architecture/0004-cloud-collaborative-markdown-workspaces.md`](../architecture/0004-cloud-collaborative-markdown-workspaces.md)
 
 ## Goal
 
@@ -37,7 +37,7 @@ post-cloud sequence below.
 
 Status: Not started
 
-Build a disposable vertical slice before accepting ADR 0003 or creating
+Build a disposable vertical slice before accepting ADR 0004 or creating
 production infrastructure.
 
 ### First implementation slice
@@ -106,7 +106,7 @@ path is viable.
 
 ### Exit criteria
 
-- Every ADR 0003 acceptance-gate check has recorded evidence.
+- Every ADR 0004 acceptance-gate check has recorded evidence.
 - The spike identifies one canonical Yjs field and a versioned schema.
 - Markdown fidelity regressions are either fixed or explicitly accepted.
 - The selected provider can prevent a viewer from broadcasting or persisting
@@ -117,7 +117,7 @@ path is viable.
   bound.
 - Editor status distinguishes connection, CRDT synchronization, and confirmed
   durable persistence.
-- A stack recommendation and operational cost model are attached to ADR 0003.
+- A stack recommendation and operational cost model are attached to ADR 0004.
 
 Do not evolve the disposable spike directly into production code unless its
 package boundaries, secrets, migrations, and tests are deliberately rebuilt.
@@ -285,7 +285,7 @@ Status: Blocked on Phase 4
 
 ## Production launch gate
 
-- ADR 0003 is Accepted with the final provider and cost model recorded.
+- ADR 0004 is Accepted with the final provider and cost model recorded.
 - Full web tests, `pnpm test`, `pnpm build`, and Rust tests pass.
 - Security tests cover every RLS policy, share role, invitation state, and
   selected-provider authorization rule or token claim.

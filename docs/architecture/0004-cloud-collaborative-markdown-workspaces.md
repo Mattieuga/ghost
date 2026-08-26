@@ -1,4 +1,4 @@
-# ADR 0003: Cloud-native collaborative Markdown workspaces
+# ADR 0004: Cloud-native collaborative Markdown workspaces
 
 - Status: Proposed; implementation requires the Phase 0 technology spike
 - Date: 2026-08-25

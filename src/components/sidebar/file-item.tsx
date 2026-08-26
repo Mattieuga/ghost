@@ -29,7 +29,7 @@ interface FileItemProps {
   entry: FileEntry;
   projectPath: string;
   indent: number;
-  onSelect: () => void;
+  onSelect: () => void | boolean | Promise<void | boolean>;
   onDeleted?: () => void;
   onRenamed?: (newPath: string) => void | Promise<void>;
   onNewSibling?: () => void;

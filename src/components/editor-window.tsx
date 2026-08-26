@@ -567,6 +567,7 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
       <div className="relative flex-1 overflow-hidden">
         <main
           ref={setMainEl}
+          data-editor-scroll-container
           tabIndex={-1}
           onFocus={(event) => {
             if (event.target === event.currentTarget) focusViewerTarget(event.currentTarget);

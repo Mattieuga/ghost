@@ -28,7 +28,7 @@ export type FileTreeAction =
   | "newFolder"
   | "closeProject";
 
-type TreeActionHandler = () => void | Promise<void>;
+type TreeActionHandler = () => void | boolean | Promise<void | boolean>;
 
 interface FileTreeNodeSpec {
   key: string;
@@ -152,7 +152,7 @@ interface FileTreeKeyboardProps {
   className?: string;
   children: ReactNode;
   scrollRef?: RefObject<HTMLDivElement | null>;
-  onFocusEditor: () => void;
+  onFocusEditor: (placement?: "preserve" | "start") => void;
 }
 
 export const FileTreeKeyboard = forwardRef<FileTreeKeyboardHandle, FileTreeKeyboardProps>(
@@ -221,7 +221,14 @@ export const FileTreeKeyboard = forwardRef<FileTreeKeyboardHandle, FileTreeKeybo
       // the top because its bounding box is as tall as the entire subtree.
       // Always scroll the visible row instead.
       const scrollTarget = element.querySelector<HTMLElement>("[data-tree-focus-target]") ?? element;
-      scrollTarget.scrollIntoView({ block: options.block ?? "nearest" });
+      const block = options.block ?? "nearest";
+      const rootRect = root.getBoundingClientRect();
+      const targetRect = scrollTarget.getBoundingClientRect();
+      const fullyVisible = rootRect.height > 0 && targetRect.height > 0 &&
+        targetRect.top >= rootRect.top && targetRect.bottom <= rootRect.bottom;
+      if (block !== "nearest" || !fullyVisible) {
+        scrollTarget.scrollIntoView({ block });
+      }
       return true;
     }, [focusRootWithoutReveal]);
 
@@ -312,7 +319,7 @@ export const FileTreeKeyboard = forwardRef<FileTreeKeyboardHandle, FileTreeKeybo
     const focusPath = useCallback(
       (requestedPath: string | null, projectPath?: string) => ensurePathVisible(requestedPath, projectPath, {
         focusTree: true,
-        block: "center",
+        block: "nearest",
       }),
       [ensurePathVisible],
     );
@@ -365,8 +372,7 @@ export const FileTreeKeyboard = forwardRef<FileTreeKeyboardHandle, FileTreeKeybo
       if (action === "preview" && !handler) handler = node.actions.activate;
       if (!handler) return false;
 
-      await handler();
-      return true;
+      return await handler() !== false;
     }, [getFocusedSpec]);
 
     const getFocusedNode = useCallback((): FileTreeFocusedNode | null => {
@@ -552,7 +558,10 @@ export const FileTreeKeyboard = forwardRef<FileTreeKeyboardHandle, FileTreeKeybo
           const action = node.expanded ? node.collapse : node.expand;
           void Promise.resolve(action?.()).then(restoreTreeRootFocus);
         } else {
-          void runFocusedAction("activate").then(onFocusEditor);
+          void runFocusedAction("activate").then((activated) => {
+            if (activated) onFocusEditor("start");
+            else restoreTreeRootFocus();
+          });
         }
         return;
       }

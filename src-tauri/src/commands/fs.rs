@@ -151,7 +151,12 @@ pub async fn read_directory(
         return Err(format!("Path is not a directory: {}", path));
     }
 
-    let limit = max_depth.unwrap_or(32);
+    // The tree is loaded lazily, one directory at a time. Defaulting an
+    // omitted IPC argument to a deep recursive walk can scan an entire home
+    // directory and retain millions of entries in memory before the frontend
+    // can filter them. Keep the command safe even if a caller omits or
+    // misspells `maxDepth`.
+    let limit = max_depth.unwrap_or(1);
     read_dir_recursive(
         dir_path,
         &extensions,
@@ -2129,6 +2134,29 @@ mod tests {
                 .collect::<Vec<_>>(),
             [".hidden-folder", ".hidden.txt", "visible.txt"],
         );
+        fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[test]
+    fn directory_command_defaults_to_one_level_when_depth_is_omitted() {
+        let directory = test_directory("bounded-directory-default");
+        let child = directory.join("child");
+        fs::create_dir(&child).expect("child directory should be created");
+        fs::write(child.join("nested.txt"), "nested").expect("fixture should be written");
+
+        let entries = tauri::async_runtime::block_on(super::read_directory(
+            directory.to_string_lossy().into_owned(),
+            Vec::new(),
+            None,
+            Some(false),
+        ))
+        .expect("directory should be listed");
+
+        let child_entry = entries
+            .iter()
+            .find(|entry| entry.name == "child")
+            .expect("child directory should be present");
+        assert_eq!(child_entry.children.as_ref().map(Vec::len), Some(0));
         fs::remove_dir_all(directory).expect("test directory should be removed");
     }
 

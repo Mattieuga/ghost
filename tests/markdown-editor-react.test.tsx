@@ -45,6 +45,48 @@ afterEach(() => {
 });
 
 describe("MarkdownEditor React integration", () => {
+  it("moves to the start of the document with Cmd+ArrowUp", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    let editor: Editor | null = null;
+
+    await act(async () => {
+      root.render(
+        <main data-editor-scroll-container>
+          <MarkdownEditor
+            content={"First paragraph\n\nSecond paragraph"}
+            onContentChange={vi.fn()}
+            activeFile="/tmp/navigation.md"
+            onEditorReady={(readyEditor) => { editor = readyEditor; }}
+          />
+        </main>,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(editor).not.toBeNull();
+    const viewport = host.querySelector("[data-editor-scroll-container]") as HTMLElement;
+    let start = 0;
+    await act(async () => {
+      (editor as Editor).commands.focus("start");
+      start = (editor as Editor).state.selection.from;
+      (editor as Editor).commands.focus("end");
+      expect((editor as Editor).state.selection.from).toBeGreaterThan(start);
+      viewport.scrollTop = 240;
+      (editor as Editor).view.dom.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "ArrowUp",
+        code: "ArrowUp",
+        metaKey: true,
+        bubbles: true,
+      }));
+    });
+
+    expect((editor as Editor).state.selection.from).toBe(start);
+    expect(viewport.scrollTop).toBe(0);
+  });
+
   it("does not serialize or save a clean document when explicitly flushed", async () => {
     const host = document.createElement("div");
     document.body.appendChild(host);

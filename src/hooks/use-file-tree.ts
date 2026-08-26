@@ -199,7 +199,7 @@ export function useFileTree(
           const entries = await invoke<FileEntry[]>("read_directory", {
             path: folder,
             extensions,
-            max_depth: 1,
+            maxDepth: 1,
             showHidden: showHiddenFiles,
           });
           nextLoadedDirs.add(folder);
@@ -228,7 +228,7 @@ export function useFileTree(
               const children = await invoke<FileEntry[]>("read_directory", {
                 path: dir,
                 extensions,
-                max_depth: 1,
+                maxDepth: 1,
                 showHidden: showHiddenFiles,
               });
               nextLoadedDirs.add(dir);
@@ -272,7 +272,7 @@ export function useFileTree(
       const children = await invoke<FileEntry[]>("read_directory", {
         path: folderPath,
         extensions,
-        max_depth: 1,
+        maxDepth: 1,
         showHidden: showHiddenFiles,
       });
 
@@ -345,7 +345,7 @@ export function useFileTree(
         const children = await invoke<FileEntry[]>("read_directory", {
           path,
           extensions,
-          max_depth: 1,
+          maxDepth: 1,
           showHidden: showHiddenFiles,
         });
         if (directoryRefreshes.current.get(path) !== generation) return;

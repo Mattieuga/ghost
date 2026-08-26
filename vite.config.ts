@@ -69,6 +69,14 @@ export default defineConfig(async ({ command }) => ({
     },
   },
   clearScreen: false,
+  build: {
+    rollupOptions: {
+      input: {
+        app: path.resolve(__dirname, "index.html"),
+        web: path.resolve(__dirname, "web.html"),
+      },
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,

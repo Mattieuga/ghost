@@ -178,6 +178,10 @@ blocked on the remaining Phase 0 gates
   version-checked writes, streamed source writes, and focus reloads through it.
 - Preserved the current Rust file commands and local save/conflict behavior;
   cloud references cannot be passed to this gateway without a type error.
+- Added a separately built `web.html` entry with no Tauri imports and a
+  production browser account shell using email-link Supabase Auth. The native
+  app does not reuse browser storage; Mac account work remains blocked on the
+  Keychain-backed credential boundary.
 
 ### Scope
 

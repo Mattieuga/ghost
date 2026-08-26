@@ -131,7 +131,8 @@ Status: Implemented; manual large-file and PDFKit acceptance passes pending — 
 
 ## Phase 6: Broad read-only coverage
 
-Status: Planned
+Status: Quick Look document prototype in progress — see
+[`2026-08-25-feat-native-quick-look-plan.md`](2026-08-25-feat-native-quick-look-plan.md)
 
 - Add a native Quick Look action or embedded preview for common macOS-supported formats, including Office/iWork documents and formats supplied by installed preview extensions.
 - Add an incremental hex viewer as the final in-app fallback for arbitrary binary files.

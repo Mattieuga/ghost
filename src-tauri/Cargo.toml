@@ -36,6 +36,7 @@ objc2-image-io = { version = "0.3.2", features = ["CGImageSource"] }
 objc2-core-graphics = { version = "0.3.2", features = ["CGImage"] }
 objc2-core-foundation = "0.3.2"
 objc2-pdf-kit = "0.3.2"
+objc2-quick-look-ui = { version = "0.3.2", default-features = false, features = ["QLPreviewItem", "QLPreviewView", "objc2-app-kit"] }
 
 [target."cfg(unix)".dependencies]
 xattr = "1.6.1"

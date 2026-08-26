@@ -77,7 +77,7 @@ export function SidebarGuide({ treeAreaRef }: { treeAreaRef: React.RefObject<HTM
       rafRef.current = requestAnimationFrame(() => update(false));
     });
     observer.observe(treeArea, {
-      attributeFilter: ["data-file-active", "data-folder-active"],
+      attributeFilter: ["data-file-active", "data-folder-active", "data-root-active-collapsed"],
       childList: true,
       subtree: true,
     });

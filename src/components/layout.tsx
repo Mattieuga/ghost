@@ -208,12 +208,16 @@ export function GhostLayout() {
     [settings.showAllFiles]
   );
 
-  const { flatFiles: allFiles, getEntries, getError, expandFolder, isSkippedDir } = useFileTree(
-    folders,
-    extensions,
-    refreshTrigger,
-    settings.showHiddenFiles,
-  );
+  const {
+    flatFiles: allFiles,
+    getEntries,
+    getError,
+    expandFolder,
+    insertEntry: insertTreeEntry,
+    renameEntry: renameTreeEntry,
+    refreshPath: refreshTreePath,
+    isSkippedDir,
+  } = useFileTree(folders, extensions, refreshTrigger, settings.showHiddenFiles);
 
   const { closeSearch, openSearch } = search;
 
@@ -410,7 +414,7 @@ export function GhostLayout() {
     setRefreshTrigger((k) => k + 1);
   }, []);
 
-  useFileWatcher(folders, handleFsChange);
+  useFileWatcher(folders, refreshTreePath);
 
   const applyContentRef = useRef<((content: string) => boolean) | null>(null);
   applyContentRef.current = (content) =>
@@ -544,12 +548,13 @@ export function GhostLayout() {
 
   const handleFileRenamed = useCallback(
     async (oldPath: string, newPath: string) => {
+      renameTreeEntry(oldPath, newPath);
+      refreshTreePath(newPath);
       await retargetActiveFile(oldPath, newPath);
-      handleFsChange();
       // Notify accessory windows
       invoke("emit_file_renamed", { oldPath, newPath }).catch(() => {});
     },
-    [retargetActiveFile, handleFsChange]
+    [renameTreeEntry, refreshTreePath, retargetActiveFile]
   );
 
   const handleRootRenamed = useCallback(
@@ -642,7 +647,8 @@ export function GhostLayout() {
       try {
         const path = await invoke<string>("create_file", { dir: targetDir, name });
         setNewlyCreatedFile(path);
-        handleFsChange();
+        insertTreeEntry(path, false);
+        refreshTreePath(path);
         handleFileSelect(path);
         break;
       } catch {
@@ -651,7 +657,7 @@ export function GhostLayout() {
         if (counter > 100) break;
       }
     }
-  }, [folders, addFolder, handleFileSelect, handleFsChange]);
+  }, [folders, addFolder, handleFileSelect, insertTreeEntry, refreshTreePath]);
 
   const createNewFolder = useCallback(async (targetDirectory?: string) => {
     if (folders.length === 0) { addFolder(); return; }
@@ -674,14 +680,15 @@ export function GhostLayout() {
           name,
         });
         setNewlyCreatedFolder(path);
-        handleFsChange();
+        insertTreeEntry(path, true);
+        refreshTreePath(path);
         break;
       } catch {
         counter += 1;
         name = `New Folder ${counter}`;
       }
     }
-  }, [folders, addFolder, handleFsChange]);
+  }, [folders, addFolder, insertTreeEntry, refreshTreePath]);
 
   useEffect(() => {
     window.__ghostAddFolder = addFolder;
@@ -1106,16 +1113,13 @@ export function GhostLayout() {
         oldPath: activeFile,
         newName: headerRenameName,
       });
-      await retargetActiveFile(activeFile, newPath);
-      handleFsChange();
-      // Notify accessory windows
-      invoke("emit_file_renamed", { oldPath: activeFile, newPath }).catch(() => {});
+      await handleFileRenamed(activeFile, newPath);
     } catch (err) {
       console.error("Failed to rename:", err);
       return;
     }
     setIsRenamingHeader(false);
-  }, [activeFile, headerRenameName, activeFileName, retargetActiveFile, handleFsChange]);
+  }, [activeFile, headerRenameName, activeFileName, handleFileRenamed]);
 
   const focusedTreeNode = treeKeyboardRef.current?.getFocusedNode() ?? null;
   const focusedTreeDetail = focusedTreeNode
@@ -1376,10 +1380,18 @@ export function GhostLayout() {
                     onFileRenamed={handleFileRenamed}
                     onFileDeleted={handleFileDeleted}
                     newlyCreatedFile={newlyCreatedFile}
-                    onNewFileCreated={(path) => { setNewlyCreatedFile(path); handleFsChange(); }}
+                    onNewFileCreated={(path) => {
+                      setNewlyCreatedFile(path);
+                      insertTreeEntry(path, false);
+                      refreshTreePath(path);
+                    }}
                     onNewFileRenamed={() => setNewlyCreatedFile(null)}
                     newlyCreatedFolder={newlyCreatedFolder}
-                    onNewFolderCreated={(path) => setNewlyCreatedFolder(path)}
+                    onNewFolderCreated={(path) => {
+                      setNewlyCreatedFolder(path);
+                      insertTreeEntry(path, true);
+                      refreshTreePath(path);
+                    }}
                     onNewFolderRenamed={() => setNewlyCreatedFolder(null)}
                     activeDropFolder={activeDropFolder}
                     onAddProject={addFolder}

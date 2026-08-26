@@ -10,6 +10,8 @@ mod traffic_lights;
 mod webview_config;
 #[cfg(target_os = "macos")]
 mod pdf_view;
+#[cfg(target_os = "macos")]
+mod quick_look_view;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -29,6 +31,7 @@ pub fn run() {
         .manage(commands::fs::SourceSaveState::new())
         .manage(commands::fs::LargeTextSearchState::new())
         .manage(pdf_view::PdfViewState::new())
+        .manage(quick_look_view::QuickLookViewState::new())
         .manage(windows::EditorWindowMap(Mutex::new(HashMap::new())))
         .manage(windows::ClosingEditorWindows(Mutex::new(HashSet::new())))
         .manage(menu::ShowMainMenuItem(Mutex::new(None)))
@@ -83,6 +86,10 @@ pub fn run() {
             pdf_view::pdf_view_action,
             pdf_view::get_pdf_view_state,
             pdf_view::search_pdf_view,
+            quick_look_view::show_quick_look_view,
+            quick_look_view::update_quick_look_view_frame,
+            quick_look_view::hide_quick_look_view,
+            quick_look_view::quick_look_view_action,
             watcher::watch_directories,
             windows::open_editor_window,
             windows::list_editor_windows,
@@ -199,6 +206,10 @@ pub fn run() {
                             #[cfg(target_os = "macos")]
                             if let Some(state) = app_handle.try_state::<pdf_view::PdfViewState>() {
                                 pdf_view::cleanup_pdf_view(&state, label);
+                            }
+                            #[cfg(target_os = "macos")]
+                            if let Some(state) = app_handle.try_state::<quick_look_view::QuickLookViewState>() {
+                                quick_look_view::cleanup_quick_look_view(&state, label);
                             }
 
                             if label.starts_with("editor-") {

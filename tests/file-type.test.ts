@@ -19,6 +19,11 @@ describe("file classification", () => {
     ["photo.PNG", "image", "viewer-owned", false],
     ["icon.icns", "image", "viewer-owned", false],
     ["manual.pdf", "pdf", "viewer-owned", false],
+    ["proposal.docx", "quick-look", "viewer-owned", false],
+    ["budget.xlsx", "quick-look", "viewer-owned", false],
+    ["deck.pptx", "quick-look", "viewer-owned", false],
+    ["letter.rtf", "quick-look", "viewer-owned", false],
+    ["draft.pages", "quick-look", "viewer-owned", false],
     ["typeface.woff2", "font", "viewer-owned", false],
     ["recording.FLAC", "audio", "asset-url", false],
     ["audiobook.m4b", "audio", "asset-url", false],
@@ -72,6 +77,32 @@ describe("file classification", () => {
       loadMode: "viewer-owned",
       editable: true,
     })).toBe(false);
+  });
+
+  it.each([
+    ["doc", "application/msword"],
+    ["docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+    ["xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+    ["pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+    ["pages", "application/vnd.apple.pages"],
+    ["numbers", "application/vnd.apple.numbers"],
+    ["key", "application/vnd.apple.keynote"],
+    ["rtf", "application/rtf"],
+    ["odt", "application/vnd.oasis.opendocument.text"],
+    ["ods", "application/vnd.oasis.opendocument.spreadsheet"],
+    ["odp", "application/vnd.oasis.opendocument.presentation"],
+  ] as const)("routes .%s through native Quick Look", (extension, mimeType) => {
+    expect(classifyFile(`document.${extension}`)).toMatchObject({
+      kind: "quick-look",
+      loadMode: "viewer-owned",
+      editable: false,
+      searchable: false,
+      mimeType,
+    });
+  });
+
+  it("does not treat RTF markup as editable plain text", () => {
+    expect(isTextEditable("letter.rtf")).toBe(false);
   });
 
   it.each([

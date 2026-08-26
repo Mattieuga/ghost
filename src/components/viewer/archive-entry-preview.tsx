@@ -100,6 +100,7 @@ export function ArchiveEntryPreview({ artifact }: { artifact: ArchivePreviewArti
       return <AudioViewer filePath={artifact.path} displayName={artifact.display_name} />;
     case "video":
       return <VideoViewer filePath={artifact.path} displayName={artifact.display_name} />;
+    case "quick-look":
     case "archive":
     case "unsupported":
       return (

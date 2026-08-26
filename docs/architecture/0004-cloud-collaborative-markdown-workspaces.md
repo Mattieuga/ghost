@@ -1,6 +1,6 @@
 # ADR 0004: Cloud-native collaborative Markdown workspaces
 
-- Status: Proposed; implementation requires the Phase 0 technology spike
+- Status: Proposed; online Phase 0 feasibility passes, resilience gates remain
 - Date: 2026-08-25
 - Last updated: 2026-08-26
 - Related plan: [`../plans/cloud-collaboration-roadmap.md`](../plans/cloud-collaboration-roadmap.md)

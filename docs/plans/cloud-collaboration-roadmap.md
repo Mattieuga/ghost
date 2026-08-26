@@ -1,6 +1,6 @@
 # Cloud collaboration roadmap
 
-- Status: Proposed; no implementation started
+- Status: In progress; Phase 1 foundation starting after the online Phase 0 proof
 - Date: 2026-08-25
 - Last updated: 2026-08-26
 - Architecture: [`../architecture/0004-cloud-collaborative-markdown-workspaces.md`](../architecture/0004-cloud-collaborative-markdown-workspaces.md)
@@ -35,8 +35,8 @@ post-cloud sequence below.
 
 ## Phase 0: Technology and fidelity spike
 
-Status: In progress; the local slice is implemented and live Supabase
-validation is pending
+Status: In progress; online Supabase collaboration and access controls pass,
+with resilience and operational gates remaining
 
 Build a disposable vertical slice before accepting ADR 0004 or creating
 production infrastructure.
@@ -77,16 +77,27 @@ Implemented locally:
 - added adapter tests covering persisted reload, private channel configuration,
   durable editor writes, and viewer write suppression.
 
-Still requires a connected Supabase project:
+Validated live against the connected Supabase project:
 
-- run the migration and assign the three generated anonymous user IDs;
-- exercise Mac-to-web live editing, awareness, reload, disconnect, and offline
-  convergence;
-- attack both Realtime Broadcast and Postgres persistence using the viewer JWT;
-- record fidelity, payload, latency, failure-boundary, and process-kill results;
-  and
-- compare the failure/security cases with Hocuspocus and current Liveblocks
-  terms before accepting ADR 0004.
+- applied the migration and assigned isolated Alice, Bob, and Viewer sessions;
+- exercised concurrent Tauri editing, awareness, stable remote carets, and a
+  read-only Viewer in a two-client split harness;
+- retained the representative Markdown fixture through the live edit pass;
+- rejected an unrelated authenticated session at both the Postgres persistence
+  and private Realtime channel boundaries; and
+- kept connection, CRDT synchronization, and durable database state distinct
+  in the UI.
+
+Still required before accepting ADR 0004:
+
+- exercise web-to-Tauri editing, reload, disconnect, offline divergence, and
+  both reconnect orders;
+- attack persistence and Broadcast using the assigned Viewer JWT as well as an
+  unrelated authenticated session;
+- record payload, latency, failure-boundary, process-kill, revocation, and
+  backup/restore results; and
+- compare the same failure/security cases with Hocuspocus and current
+  Liveblocks terms.
 
 Setup and the live test script are recorded in
 [`../spikes/cloud-collaboration-prototype.md`](../spikes/cloud-collaboration-prototype.md).
@@ -155,7 +166,8 @@ package boundaries, secrets, migrations, and tests are deliberately rebuilt.
 
 ## Phase 1: Source-neutral document and editor foundation
 
-Status: Blocked on Phase 0
+Status: In progress for provider-neutral work; provider acceptance remains
+blocked on the remaining Phase 0 gates
 
 ### Scope
 

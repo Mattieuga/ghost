@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
@@ -84,19 +84,90 @@ function roomFromLocation(): string {
   return new URLSearchParams(window.location.search).get("room") ?? DEFAULT_ROOM_ID;
 }
 
-function actorUrl(actor: Actor, roomId: string): string {
+function actorUrl(actor: Actor, roomId: string, embedded = false): string {
   const url = new URL(window.location.href);
   url.searchParams.set("mode", "collaboration-spike");
   url.searchParams.set("actor", actor);
   url.searchParams.set("room", roomId);
+  url.searchParams.delete("view");
+  if (embedded) url.searchParams.set("embedded", "1");
+  else url.searchParams.delete("embedded");
+  return url.toString();
+}
+
+function splitUrl(roomId: string): string {
+  const url = new URL(window.location.href);
+  url.searchParams.set("mode", "collaboration-spike");
+  url.searchParams.set("view", "split");
+  url.searchParams.set("room", roomId);
+  url.searchParams.delete("actor");
+  url.searchParams.delete("embedded");
   return url.toString();
 }
 
 export function CollaborationSpike() {
-  const actor = useMemo(actorFromLocation, []);
-  const roomId = useMemo(roomFromLocation, []);
+  const params = new URLSearchParams(window.location.search);
+  const roomId = roomFromLocation();
+  if (params.get("view") === "split") {
+    return <SplitCollaborationSpike roomId={roomId} />;
+  }
+
+  return (
+    <SingleCollaborationSpike
+      actor={actorFromLocation()}
+      roomId={roomId}
+      embedded={params.get("embedded") === "1"}
+    />
+  );
+}
+
+function SingleCollaborationSpike({
+  actor,
+  roomId,
+  embedded,
+}: {
+  actor: Actor;
+  roomId: string;
+  embedded: boolean;
+}) {
   const actorDetails = ACTORS[actor];
   const [boot, setBoot] = useState<BootState>({ kind: "loading" });
+  const [actorWindowError, setActorWindowError] = useState<string | null>(null);
+
+  const openActor = async (candidate: Actor) => {
+    if (!("__TAURI_INTERNALS__" in window)) {
+      window.location.assign(actorUrl(candidate, roomId));
+      return;
+    }
+
+    try {
+      const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+      const label = `collaboration-spike-${candidate}`;
+      const existing = await WebviewWindow.getByLabel(label);
+      if (existing) {
+        await existing.unminimize();
+        await existing.show();
+        await existing.setFocus();
+        return;
+      }
+
+      const actorWindow = new WebviewWindow(label, {
+        url: actorUrl(candidate, roomId),
+        title: `Ghost Cloud · ${ACTORS[candidate].name}`,
+        width: 1200,
+        height: 800,
+        minWidth: 720,
+        minHeight: 500,
+      });
+      actorWindow.once("tauri://error", (event) => {
+        setActorWindowError(`Could not open ${ACTORS[candidate].name}: ${String(event.payload)}`);
+      });
+    } catch (error) {
+      setActorWindowError(
+        error instanceof Error ? error.message : `Could not open ${ACTORS[candidate].name}.`,
+      );
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -165,26 +236,33 @@ export function CollaborationSpike() {
   }, [actor, actorDetails, roomId]);
 
   return (
-    <main className="collaboration-spike-shell">
-      <header className="collaboration-spike-header">
-        <div>
-          <p className="collaboration-spike-kicker">Ghost Cloud · disposable Phase 0 spike</p>
-          <h1>Multiplayer Markdown</h1>
-        </div>
-        <nav className="collaboration-spike-actors" aria-label="Prototype actors">
-          {(Object.keys(ACTORS) as Actor[]).map((candidate) => (
-            <a
-              key={candidate}
-              className={candidate === actor ? "active" : ""}
-              href={actorUrl(candidate, roomId)}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {ACTORS[candidate].name}
-            </a>
-          ))}
-        </nav>
-      </header>
+    <main className={`collaboration-spike-shell${embedded ? " is-embedded" : ""}`}>
+      {!embedded && (
+        <header className="collaboration-spike-header">
+          <div>
+            <p className="collaboration-spike-kicker">Ghost Cloud · disposable Phase 0 spike</p>
+            <h1>Multiplayer Markdown</h1>
+          </div>
+          <nav className="collaboration-spike-actors" aria-label="Prototype actors">
+            {(Object.keys(ACTORS) as Actor[]).map((candidate) => (
+              <a
+                key={candidate}
+                className={candidate === actor ? "active" : ""}
+                href={actorUrl(candidate, roomId)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void openActor(candidate);
+                }}
+              >
+                {ACTORS[candidate].name}
+              </a>
+            ))}
+            <a href={splitUrl(roomId)}>Split test</a>
+          </nav>
+        </header>
+      )}
+
+      {actorWindowError && <div className="collaboration-spike-error">{actorWindowError}</div>}
 
       {boot.kind === "loading" && <SpikeNotice title="Connecting">Preparing the local cache and Supabase session…</SpikeNotice>}
       {boot.kind === "missing-config" && <MissingConfig />}
@@ -196,9 +274,77 @@ export function CollaborationSpike() {
           actor={actor}
           adapter={boot.adapter}
           userId={boot.userId}
+          compact={embedded}
         />
       )}
     </main>
+  );
+}
+
+function SplitCollaborationSpike({ roomId }: { roomId: string }) {
+  const [leftActor, setLeftActor] = useState<Actor>("alice");
+  const [rightActor, setRightActor] = useState<Actor>("bob");
+
+  return (
+    <main className="collaboration-spike-shell">
+      <header className="collaboration-spike-header">
+        <div>
+          <p className="collaboration-spike-kicker">Ghost Cloud · live collaboration harness</p>
+          <h1>Two-client test</h1>
+        </div>
+        <nav className="collaboration-spike-actors" aria-label="Prototype view">
+          <a href={actorUrl("alice", roomId)}>Single client</a>
+        </nav>
+      </header>
+      <section className="collaboration-spike-split">
+        <SplitClient
+          label="Left client"
+          actor={leftActor}
+          roomId={roomId}
+          onActorChange={setLeftActor}
+        />
+        <SplitClient
+          label="Right client"
+          actor={rightActor}
+          roomId={roomId}
+          onActorChange={setRightActor}
+        />
+      </section>
+    </main>
+  );
+}
+
+function SplitClient({
+  label,
+  actor,
+  roomId,
+  onActorChange,
+}: {
+  label: string;
+  actor: Actor;
+  roomId: string;
+  onActorChange: (actor: Actor) => void;
+}) {
+  return (
+    <section className="collaboration-spike-split-client">
+      <div className="collaboration-spike-split-toolbar">
+        <span>{label}</span>
+        <select
+          aria-label={`${label} actor`}
+          value={actor}
+          onChange={(event) => onActorChange(event.target.value as Actor)}
+        >
+          {(Object.keys(ACTORS) as Actor[]).map((candidate) => (
+            <option key={candidate} value={candidate}>{ACTORS[candidate].name}</option>
+          ))}
+        </select>
+      </div>
+      <iframe
+        key={`${roomId}:${actor}`}
+        title={`${label}: ${ACTORS[actor].name}`}
+        src={actorUrl(actor, roomId, true)}
+      />
+    </section>
   );
 }
 
@@ -206,10 +352,12 @@ function CollaborativeEditor({
   actor,
   adapter,
   userId,
+  compact,
 }: {
   actor: Actor;
   adapter: CollaborationAdapter;
   userId: string;
+  compact: boolean;
 }) {
   const [snapshot, setSnapshot] = useState<CollaborationSnapshot>(adapter.getSnapshot());
   const [markdown, setMarkdown] = useState("");
@@ -296,7 +444,7 @@ function CollaborativeEditor({
 
       {snapshot.lastError && <div className="collaboration-spike-error">{snapshot.lastError}</div>}
 
-      <div className="collaboration-spike-panes">
+      <div className={`collaboration-spike-panes${compact ? " is-compact" : ""}`}>
         <article className="collaboration-spike-editor-pane">
           {editor?.isEmpty && adapter.role === "editor" && (
             <button type="button" className="collaboration-spike-seed" onClick={loadFixture}>
@@ -305,16 +453,20 @@ function CollaborativeEditor({
           )}
           <EditorContent editor={editor} className="collaboration-spike-editor" />
         </article>
-        <aside className="collaboration-spike-markdown-pane">
-          <div className="collaboration-spike-pane-title">Derived Markdown</div>
-          <pre>{markdown || "Start typing to inspect the Markdown export."}</pre>
-        </aside>
+        {!compact && (
+          <aside className="collaboration-spike-markdown-pane">
+            <div className="collaboration-spike-pane-title">Derived Markdown</div>
+            <pre>{markdown || "Start typing to inspect the Markdown export."}</pre>
+          </aside>
+        )}
       </div>
 
-      <footer className="collaboration-spike-footer">
-        <span>User {userId}</span>
-        <span>{Y_SUPABASE_SPIKE_REVISION}</span>
-      </footer>
+      {!compact && (
+        <footer className="collaboration-spike-footer">
+          <span>User {userId}</span>
+          <span>{Y_SUPABASE_SPIKE_REVISION}</span>
+        </footer>
+      )}
     </section>
   );
 }

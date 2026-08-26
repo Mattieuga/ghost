@@ -186,7 +186,10 @@ export class SupabaseCollaborationAdapter implements CollaborationAdapter {
       realtimeClient,
       {
         awareness: this.awareness,
-        broadcastThrottleMs: 40,
+        // Cursor awareness may reference Yjs items created by the same
+        // keystroke. Delaying the document update while sending awareness
+        // immediately makes remote carets disappear until that item arrives.
+        broadcastThrottleMs: 0,
         autoReconnect: true,
         reconnectDelay: 500,
         maxReconnectDelay: 10_000,

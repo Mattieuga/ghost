@@ -1,6 +1,9 @@
 .collaboration-spike-shell {
-  min-height: 100%;
-  overflow: auto;
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  flex-direction: column;
   background: var(--background);
   color: var(--foreground);
   font-family: var(--ui-font, "Space Grotesk"), system-ui, sans-serif;
@@ -11,7 +14,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 2rem;
-  padding: 1.25rem 1.5rem;
+  flex: none;
+  padding: 1.25rem 1.5rem 1.25rem 5.5rem;
   border-bottom: 1px solid var(--border);
   background: var(--sidebar);
 }
@@ -33,6 +37,8 @@
 
 .collaboration-spike-actors {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 0.35rem;
 }
 
@@ -87,12 +93,14 @@
 
 .collaboration-spike-workspace {
   display: flex;
-  min-height: calc(100vh - 5rem);
+  min-height: 0;
+  flex: 1;
   flex-direction: column;
 }
 
 .collaboration-spike-statusbar {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 0.45rem;
   padding: 0.65rem 1rem;
@@ -137,13 +145,71 @@
 
 .collaboration-spike-panes {
   display: grid;
+  min-height: 0;
+  overflow: hidden;
   flex: 1;
   grid-template-columns: minmax(0, 3fr) minmax(18rem, 2fr);
 }
 
+.collaboration-spike-panes.is-compact {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.collaboration-spike-split {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  gap: 1px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  background: var(--border);
+}
+
+.collaboration-spike-split-client {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--background);
+}
+
+.collaboration-spike-split-toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.collaboration-spike-split-toolbar select {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem 1.75rem 0.25rem 0.6rem;
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  text-transform: none;
+}
+
+.collaboration-spike-split-client iframe {
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  flex: 1;
+  background: var(--background);
+}
+
 .collaboration-spike-editor-pane {
   position: relative;
-  min-height: 38rem;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
   border-right: 1px solid var(--border);
 }
 
@@ -152,7 +218,7 @@
 }
 
 .collaboration-spike-editor .ghost-editor {
-  min-height: 38rem;
+  min-height: 100%;
   padding: 3rem max(2rem, calc((100% - 48rem) / 2));
   outline: none;
 }
@@ -169,6 +235,9 @@
 
 .collaboration-spike-markdown-pane {
   min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 1rem;
   background: color-mix(in srgb, var(--sidebar) 75%, var(--background));
 }
@@ -180,6 +249,7 @@
 
 .collaboration-spike-footer {
   display: flex;
+  flex: none;
   justify-content: space-between;
   gap: 1rem;
   padding: 0.5rem 1rem;
@@ -189,10 +259,15 @@
 }
 
 .collaboration-carets__caret {
+  display: inline-block;
   position: relative;
+  width: 0;
+  height: 1.15em;
   border-left: 2px solid;
   margin-left: -1px;
   margin-right: -1px;
+  pointer-events: none;
+  vertical-align: text-bottom;
 }
 
 .collaboration-carets__label {
@@ -218,11 +293,24 @@
   }
 
   .collaboration-spike-panes {
+    overflow: auto;
     grid-template-columns: 1fr;
   }
 
+  .collaboration-spike-split {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(2, minmax(24rem, 1fr));
+    overflow: auto;
+  }
+
   .collaboration-spike-editor-pane {
+    min-height: 38rem;
+    overflow: visible;
     border-right: 0;
     border-bottom: 1px solid var(--border);
+  }
+
+  .collaboration-spike-markdown-pane {
+    overflow: visible;
   }
 }

@@ -135,6 +135,22 @@ describe("Supabase collaboration spike adapter", () => {
     expect(backend.removedChannels).toBe(1);
   });
 
+  it("broadcasts document updates immediately so cursor awareness cannot arrive first", async () => {
+    const backend = createFakeBackend("editor");
+    const document = new Y.Doc();
+    const adapter = await SupabaseCollaborationAdapter.create({
+      ...OPTIONS,
+      client: backend.client,
+      document,
+    });
+    const sentBeforeEdit = backend.sentEvents.length;
+
+    document.getText("probe").insert(0, "a");
+
+    expect(backend.sentEvents.slice(sentBeforeEdit)).toContain("y-supabase-update");
+    await adapter.destroy();
+  });
+
   it("does not send or persist mutations from the viewer adapter", async () => {
     const backend = createFakeBackend("viewer");
     const document = new Y.Doc();

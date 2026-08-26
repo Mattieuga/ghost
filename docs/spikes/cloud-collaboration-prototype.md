@@ -1,6 +1,6 @@
 # Cloud collaboration Phase 0 prototype
 
-- Status: Implemented locally; waiting for a Supabase project to run live tests
+- Status: Live Supabase validation in progress; online collaboration and access controls pass
 - Date: 2026-08-26
 - Architecture: [`../architecture/0004-cloud-collaborative-markdown-workspaces.md`](../architecture/0004-cloud-collaborative-markdown-workspaces.md)
 - Roadmap: [`../plans/cloud-collaboration-roadmap.md`](../plans/cloud-collaboration-roadmap.md)
@@ -25,6 +25,30 @@ the controls missing from that release:
 
 This remains disposable. It intentionally does not add the Cloud sidebar,
 folders, sharing UI, production accounts, or the final web shell.
+
+## Recorded live results
+
+Validated against the throwaway Supabase project on 2026-08-26:
+
+- the migration applied cleanly through the Supabase CLI and all three spike
+  tables became available through PostgREST;
+- anonymous Auth sessions worked for Alice, Bob, Viewer, and an unrelated
+  security probe;
+- the unrelated session saw no room rows, received PostgreSQL error `42501`
+  when attempting to append an update, and received `CHANNEL_ERROR` when
+  attempting to join the private Realtime room;
+- Alice and Bob edited the same Ghost Markdown document concurrently with
+  live presence and carets, while Viewer received changes through a read-only
+  editor;
+- frontmatter, tasks, nested lists, links, tables, underline, highlight,
+  images, and derived Markdown remained usable during the live editing pass;
+- a two-client Tauri harness can display any two isolated actor sessions side
+  by side for repeatable multiplayer testing; and
+- document broadcasts are no longer throttled ahead of immediate cursor
+  awareness broadcasts, preventing transient or detached remote caret labels.
+
+The automated baseline after the live fixes is 270 frontend tests, 46 Rust
+tests, and a successful production frontend build.
 
 ## What is needed from the Supabase project owner
 
@@ -75,5 +99,8 @@ test.
 7. Attempt a direct insert into `collaboration_spike_updates` and a private
    Broadcast send with the viewer session; both must be rejected.
 
-The remaining Phase 0 failure, payload, process-kill, and fallback-provider
-tests should be recorded here once live infrastructure is connected.
+The remaining Phase 0 work is offline divergence in both reconnect orders,
+reload/process-kill durability boundaries, revocation timing, payload and
+latency bounds, backup/restore, and the fallback-provider comparison. Those
+remain acceptance gates even though the source-neutral production foundation
+can now begin independently of the final provider decision.

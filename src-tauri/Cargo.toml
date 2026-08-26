@@ -29,6 +29,8 @@ trash = "5"
 memchr = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3.7"
+security-framework-sys = "2.17"
 objc2 = "0.6"
 objc2-foundation = "0.3"
 objc2-app-kit = { version = "0.3", features = ["NSView", "NSMenu", "NSMenuItem", "NSEvent", "NSResponder", "NSPasteboard", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSApplication", "NSRunningApplication", "NSWindow", "NSButton", "NSControl", "NSWorkspace"] }

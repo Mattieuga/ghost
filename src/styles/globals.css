@@ -240,6 +240,10 @@
   pointer-events: none;
 }
 
+[data-sidebar-collapsed="true"] [data-cloud-section] {
+  display: none;
+}
+
 [data-sidebar-collapsed="true"] [data-tree-area] {
   padding-top: 0;
 }

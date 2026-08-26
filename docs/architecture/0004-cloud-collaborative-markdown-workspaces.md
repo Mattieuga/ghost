@@ -1,6 +1,7 @@
 # ADR 0004: Cloud-native collaborative Markdown workspaces
 
-- Status: Proposed; online Phase 0 feasibility passes, resilience gates remain
+- Status: Proposed; retained Mac/web vertical slice implemented, resilience
+  and sharing gates remain
 - Date: 2026-08-25
 - Last updated: 2026-08-26
 - Related plan: [`../plans/cloud-collaboration-roadmap.md`](../plans/cloud-collaboration-roadmap.md)
@@ -510,6 +511,22 @@ need for a Yjs-aware collaboration layer. Postgres and RLS better fit Ghost's
 hierarchical items, invitations, share links, and future operational queries.
 
 ## Acceptance gate
+
+### Retained implementation evidence as of 2026-08-26
+
+- Production `cloud_*` metadata and append-only Yjs update tables are separate
+  from the disposable Phase 0 schema and are protected by deny-by-default RLS.
+- Private Supabase Realtime topics reuse the effective item role: viewers may
+  receive and editors may send. Live tests accepted an owner and rejected an
+  unrelated permanent account at both Realtime and Postgres boundaries.
+- The Mac app and focused `web.html` client now share one browser-safe
+  collaborative Markdown editor and Ghost-owned adapter. Mac auth persists in
+  Keychain; the browser retains its own session and neither client contains a
+  service-role key.
+- The implementation is ready for the joint Mac/web manual pass documented in
+  [`../spikes/cloud-web-mac-test.md`](../spikes/cloud-web-mac-test.md). This is
+  evidence toward the gate, not acceptance of the still-unrun resilience,
+  revocation, backup/restore, and provider-comparison checks below.
 
 This ADR remains Proposed until the Phase 0 spike demonstrates all of the
 following with Ghost's actual extension schema:

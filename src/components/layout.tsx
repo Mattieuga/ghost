@@ -84,6 +84,13 @@ import {
   type SourceProfile,
 } from "@/lib/resource-policy";
 import type { FileOpenPerformanceTrace } from "@/lib/open-performance";
+import { getMacCloudClient } from "@/cloud/mac-cloud-client";
+import { useCloudAccount } from "@/cloud/use-cloud-account";
+import { useCloudTree } from "@/cloud/use-cloud-tree";
+import { CloudSignIn } from "@/cloud/cloud-sign-in";
+import { CloudTree } from "@/cloud/cloud-tree";
+import { CloudDocumentEditor } from "@/cloud/cloud-document-editor";
+import type { CloudItem } from "@/cloud/cloud-data";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"]);
 
@@ -91,6 +98,11 @@ export function GhostLayout() {
   const { folders, loading, addFolder, addFolderByPath, removeFolder, renameFolder, reorderFolders, setFolderOpen, isFolderOpen } = useTrackedFolders();
   const { settings, updateSettings, saveTheme, deleteTheme } = useSettings();
   const updater = useUpdater();
+  const cloudClient = useMemo(() => getMacCloudClient(), []);
+  const cloudAccount = useCloudAccount(cloudClient);
+  const cloudUser = cloudAccount.kind === "signed-in" ? cloudAccount.user : null;
+  const cloudTree = useCloudTree(cloudClient, cloudUser?.id ?? null);
+  const [activeCloudDocument, setActiveCloudDocument] = useState<CloudItem | null>(null);
   const [activeFileStore] = useState(() => new ActiveFileStore());
   const [activeFile, _setActiveFile] = useState<string | null>(null);
   const activeFileRef = useRef<string | null>(null);
@@ -303,6 +315,7 @@ export function GhostLayout() {
       setSourceLineSeparator(model.lineSeparator);
       setOpenPerformance(model.openPerformance);
       setActiveFile(path);
+      setActiveCloudDocument(null);
       setFileContent(model.content);
       setLiveText(model.content);
       setForceStaticTextStats(false);
@@ -381,6 +394,25 @@ export function GhostLayout() {
     knownDiskVersion: fileVersionRef,
     lastSaveTimestamp,
   });
+
+  const handleCloudDocumentSelect = useCallback(async (item: CloudItem) => {
+    try {
+      await window.__ghostFlushSave?.();
+      await window.__ghostFlushCloudSave?.();
+    } catch {
+      return;
+    }
+    closeSearch();
+    setShowSettings(false);
+    setActiveFile(null);
+    setEditorInstance(null);
+    setCmView(null);
+    setActiveCloudDocument(item);
+  }, [closeSearch, setActiveFile]);
+
+  useEffect(() => {
+    if (cloudAccount.kind !== "signed-in") setActiveCloudDocument(null);
+  }, [cloudAccount.kind]);
 
   useEffect(() => {
     const flushAllSaves = async () => {
@@ -1340,6 +1372,29 @@ export function GhostLayout() {
           </button>
         </div>
 
+        <div data-cloud-section className="shrink-0 border-b border-sidebar-border">
+          {cloudAccount.kind === "loading" ? (
+            <p className="px-3 py-3 text-xs text-ring">Loading Cloud account…</p>
+          ) : cloudAccount.kind === "error" || !cloudClient ? (
+            <div className="px-3 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ring">Cloud</div>
+              <p className="mt-2 text-xs leading-5 text-destructive">
+                {cloudAccount.kind === "error" ? cloudAccount.message : "Ghost Cloud is not configured."}
+              </p>
+            </div>
+          ) : cloudAccount.kind === "signed-out" ? (
+            <CloudSignIn client={cloudClient} compact />
+          ) : (
+            <CloudTree
+              client={cloudClient}
+              tree={cloudTree}
+              selectedId={activeCloudDocument?.id ?? null}
+              onSelectDocument={(item) => { void handleCloudDocumentSelect(item); }}
+              compact
+            />
+          )}
+        </div>
+
         {/* Folder tree — ALWAYS rendered, same component, same DOM */}
         <ContextMenu>
         <ContextMenuTrigger asChild>
@@ -1510,7 +1565,7 @@ export function GhostLayout() {
         } as React.CSSProperties}
       >
         {/* Floating header overlay — semi-transparent, content scrolls behind */}
-        <div
+        {!activeCloudDocument && <div
           className={`absolute top-0 left-0 right-0 z-10 flex h-12 items-center justify-between bg-background/80 backdrop-blur-sm ${
             sidebarCollapsed ? "pl-[100px] pr-8" : "px-8"
           }`}
@@ -1590,7 +1645,7 @@ export function GhostLayout() {
               )}
             </>
           )}
-        </div>
+        </div>}
 
         {/* Editor — scrolls behind the floating header */}
         <main
@@ -1602,7 +1657,15 @@ export function GhostLayout() {
           }}
           className="h-full overflow-auto overscroll-contain relative outline-none"
         >
-          {activeFile && fileDescriptor ? (
+          {activeCloudDocument && cloudClient && cloudUser ? (
+            <CloudDocumentEditor
+              key={activeCloudDocument.id}
+              client={cloudClient}
+              user={cloudUser}
+              documentId={activeCloudDocument.id}
+              title={activeCloudDocument.name}
+            />
+          ) : activeFile && fileDescriptor ? (
             <FileViewer
               filePath={activeFile}
               content={fileContent}
@@ -1625,13 +1688,13 @@ export function GhostLayout() {
           ) : (
             <div className="flex h-full items-center justify-center">
               <p className="text-muted-foreground/40 text-sm">
-                Select a file to start editing
+                Select a local or Cloud document to start editing
               </p>
             </div>
           )}
         </main>
         {/* Heading minimap — right edge overlay (markdown only) */}
-        {editorInstance && mainEl && fileDescriptor?.kind === "markdown" && (
+        {!activeCloudDocument && editorInstance && mainEl && fileDescriptor?.kind === "markdown" && (
           <HeadingMinimap editor={editorInstance} scrollContainer={mainEl} />
         )}
       </div>

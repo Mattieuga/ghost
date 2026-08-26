@@ -1,6 +1,6 @@
 # Cloud collaboration roadmap
 
-- Status: In progress; Phase 1 foundation starting after the online Phase 0 proof
+- Status: In progress; retained Mac/web Cloud vertical slice ready for joint testing
 - Date: 2026-08-25
 - Last updated: 2026-08-26
 - Architecture: [`../architecture/0004-cloud-collaborative-markdown-workspaces.md`](../architecture/0004-cloud-collaborative-markdown-workspaces.md)
@@ -90,8 +90,8 @@ Validated live against the connected Supabase project:
 
 Still required before accepting ADR 0004:
 
-- exercise web-to-Tauri editing, reload, disconnect, offline divergence, and
-  both reconnect orders;
+- complete the ready web-to-Tauri manual pass, then exercise reload,
+  disconnect, offline divergence, and both reconnect orders;
 - attack persistence and Broadcast using the assigned Viewer JWT as well as an
   unrelated authenticated session;
 - record payload, latency, failure-boundary, process-kill, revocation, and
@@ -166,7 +166,7 @@ package boundaries, secrets, migrations, and tests are deliberately rebuilt.
 
 ## Phase 1: Source-neutral document and editor foundation
 
-Status: In progress for provider-neutral work; provider acceptance remains
+Status: Initial retained foundation implemented; provider acceptance remains
 blocked on the remaining Phase 0 gates
 
 ### Progress as of 2026-08-26
@@ -178,10 +178,13 @@ blocked on the remaining Phase 0 gates
   version-checked writes, streamed source writes, and focus reloads through it.
 - Preserved the current Rust file commands and local save/conflict behavior;
   cloud references cannot be passed to this gateway without a type error.
-- Added a separately built `web.html` entry with no Tauri imports and a
-  production browser account shell using email-link Supabase Auth. The native
-  app does not reuse browser storage; Mac account work remains blocked on the
-  Keychain-backed credential boundary.
+- Added a separately built `web.html` entry whose loaded bundles contain no
+  Tauri runtime imports.
+- Added a shared email/password account flow for web and Mac. Browser sessions
+  use browser storage while Mac refresh credentials use a dedicated Keychain
+  command boundary.
+- Added a shared, browser-safe collaborative Markdown surface while preserving
+  the existing local editor and local-only source gateway.
 
 ### Scope
 
@@ -214,7 +217,22 @@ blocked on the remaining Phase 0 gates
 
 ## Phase 2: Supabase control plane and account foundation
 
-Status: Blocked on Phase 1
+Status: Initial retained control-plane slice implemented; broader operations,
+sharing, and recovery remain
+
+### Progress as of 2026-08-26
+
+- Added version-controlled production `cloud_*` tables, inherited roles,
+  stable item UUIDs, Markdown-only document creation, and append-only Yjs
+  updates without reusing the disposable spike schema.
+- Added deny-by-default grants, table RLS, private Realtime authorization, and
+  security-definer RPCs with pinned empty search paths.
+- Applied the migration to the connected Supabase project and verified that an
+  unrelated permanent account can neither enumerate nor write another user's
+  workspace while the owner can create folders/documents and persist updates.
+- Verified live private-channel authorization: an owner could join and send an
+  acknowledged Broadcast while an unrelated account was rejected.
+- Added permanent account onboarding and Keychain-backed Mac session storage.
 
 ### Scope
 
@@ -244,7 +262,22 @@ Status: Blocked on Phase 1
 
 ## Phase 3: Private Cloud tree and authenticated multiplayer
 
-Status: Blocked on Phase 2
+Status: First Mac/web vertical slice implemented; resilience and full tree
+operations remain
+
+### Progress as of 2026-08-26
+
+- Added the opt-in Cloud section to the existing Mac sidebar without changing
+  the local workspace tree or requiring a Cloud account for local files.
+- Added shared folder/document creation, tree loading, document selection, and
+  sign-out UI to the Mac app and focused web client.
+- Added a retained Ghost-owned Supabase collaboration adapter with private,
+  acknowledged Realtime, append-only durable updates, role enforcement,
+  presence, and IndexedDB recovery.
+- Added the same shared Tiptap/Yjs Markdown editor to both clients with separate
+  Realtime and durable-save status.
+- Recorded the joint manual test in
+  [`../spikes/cloud-web-mac-test.md`](../spikes/cloud-web-mac-test.md).
 
 ### Scope
 

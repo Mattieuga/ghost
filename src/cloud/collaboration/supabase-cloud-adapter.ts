@@ -21,6 +21,7 @@ const REMOTE_ORIGIN = "remote";
 const UPDATE_EVENT = "y-supabase-update";
 const STATE_VECTOR_EVENT = "y-supabase-state-vector";
 const AWARENESS_EVENT = "y-supabase-awareness";
+const DURABLE_UPDATE_EVENT = "ghost-cloud-durable-update";
 const STORE_DELAY_MS = 120;
 
 interface UpdateRow {
@@ -50,7 +51,9 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
   private readonly clientId = crypto.randomUUID();
   private readonly channelTargets = new WeakMap<RealtimeChannel, RealtimeChannel>();
   private readonly listeners = new Set<(snapshot: CloudCollaborationSnapshot) => void>();
-  private readonly handleOnline = () => { void this.flush().catch(() => undefined); };
+  private readonly handleOnline = () => {
+    void this.recoverConnectivity().catch(() => undefined);
+  };
   private readonly handleDocumentUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === REMOTE_ORIGIN || this.role === "viewer" || this.destroyed) return;
     this.pendingUpdates.push(update);
@@ -63,23 +66,33 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
   };
 
   private provider: SupabaseProvider | null = null;
+  private realtimeChannel: RealtimeChannel | null = null;
   private pendingUpdates: Uint8Array[] = [];
+  private pendingDurableSignal = false;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private flushPromise: Promise<void> | null = null;
+  private reconcilePromise: Promise<void> | null = null;
+  private reconcileRequested = false;
+  private lastDurableUpdateId: number;
   private nextSequence = 1;
   private destroyed = false;
   private snapshot: CloudCollaborationSnapshot;
 
-  private constructor(options: SupabaseCloudAdapterOptions, role: CloudDocumentRole) {
+  private constructor(
+    options: SupabaseCloudAdapterOptions,
+    role: CloudDocumentRole,
+    lastDurableUpdateId: number,
+  ) {
     this.client = options.client;
     this.document = options.document;
     this.documentId = options.documentId;
+    this.lastDurableUpdateId = lastDurableUpdateId;
     this.role = role;
     this.awareness = new Awareness(this.document);
     this.awareness.setLocalStateField("user", options.user);
     this.snapshot = {
       connection: "connecting",
-      synchronization: "synced",
+      synchronization: "loading",
       durability: role === "viewer" ? "read-only" : "saved",
       role,
       pendingUpdates: 0,
@@ -91,14 +104,14 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
     const role = await this.loadRole(options.client, options.documentId);
     if (!role) throw new CloudAccessError();
 
-    const serverDocument = await this.loadServerDocument(options.client, options.documentId);
-    Y.applyUpdate(options.document, Y.encodeStateAsUpdate(serverDocument), REMOTE_ORIGIN);
+    const serverState = await this.loadServerDocument(options.client, options.documentId);
+    Y.applyUpdate(options.document, Y.encodeStateAsUpdate(serverState.document), REMOTE_ORIGIN);
 
-    const adapter = new SupabaseCloudAdapter(options, role);
+    const adapter = new SupabaseCloudAdapter(options, role, serverState.lastUpdateId);
     if (role === "editor") {
       const localOnly = Y.encodeStateAsUpdate(
         options.document,
-        Y.encodeStateVector(serverDocument),
+        Y.encodeStateVector(serverState.document),
       );
       if (localOnly.length > 2) {
         adapter.pendingUpdates.push(localOnly);
@@ -129,7 +142,7 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
   private static async loadServerDocument(
     client: SupabaseClient,
     documentId: string,
-  ): Promise<Y.Doc> {
+  ): Promise<{ document: Y.Doc; lastUpdateId: number }> {
     const { data, error } = await client
       .from("cloud_document_updates")
       .select("id, update")
@@ -140,7 +153,10 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
 
     const serverDocument = new Y.Doc();
     for (const row of data ?? []) Y.applyUpdate(serverDocument, decodeBase64(row.update));
-    return serverDocument;
+    return {
+      document: serverDocument,
+      lastUpdateId: data && data.length > 0 ? data[data.length - 1].id : 0,
+    };
   }
 
   private connectRealtime(): void {
@@ -163,13 +179,29 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
         maxReconnectDelay: 10_000,
       },
     );
-    this.provider.on("status", (connection) => this.updateSnapshot({ connection }));
+    this.provider.on("status", (connection) => {
+      this.updateSnapshot({
+        connection,
+        synchronization: connection === "connected"
+          ? "loading"
+          : connection === "disconnected"
+            ? "offline"
+            : "loading",
+      });
+      if (connection === "connected") {
+        void this.recoverConnectivity().catch(() => undefined);
+      }
+    });
     this.provider.on("error", (error) => this.updateSnapshot({ lastError: error.message }));
   }
 
   private createPrivateChannel(name: string): RealtimeChannel {
     const channel = this.client.channel(name, {
       config: { private: true, broadcast: { ack: true } },
+    });
+    this.realtimeChannel = channel;
+    channel.on("broadcast", { event: DURABLE_UPDATE_EVENT }, () => {
+      void this.reconcileDurableUpdates().catch(() => undefined);
     });
     const send = channel.send.bind(channel);
     const privateChannel = new Proxy(channel, {
@@ -215,6 +247,83 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
     }, STORE_DELAY_MS);
   }
 
+  private async recoverConnectivity(): Promise<void> {
+    await this.flush();
+    await this.reconcileDurableUpdates();
+    await this.sendDurableSignal();
+  }
+
+  private async reconcileDurableUpdates(): Promise<void> {
+    if (this.destroyed) return;
+    this.reconcileRequested = true;
+    if (this.reconcilePromise) return this.reconcilePromise;
+
+    this.reconcilePromise = (async () => {
+      while (this.reconcileRequested && !this.destroyed) {
+        this.reconcileRequested = false;
+        this.updateSnapshot({ synchronization: "loading" });
+
+        let query = this.client
+          .from("cloud_document_updates")
+          .select("id, update")
+          .eq("document_id", this.documentId);
+        if (this.lastDurableUpdateId > 0) {
+          query = query.gt("id", this.lastDurableUpdateId);
+        }
+        const { data, error } = await query
+          .order("id", { ascending: true })
+          .returns<UpdateRow[]>();
+        if (error) {
+          this.updateSnapshot({
+            synchronization: "error",
+            lastError: `Could not catch up Cloud changes: ${error.message}`,
+          });
+          throw new Error(error.message);
+        }
+
+        for (const row of data ?? []) {
+          Y.applyUpdate(this.document, decodeBase64(row.update), REMOTE_ORIGIN);
+          this.lastDurableUpdateId = Math.max(this.lastDurableUpdateId, row.id);
+        }
+      }
+      this.updateSnapshot({
+        synchronization: "synced",
+        lastError: this.snapshot.durability === "error" ? this.snapshot.lastError : null,
+      });
+    })().finally(() => {
+      this.reconcilePromise = null;
+    });
+    return this.reconcilePromise;
+  }
+
+  private async sendDurableSignal(): Promise<void> {
+    if (
+      !this.pendingDurableSignal
+      || this.destroyed
+      || this.snapshot.connection !== "connected"
+      || !this.realtimeChannel
+    ) return;
+
+    try {
+      const status = await this.realtimeChannel.send({
+        type: "broadcast",
+        event: DURABLE_UPDATE_EVENT,
+        payload: { timestamp: Date.now() },
+      });
+      if (status !== "ok") {
+        this.updateSnapshot({ lastError: `Cloud catch-up signal was not acknowledged (${status}).` });
+        return;
+      }
+      this.pendingDurableSignal = false;
+    } catch (reason) {
+      this.updateSnapshot({
+        lastError: reason instanceof Error
+          ? `Could not announce durable Cloud changes: ${reason.message}`
+          : "Could not announce durable Cloud changes.",
+      });
+    }
+  }
+
   async flush(): Promise<void> {
     if (this.role === "viewer" || this.destroyed || this.pendingUpdates.length === 0) return;
     if (this.flushPromise) return this.flushPromise;
@@ -252,6 +361,8 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
         throw new Error(error.message);
       }
       this.nextSequence += 1;
+      this.pendingDurableSignal = true;
+      await this.sendDurableSignal();
       this.updateSnapshot({
         durability: this.pendingUpdates.length === 0 ? "saved" : "pending",
         pendingUpdates: this.pendingUpdates.length,
@@ -281,6 +392,7 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
     this.document.off("update", this.handleDocumentUpdate);
     window.removeEventListener("online", this.handleOnline);
     this.provider?.destroy();
+    this.realtimeChannel = null;
     this.awareness.destroy();
     this.listeners.clear();
   }

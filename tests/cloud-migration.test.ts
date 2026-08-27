@@ -5,6 +5,10 @@ const migration = readFileSync(
   new URL("../supabase/migrations/20260826010000_cloud_foundation.sql", import.meta.url),
   "utf8",
 );
+const accountDeletionMigration = readFileSync(
+  new URL("../supabase/migrations/20260827010000_cloud_account_deletion.sql", import.meta.url),
+  "utf8",
+);
 
 describe("Cloud foundation migration", () => {
   it("keeps retained Cloud tables separate from the disposable spike", () => {
@@ -40,5 +44,11 @@ describe("Cloud foundation migration", () => {
     expect(migration).toContain("private.cloud_has_role(document_id, 2");
     expect(migration).toContain("cloud editors can send realtime");
     expect(migration).toContain("private.cloud_topic_document_id");
+  });
+
+  it("does not let audit references block account deletion", () => {
+    expect(accountDeletionMigration).toContain("cloud_items_created_by_fkey");
+    expect(accountDeletionMigration).toContain("cloud_memberships_granted_by_fkey");
+    expect(accountDeletionMigration.match(/on delete set null/g)).toHaveLength(2);
   });
 });

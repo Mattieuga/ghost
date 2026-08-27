@@ -187,6 +187,7 @@ function CollaborativeSurface({
       <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border px-4 py-2 text-[11px] text-muted-foreground">
         <strong className="mr-2 truncate text-sm text-foreground">{title}</strong>
         <CloudStatus label="Realtime" value={snapshot.connection} />
+        <CloudStatus label="Sync" value={snapshot.synchronization} />
         <CloudStatus label="Cloud" value={snapshot.durability} />
         <span className="rounded-full bg-secondary px-2 py-1">{snapshot.role}</span>
         <span className="ml-auto truncate">Here: {presence.join(", ") || "you"}</span>

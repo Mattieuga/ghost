@@ -12,6 +12,12 @@ same permanent account, Cloud item IDs, private Realtime authorization, durable
 Yjs update log, and shared Markdown editor. Document edits are live. The item
 tree currently refreshes on demand.
 
+After an offline divergence failure found during this pass, the retained
+adapter also uses the durable update log as a reconnect catch-up source. A
+private acknowledged signal tells peers to pull rows after their last applied
+update ID. The editor reports this separately as `Sync: loading`, `synced`,
+`offline`, or `error`; a connected socket alone is no longer called synced.
+
 Direct invitations, share links, rename/move/delete, and two-account sharing
 are later slices and are not part of this test.
 
@@ -33,6 +39,17 @@ are later slices and are not part of this test.
    typing stops.
 8. Reload `web.html`, reopen the document, and confirm the text remains. Close
    and reopen the document in the Mac app and confirm the same state.
+9. Disconnect both clients, make different edits, reconnect them in either
+   order, and confirm both show the merged content and `Sync: synced`.
+
+## Automated recovery evidence
+
+`tests/cloud-collaboration-live.test.ts` creates two disposable confirmed
+accounts in an explicitly configured live run, grants one editor membership,
+and commits divergent Yjs updates in both arrival orders. It verifies both
+active documents converge through durable catch-up, then removes the channels,
+accounts, and cascaded workspace. The default test suite skips this test unless
+its three `GHOST_SUPABASE_*` environment variables are provided.
 
 ## Expected limitations
 
@@ -40,5 +57,6 @@ are later slices and are not part of this test.
   client's tree; use Refresh.
 - Signing in as a second account does not grant access because invitation and
   sharing UI is not built yet.
-- Cloud images, rename/move/delete, checkpoints, and full offline/reconnect
-  hardening remain on the roadmap.
+- Cloud images, rename/move/delete, checkpoints, process-kill timing, and long
+  network partitions still need broader hardening even though durable
+  divergent-update catch-up now passes live.

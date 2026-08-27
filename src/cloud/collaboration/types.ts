@@ -3,7 +3,7 @@ import type * as Y from "yjs";
 
 export type CloudDocumentRole = "editor" | "viewer";
 export type CloudConnectionStatus = "connecting" | "connected" | "disconnected";
-export type CloudSyncStatus = "loading" | "synced" | "error";
+export type CloudSyncStatus = "loading" | "synced" | "offline" | "error";
 export type CloudDurabilityStatus = "loading" | "saved" | "pending" | "saving" | "error" | "read-only";
 
 export interface CloudCollaborationSnapshot {

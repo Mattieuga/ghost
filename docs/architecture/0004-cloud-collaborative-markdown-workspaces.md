@@ -523,6 +523,11 @@ hierarchical items, invitations, share links, and future operational queries.
   collaborative Markdown editor and Ghost-owned adapter. Mac auth persists in
   Keychain; the browser retains its own session and neither client contains a
   service-role key.
+- Reconnect no longer relies only on a best-effort peer state-vector handshake:
+  a committed update emits a private durable-change signal, and peers
+  incrementally apply the authoritative Postgres log after their last update
+  ID. A live two-account test converged divergent updates in both arrival
+  orders.
 - The implementation is ready for the joint Mac/web manual pass documented in
   [`../spikes/cloud-web-mac-test.md`](../spikes/cloud-web-mac-test.md). This is
   evidence toward the gate, not acceptance of the still-unrun resilience,

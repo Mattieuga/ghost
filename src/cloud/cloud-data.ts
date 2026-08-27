@@ -16,7 +16,7 @@ export interface CloudItem {
   parent_id: string | null;
   kind: CloudItemKind;
   name: string;
-  created_by: string;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;

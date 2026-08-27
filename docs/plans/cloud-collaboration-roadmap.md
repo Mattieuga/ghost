@@ -274,6 +274,14 @@ operations remain
 - Added a retained Ghost-owned Supabase collaboration adapter with private,
   acknowledged Realtime, append-only durable updates, role enforcement,
   presence, and IndexedDB recovery.
+- Added database-authoritative reconnect catch-up after a manual test exposed
+  two connected/saved clients retaining divergent offline edits. Durable
+  update notifications now trigger incremental pulls by update ID, and the UI
+  reports synchronization independently from connection and persistence.
+- Passed a live two-account recovery test with divergent Yjs updates arriving
+  in both orders; disposable users and their workspace were removed afterward.
+- Added account-deletion-safe audit references after the live test found that
+  `created_by` could otherwise retain a deleted account.
 - Added the same shared Tiptap/Yjs Markdown editor to both clients with separate
   Realtime and durable-save status.
 - Recorded the joint manual test in

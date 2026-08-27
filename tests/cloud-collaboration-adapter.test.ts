@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import * as Y from "yjs";
 import { decodeBase64, encodeBase64 } from "../src/cloud/collaboration/base64";
@@ -13,33 +13,55 @@ function createFakeBackend(role: EffectiveRole, initialUpdates: string[] = []) {
   const persisted = [...initialUpdates];
   const channelOptions: Array<Record<string, unknown> | undefined> = [];
   const sentEvents: string[] = [];
+  const broadcastListeners = new Map<string, Array<(message: unknown) => void>>();
   let removedChannels = 0;
-  const query = {
-    select: () => query,
-    eq: () => query,
-    order: () => query,
-    returns: async () => ({
-      data: persisted.map((update, index) => ({ id: index + 1, update })),
-      error: null,
-    }),
-    upsert: async (row: { update: string }) => {
-      persisted.push(row.update);
-      return { error: null };
-    },
-  };
+  let rejectDurableSignals = false;
   const client = {
     rpc: async () => ({ data: role, error: null }),
-    from: () => query,
+    from: () => {
+      let afterId = 0;
+      const query = {
+        select: () => query,
+        eq: () => query,
+        gt: (_column: string, value: number) => { afterId = value; return query; },
+        order: () => query,
+        returns: async () => ({
+          data: persisted
+            .map((update, index) => ({ id: index + 1, update }))
+            .filter((row) => row.id > afterId),
+          error: null,
+        }),
+        upsert: async (row: { update: string }) => {
+          persisted.push(row.update);
+          return { error: null };
+        },
+      };
+      return query;
+    },
     channel: (_name: string, options?: Record<string, unknown>) => {
       channelOptions.push(options);
       const channel = {
-        on: () => channel,
+        on: (
+          _type: string,
+          filter: { event?: string },
+          callback: (message: unknown) => void,
+        ) => {
+          if (filter.event) {
+            const listeners = broadcastListeners.get(filter.event) ?? [];
+            listeners.push(callback);
+            broadcastListeners.set(filter.event, listeners);
+          }
+          return channel;
+        },
         subscribe: (callback: (status: string) => void) => {
-          callback("SUBSCRIBED");
+          queueMicrotask(() => callback("SUBSCRIBED"));
           return channel;
         },
         send: async (args: { event: string }) => {
           sentEvents.push(args.event);
+          if (args.event === "ghost-cloud-durable-update" && rejectDurableSignals) {
+            throw new Error("simulated signal failure");
+          }
           return "ok";
         },
         unsubscribe: async () => "ok",
@@ -53,6 +75,11 @@ function createFakeBackend(role: EffectiveRole, initialUpdates: string[] = []) {
     persisted,
     channelOptions,
     sentEvents,
+    appendExternalUpdate: (update: string) => { persisted.push(update); },
+    emitBroadcast: (event: string) => {
+      for (const listener of broadcastListeners.get(event) ?? []) listener({ payload: {} });
+    },
+    rejectDurableSignals: () => { rejectDurableSignals = true; },
     removedChannels: () => removedChannels,
   };
 }
@@ -104,6 +131,40 @@ describe("production Cloud collaboration adapter", () => {
 
     expect(document.getText("probe").toString()).toBe("from another client");
     expect(backend.persisted).toHaveLength(0);
+    await session.destroy();
+  });
+
+  it("pulls durable updates that were missed while realtime was unavailable", async () => {
+    const backend = createFakeBackend("editor");
+    const document = new Y.Doc();
+    const session = await SupabaseCloudAdapter.create({ ...OPTIONS, client: backend.client, document });
+    const offlinePeer = new Y.Doc();
+    offlinePeer.getText("probe").insert(0, "offline peer edit");
+    backend.appendExternalUpdate(encodeBase64(Y.encodeStateAsUpdate(offlinePeer)));
+
+    backend.emitBroadcast("ghost-cloud-durable-update");
+
+    await vi.waitFor(() => {
+      expect(document.getText("probe").toString()).toBe("offline peer edit");
+      expect(session.getSnapshot().synchronization).toBe("synced");
+    });
+    expect(backend.persisted).toHaveLength(1);
+    await session.destroy();
+  });
+
+  it("keeps a committed edit saved when only its catch-up signal fails", async () => {
+    const backend = createFakeBackend("editor");
+    const document = new Y.Doc();
+    const session = await SupabaseCloudAdapter.create({ ...OPTIONS, client: backend.client, document });
+    await vi.waitFor(() => expect(session.getSnapshot().connection).toBe("connected"));
+    backend.rejectDurableSignals();
+
+    document.getText("probe").insert(0, "committed before signal failure");
+    await session.flush();
+
+    expect(backend.persisted).toHaveLength(1);
+    expect(session.getSnapshot()).toMatchObject({ durability: "saved", pendingUpdates: 0 });
+    expect(session.getSnapshot().lastError).toContain("simulated signal failure");
     await session.destroy();
   });
 

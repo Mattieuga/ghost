@@ -9,6 +9,10 @@ const accountDeletionMigration = readFileSync(
   new URL("../supabase/migrations/20260827010000_cloud_account_deletion.sql", import.meta.url),
   "utf8",
 );
+const documentVersionsMigration = readFileSync(
+  new URL("../supabase/migrations/20260827020000_cloud_document_versions.sql", import.meta.url),
+  "utf8",
+);
 
 describe("Cloud foundation migration", () => {
   it("keeps retained Cloud tables separate from the disposable spike", () => {
@@ -50,5 +54,21 @@ describe("Cloud foundation migration", () => {
     expect(accountDeletionMigration).toContain("cloud_items_created_by_fkey");
     expect(accountDeletionMigration).toContain("cloud_memberships_granted_by_fkey");
     expect(accountDeletionMigration.match(/on delete set null/g)).toHaveLength(2);
+  });
+
+  it("protects restorable document versions behind inherited document access", () => {
+    expect(documentVersionsMigration).toContain("public.cloud_document_versions");
+    expect(documentVersionsMigration).toContain(
+      "alter table public.cloud_document_versions enable row level security",
+    );
+    expect(documentVersionsMigration).toContain(
+      "revoke all on public.cloud_document_versions from anon, authenticated",
+    );
+    expect(documentVersionsMigration).toContain("private.cloud_has_role(target_document_id, 2");
+    expect(documentVersionsMigration).toContain("private.cloud_has_role(document_id, 1");
+    expect(documentVersionsMigration).toContain("security definer\nset search_path = ''");
+    expect(documentVersionsMigration).toContain("octet_length(snapshot_markdown) > 5242880");
+    expect(documentVersionsMigration).toContain("octet_length(decode(snapshot_yjs, 'base64')) > 10485760");
+    expect(documentVersionsMigration).toContain("latest.created_at > now() - interval '5 minutes'");
   });
 });

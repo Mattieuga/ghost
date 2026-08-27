@@ -11,8 +11,8 @@ import { Focus } from "@tiptap/extensions";
 import { Markdown } from "@tiptap/markdown";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
-import { IndexeddbPersistence } from "y-indexeddb";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { Redo2, Undo2 } from "lucide-react";
 import * as Y from "yjs";
 import { ResizableTable } from "@/components/editor/table-extension";
 import { Frontmatter } from "@/components/editor/frontmatter-extension";
@@ -22,12 +22,23 @@ import type {
   CloudCollaborationSession,
   CloudCollaborationSnapshot,
 } from "@/cloud/collaboration/types";
+import { CloudAccessError } from "@/cloud/collaboration/types";
+import {
+  openCloudLocalPersistence,
+  type CloudLocalPersistenceHandle,
+} from "@/cloud/cloud-local-persistence";
+import { CloudVersionHistory } from "@/cloud/cloud-version-history-panel";
+import { Button } from "@/components/ui/button";
 import "@/components/editor/editor-styles.css";
 
 type BootState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; session: CloudCollaborationSession };
+  | {
+    kind: "ready";
+    session: CloudCollaborationSession;
+    localPersistence: CloudLocalPersistenceHandle;
+  };
 
 const COLORS = ["#ff7145", "#5ba8ff", "#76c98f", "#d68cff", "#f4bd50"];
 
@@ -58,25 +69,32 @@ export function CloudDocumentEditor({
   useEffect(() => {
     let active = true;
     let session: CloudCollaborationSession | null = null;
-    let persistence: IndexeddbPersistence | null = null;
+    let localPersistence: CloudLocalPersistenceHandle | null = null;
     const document = new Y.Doc();
     setBoot({ kind: "loading" });
 
     const start = async () => {
-      persistence = new IndexeddbPersistence(`ghost-cloud:${documentId}`, document);
-      await persistence.whenSynced;
-      if (!active) return;
-      session = await SupabaseCloudAdapter.create({
-        client,
-        document,
-        documentId,
-        user: collaborationIdentity(user),
-      });
+      localPersistence = await openCloudLocalPersistence(user.id, documentId, document);
+      if (!active) {
+        await localPersistence.destroy().catch(() => undefined);
+        return;
+      }
+      try {
+        session = await SupabaseCloudAdapter.create({
+          client,
+          document,
+          documentId,
+          user: collaborationIdentity(user),
+        });
+      } catch (reason) {
+        if (reason instanceof CloudAccessError) await localPersistence.clear();
+        throw reason;
+      }
       if (!active) {
         await session.destroy();
         return;
       }
-      setBoot({ kind: "ready", session });
+      setBoot({ kind: "ready", session, localPersistence });
     };
 
     void start().catch((reason: unknown) => {
@@ -90,7 +108,7 @@ export function CloudDocumentEditor({
       active = false;
       void (async () => {
         await session?.destroy();
-        persistence?.destroy();
+        await localPersistence?.destroy();
         document.destroy();
       })();
     };
@@ -102,18 +120,33 @@ export function CloudDocumentEditor({
   if (boot.kind === "error") {
     return <CloudEditorNotice error>{boot.message}</CloudEditorNotice>;
   }
-  return <CollaborativeSurface session={boot.session} title={title} />;
+  return (
+    <CollaborativeSurface
+      client={client}
+      documentId={documentId}
+      localPersistence={boot.localPersistence}
+      session={boot.session}
+      title={title}
+    />
+  );
 }
 
 function CollaborativeSurface({
+  client,
+  documentId,
+  localPersistence,
   session,
   title,
 }: {
+  client: SupabaseClient;
+  documentId: string;
+  localPersistence: CloudLocalPersistenceHandle;
   session: CloudCollaborationSession;
   title: string;
 }) {
   const [snapshot, setSnapshot] = useState<CloudCollaborationSnapshot>(session.getSnapshot());
   const [presence, setPresence] = useState<string[]>([]);
+  const [, setHistoryRevision] = useState(0);
   const flushRef = useRef(session.flush.bind(session));
   flushRef.current = session.flush.bind(session);
 
@@ -162,7 +195,14 @@ function CollaborativeSurface({
       TableCell,
       Frontmatter,
       CollapsibleHeadings,
-      Collaboration.configure({ document: session.document, field: "default" }),
+      Collaboration.configure({
+        document: session.document,
+        field: "default",
+        // The collaboration extension always adds its own local binding origin.
+        // Keeping this list empty makes undo/redo ignore remote and persistence
+        // transactions while retaining the current user's editor changes.
+        yUndoOptions: { trackedOrigins: [] },
+      }),
       CollaborationCaret.configure({
         provider: session,
         user: session.awareness.getLocalState()?.user,
@@ -170,6 +210,13 @@ function CollaborativeSurface({
     ],
     editorProps: { attributes: { class: "ghost-editor" } },
   });
+
+  useEffect(() => {
+    if (!editor) return;
+    const refresh = () => setHistoryRevision((revision) => revision + 1);
+    editor.on("transaction", refresh);
+    return () => { editor.off("transaction", refresh); };
+  }, [editor]);
 
   useEffect(() => {
     const flush = () => { void flushRef.current().catch(() => undefined); };
@@ -189,9 +236,47 @@ function CollaborativeSurface({
         <CloudStatus label="Realtime" value={snapshot.connection} />
         <CloudStatus label="Sync" value={snapshot.synchronization} />
         <CloudStatus label="Cloud" value={snapshot.durability} />
+        <CloudStatus label="Local" value={localPersistence.status} />
         <span className="rounded-full bg-secondary px-2 py-1">{snapshot.role}</span>
+        {editor && session.role === "editor" ? (
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              title="Undo your last change"
+              disabled={!editor.can().undo()}
+              onClick={() => editor.chain().focus().undo().run()}
+            >
+              <Undo2 />
+              <span className="sr-only">Undo</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              title="Redo your last change"
+              disabled={!editor.can().redo()}
+              onClick={() => editor.chain().focus().redo().run()}
+            >
+              <Redo2 />
+              <span className="sr-only">Redo</span>
+            </Button>
+          </div>
+        ) : null}
+        {editor ? (
+          <CloudVersionHistory
+            client={client}
+            documentId={documentId}
+            editor={editor}
+            session={session}
+          />
+        ) : null}
         <span className="ml-auto truncate">Here: {presence.join(", ") || "you"}</span>
       </div>
+      {localPersistence.message ? (
+        <div className="border-b border-amber-400/30 bg-amber-400/10 px-4 py-2 text-xs text-amber-300">
+          Local recovery is unavailable: {localPersistence.message}
+        </div>
+      ) : null}
       {snapshot.lastError ? (
         <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive">
           {snapshot.lastError}
@@ -207,7 +292,7 @@ function CollaborativeSurface({
 }
 
 function CloudStatus({ label, value }: { label: string; value: string }) {
-  const healthy = value === "connected" || value === "saved" || value === "synced";
+  const healthy = value === "connected" || value === "saved" || value === "synced" || value === "ready";
   return (
     <span className="flex items-center gap-1 rounded-full bg-secondary px-2 py-1">
       <span className={`size-1.5 rounded-full ${healthy ? "bg-emerald-400" : "bg-amber-400"}`} />

@@ -269,6 +269,18 @@ multi-window behavior, reconnect handling, and offline folder mutations must
 be validated in the Phase 0 spike. A durable native cache may replace or
 supplement IndexedDB if WKWebView does not meet the acceptance checks.
 
+The retained cache key is versioned and scoped by account ID plus document ID.
+It is opened before the network adapter so locally durable updates can be
+compared with the server state and uploaded after a restart. IndexedDB failure
+degrades to network-only editing with visible `Local: unavailable` status; it
+must not prevent an otherwise healthy Cloud document from opening. A cold
+launch while entirely offline still needs cached authorization/bootstrap work
+before the broader offline-open requirement is satisfied.
+
+Collaborative undo uses the Yjs editor binding as its only tracked origin.
+Remote, persistence, and reconnect transactions are not placed on the local
+undo stack, so one collaborator cannot undo another collaborator's work.
+
 Authentication refresh tokens and other durable credentials in the Mac app
 must be stored in Keychain-backed secure storage, not the existing plaintext
 settings store.
@@ -512,7 +524,7 @@ hierarchical items, invitations, share links, and future operational queries.
 
 ## Acceptance gate
 
-### Retained implementation evidence as of 2026-08-26
+### Retained implementation evidence as of 2026-08-27
 
 - Production `cloud_*` metadata and append-only Yjs update tables are separate
   from the disposable Phase 0 schema and are protected by deny-by-default RLS.
@@ -528,10 +540,24 @@ hierarchical items, invitations, share links, and future operational queries.
   incrementally apply the authoritative Postgres log after their last update
   ID. A live two-account test converged divergent updates in both arrival
   orders.
-- The implementation is ready for the joint Mac/web manual pass documented in
+- Account-scoped IndexedDB recovery now has an explicit editor status and a
+  reload test proving local Yjs updates survive teardown/reopen. Tiptap's Yjs
+  undo manager is configured and tested to preserve remote changes when a user
+  undoes their own edit.
+- Automatic versions store both Markdown and binary Yjs snapshots behind
+  inherited document RLS. Ghost creates a baseline, checkpoints after 30
+  seconds idle while grouping versions at least five minutes apart, and forces
+  a checkpoint at least every 15 minutes during continuous editing. Restoring
+  a version first stores the current state as `Before restore`, then applies
+  the selected Markdown as a new collaborative edit.
+- The connected Supabase project has the versions migration. A live test
+  proved same-content deduplication, owner access, and rejection of an
+  unrelated permanent account; its disposable accounts and workspaces were
+  removed afterward.
+- The joint Mac/web manual pass is documented in
   [`../spikes/cloud-web-mac-test.md`](../spikes/cloud-web-mac-test.md). This is
-  evidence toward the gate, not acceptance of the still-unrun resilience,
-  revocation, backup/restore, and provider-comparison checks below.
+  evidence toward the gate, not acceptance of the still-unrun cold-offline,
+  process-kill, revocation, disaster-restore, and provider-comparison checks.
 
 This ADR remains Proposed until the Phase 0 spike demonstrates all of the
 following with Ghost's actual extension schema:

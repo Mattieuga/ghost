@@ -61,7 +61,7 @@ Do not build the Cloud tree, account onboarding, general sharing UI, or web
 product shell until this slice establishes that the preferred collaboration
 path is viable.
 
-### Progress as of 2026-08-26
+### Progress as of 2026-08-27
 
 Implemented locally:
 
@@ -284,6 +284,23 @@ operations remain
   `created_by` could otherwise retain a deleted account.
 - Added the same shared Tiptap/Yjs Markdown editor to both clients with separate
   Realtime and durable-save status.
+- Versioned and account-scoped the private IndexedDB cache, made local recovery
+  readiness visible, and added a reload test proving cached Yjs updates survive
+  document teardown and reopening. Cold startup without a network access check
+  remains unfinished.
+- Enabled Yjs-aware undo/redo in the shared editor and verified that undoing a
+  local edit retains a concurrently received collaborator edit.
+- Added automatic, deduplicated document versions containing Markdown and Yjs
+  snapshots. The current heuristic creates a baseline, waits for a 30-second
+  idle boundary, groups versions at least five minutes apart, and checkpoints
+  continuous editing within 15 minutes.
+- Added a shared history browser and safe in-place restore. Restore creates a
+  `Before restore` checkpoint before replacing the current Markdown through a
+  normal collaborative transaction; copying a checkpoint into a separate new
+  document remains a later recovery workflow.
+- Applied and live-tested the version migration against the connected Supabase
+  project, including RLS rejection for an unrelated account and cleanup of all
+  disposable test data.
 - Recorded the joint manual test in
   [`../spikes/cloud-web-mac-test.md`](../spikes/cloud-web-mac-test.md).
 
@@ -313,8 +330,8 @@ operations remain
 - Provider disconnect/termination, database restart, and temporary network
   partition recover.
 - Rename/move/delete operations do not change collaboration document identity.
-- A checkpoint can be restored into a new document without modifying the
-  original.
+- A checkpoint can be restored in place without losing the pre-restore state;
+  copy-to-new-document recovery remains to satisfy the non-mutating variant.
 
 ## Phase 4: Sharing and focused web application
 

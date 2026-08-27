@@ -6,6 +6,10 @@ import * as Y from "yjs";
 import { encodeBase64 } from "../src/cloud/collaboration/base64";
 import { SupabaseCloudAdapter } from "../src/cloud/collaboration/supabase-cloud-adapter";
 import type { CloudCollaborationSession } from "../src/cloud/collaboration/types";
+import {
+  createCloudDocumentVersion,
+  listCloudDocumentVersions,
+} from "../src/cloud/cloud-version-history";
 
 const liveConfig = process.env.GHOST_SUPABASE_URL
   && process.env.GHOST_SUPABASE_PUBLISHABLE_KEY
@@ -36,7 +40,7 @@ afterEach(async () => {
   admin = null;
 });
 
-describe.skipIf(!liveConfig)("Cloud collaboration live recovery", () => {
+describe.skipIf(!liveConfig)("Cloud collaboration live", () => {
   it("converges durable offline edits in both arrival orders", async () => {
     if (!liveConfig) throw new Error("Live Supabase configuration is required");
     admin = createClient(liveConfig.url, liveConfig.serviceRoleKey, {
@@ -111,6 +115,87 @@ describe.skipIf(!liveConfig)("Cloud collaboration live recovery", () => {
       editorDocument,
     });
   }, 90_000);
+
+  it("deduplicates versions and hides them from unrelated accounts", async () => {
+    if (!liveConfig) throw new Error("Live Supabase configuration is required");
+    admin = createClient(liveConfig.url, liveConfig.serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const suffix = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+    const password = `Ghost-${crypto.randomUUID()}-9aA`;
+    const ownerEmail = `ghost-live-version-owner-${suffix}@example.com`;
+    const unrelatedEmail = `ghost-live-version-unrelated-${suffix}@example.com`;
+    const ownerUser = await createConfirmedUser(admin, ownerEmail, password);
+    const unrelatedUser = await createConfirmedUser(admin, unrelatedEmail, password);
+    createdUserIds.push(ownerUser.id, unrelatedUser.id);
+
+    const ownerClient = await signedInClient(
+      liveConfig.url,
+      liveConfig.publishableKey,
+      ownerEmail,
+      password,
+    );
+    const unrelatedClient = await signedInClient(
+      liveConfig.url,
+      liveConfig.publishableKey,
+      unrelatedEmail,
+      password,
+    );
+    clients.push(ownerClient, unrelatedClient);
+    const { data: item, error: createError } = await ownerClient.rpc("cloud_create_item", {
+      item_kind: "document",
+      item_name: `Live versions ${suffix}.md`,
+      target_parent_id: null,
+    });
+    expect(createError).toBeNull();
+    const documentId = (item as { id: string }).id;
+    const versionDocument = new Y.Doc();
+    versionDocument.getText("probe").insert(0, "first version");
+    const yjsSnapshot = encodeBase64(Y.encodeStateAsUpdate(versionDocument));
+
+    const first = await createCloudDocumentVersion(ownerClient, {
+      documentId,
+      markdownSnapshot: "# First version",
+      yjsSnapshot,
+      reason: "automatic",
+    });
+    const duplicate = await createCloudDocumentVersion(ownerClient, {
+      documentId,
+      markdownSnapshot: "# First version",
+      yjsSnapshot,
+      reason: "automatic",
+    });
+    expect(duplicate.id).toBe(first.id);
+    const grouped = await createCloudDocumentVersion(ownerClient, {
+      documentId,
+      markdownSnapshot: "# Too soon for another automatic version",
+      yjsSnapshot,
+      reason: "automatic",
+    });
+    expect(grouped.id).toBe(first.id);
+    const restored = await createCloudDocumentVersion(ownerClient, {
+      documentId,
+      markdownSnapshot: "# Restored version",
+      yjsSnapshot,
+      reason: "restore",
+      restoredFromVersionId: first.id,
+    });
+    expect(restored).toMatchObject({
+      reason: "restore",
+      restored_from_version_id: first.id,
+    });
+    await expect(listCloudDocumentVersions(ownerClient, documentId))
+      .resolves.toHaveLength(2);
+    await expect(listCloudDocumentVersions(unrelatedClient, documentId))
+      .resolves.toEqual([]);
+    await expect(createCloudDocumentVersion(unrelatedClient, {
+      documentId,
+      markdownSnapshot: "tampered",
+      yjsSnapshot,
+      reason: "automatic",
+    })).rejects.toThrow("not editable");
+    versionDocument.destroy();
+  }, 45_000);
 });
 
 async function createConfirmedUser(client: SupabaseClient, email: string, password: string) {

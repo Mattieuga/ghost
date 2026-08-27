@@ -41,15 +41,28 @@ are later slices and are not part of this test.
    and reopen the document in the Mac app and confirm the same state.
 9. Disconnect both clients, make different edits, reconnect them in either
    order, and confirm both show the merged content and `Sync: synced`.
+10. Confirm both clients show `Local: ready`. Make an edit, close and reopen the
+    document while online, and confirm the edit remains after server catch-up.
+11. Make an edit in each client. Undo in one client with Command-Z or the header
+    button and confirm only that client's latest change is removed.
+12. Open History. Confirm an automatic baseline is present, preview it, then
+    restore it. Confirm the pre-restore state appears as a separate `Before
+    restore` version and the restored content synchronizes to the other client.
+
+Automatic history currently uses a best-guess policy: an initial baseline,
+then a checkpoint after 30 seconds idle when at least five minutes have elapsed
+since the latest version, with a 15-minute maximum during continuous editing.
 
 ## Automated recovery evidence
 
-`tests/cloud-collaboration-live.test.ts` creates two disposable confirmed
+`tests/cloud-collaboration-live.test.ts` creates disposable confirmed
 accounts in an explicitly configured live run, grants one editor membership,
 and commits divergent Yjs updates in both arrival orders. It verifies both
-active documents converge through durable catch-up, then removes the channels,
-accounts, and cascaded workspace. The default test suite skips this test unless
-its three `GHOST_SUPABASE_*` environment variables are provided.
+active documents converge through durable catch-up. It also verifies automatic
+version deduplication and rejects version reads/writes from an unrelated
+account, then removes the channels, accounts, and cascaded workspaces. The
+default test suite skips this test unless its three `GHOST_SUPABASE_*`
+environment variables are provided.
 
 ## Expected limitations
 
@@ -57,6 +70,8 @@ its three `GHOST_SUPABASE_*` environment variables are provided.
   client's tree; use Refresh.
 - Signing in as a second account does not grant access because invitation and
   sharing UI is not built yet.
-- Cloud images, rename/move/delete, checkpoints, process-kill timing, and long
-  network partitions still need broader hardening even though durable
-  divergent-update catch-up now passes live.
+- Cold opening a cached document while entirely offline, process-kill timing,
+  cache clearing after live revocation, and disaster recovery still need
+  broader hardening even though local reload and durable divergent-update
+  catch-up pass automated tests.
+- Cloud images and rename/move/delete remain later slices.

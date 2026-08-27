@@ -34,6 +34,8 @@ export interface SupabaseCloudAdapterOptions {
   document: Y.Doc;
   documentId: string;
   user: { name: string; color: string };
+  onRoleVerified?: (role: CloudDocumentRole) => void | Promise<void>;
+  onAccessRevoked?: () => void | Promise<void>;
 }
 
 /**
@@ -44,18 +46,31 @@ export interface SupabaseCloudAdapterOptions {
 export class SupabaseCloudAdapter implements CloudCollaborationSession {
   readonly document: Y.Doc;
   readonly awareness: Awareness;
-  readonly role: CloudDocumentRole;
 
   private readonly client: SupabaseClient;
   private readonly documentId: string;
+  private readonly onRoleVerified?: SupabaseCloudAdapterOptions["onRoleVerified"];
+  private readonly onAccessRevoked?: SupabaseCloudAdapterOptions["onAccessRevoked"];
   private readonly clientId = crypto.randomUUID();
   private readonly channelTargets = new WeakMap<RealtimeChannel, RealtimeChannel>();
   private readonly listeners = new Set<(snapshot: CloudCollaborationSnapshot) => void>();
   private readonly handleOnline = () => {
-    void this.recoverConnectivity().catch(() => undefined);
+    if (this.serverHydrated) {
+      void this.recoverConnectivity().catch(() => undefined);
+    } else {
+      void this.ensureNetworkBootstrap();
+    }
+  };
+  private readonly handleFocus = () => {
+    if (!this.serverHydrated) void this.ensureNetworkBootstrap();
   };
   private readonly handleDocumentUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === REMOTE_ORIGIN || this.role === "viewer" || this.destroyed) return;
+    if (!this.serverHydrated) {
+      this.hasPreHydrationChanges = true;
+      this.updateSnapshot({ durability: "pending", pendingUpdates: 1, lastError: null });
+      return;
+    }
     this.pendingUpdates.push(update);
     this.updateSnapshot({
       durability: "pending",
@@ -72,8 +87,12 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private flushPromise: Promise<void> | null = null;
   private reconcilePromise: Promise<void> | null = null;
+  private bootstrapPromise: Promise<void> | null = null;
   private reconcileRequested = false;
   private lastDurableUpdateId: number;
+  private currentRole: CloudDocumentRole;
+  private serverHydrated: boolean;
+  private hasPreHydrationChanges = false;
   private nextSequence = 1;
   private destroyed = false;
   private snapshot: CloudCollaborationSnapshot;
@@ -82,18 +101,22 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
     options: SupabaseCloudAdapterOptions,
     role: CloudDocumentRole,
     lastDurableUpdateId: number,
+    serverHydrated: boolean,
   ) {
     this.client = options.client;
     this.document = options.document;
     this.documentId = options.documentId;
+    this.onRoleVerified = options.onRoleVerified;
+    this.onAccessRevoked = options.onAccessRevoked;
     this.lastDurableUpdateId = lastDurableUpdateId;
-    this.role = role;
+    this.currentRole = role;
+    this.serverHydrated = serverHydrated;
     this.awareness = new Awareness(this.document);
     this.awareness.setLocalStateField("user", options.user);
     this.snapshot = {
-      connection: "connecting",
-      synchronization: "loading",
-      durability: role === "viewer" ? "read-only" : "saved",
+      connection: serverHydrated || navigator.onLine ? "connecting" : "disconnected",
+      synchronization: serverHydrated || navigator.onLine ? "loading" : "offline",
+      durability: role === "viewer" ? "read-only" : serverHydrated ? "saved" : "loading",
       role,
       pendingUpdates: 0,
       lastError: null,
@@ -107,7 +130,7 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
     const serverState = await this.loadServerDocument(options.client, options.documentId);
     Y.applyUpdate(options.document, Y.encodeStateAsUpdate(serverState.document), REMOTE_ORIGIN);
 
-    const adapter = new SupabaseCloudAdapter(options, role, serverState.lastUpdateId);
+    const adapter = new SupabaseCloudAdapter(options, role, serverState.lastUpdateId, true);
     if (role === "editor") {
       const localOnly = Y.encodeStateAsUpdate(
         options.document,
@@ -119,11 +142,126 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
         await adapter.flush().catch(() => undefined);
       }
     }
+    serverState.document.destroy();
 
-    adapter.document.on("update", adapter.handleDocumentUpdate);
-    window.addEventListener("online", adapter.handleOnline);
+    adapter.activate();
+    adapter.notifyRoleVerified(role);
     adapter.connectRealtime();
     return adapter;
+  }
+
+  /**
+   * Returns synchronously after IndexedDB has loaded. Supabase authorization,
+   * durable catch-up, and Realtime connection continue in the background.
+   */
+  static createFromCache(
+    options: SupabaseCloudAdapterOptions,
+    cachedRole: CloudDocumentRole,
+  ): SupabaseCloudAdapter {
+    const adapter = new SupabaseCloudAdapter(options, cachedRole, 0, false);
+    adapter.activate();
+    void adapter.ensureNetworkBootstrap();
+    return adapter;
+  }
+
+  get role(): CloudDocumentRole {
+    return this.currentRole;
+  }
+
+  private activate(): void {
+    this.document.on("update", this.handleDocumentUpdate);
+    window.addEventListener("online", this.handleOnline);
+    window.addEventListener("focus", this.handleFocus);
+  }
+
+  private notifyRoleVerified(role: CloudDocumentRole): void {
+    void Promise.resolve(this.onRoleVerified?.(role)).catch(() => undefined);
+  }
+
+  private async ensureNetworkBootstrap(): Promise<void> {
+    if (this.destroyed || this.serverHydrated) return;
+    if (this.bootstrapPromise) return this.bootstrapPromise;
+    this.bootstrapPromise = this.bootstrapFromCache().catch(async (reason: unknown) => {
+      if (this.destroyed) return;
+      if (reason instanceof CloudAccessError) {
+        this.currentRole = "viewer";
+        this.updateSnapshot({
+          connection: "disconnected",
+          synchronization: "error",
+          durability: "read-only",
+          role: "viewer",
+          pendingUpdates: 0,
+          lastError: reason.message,
+        });
+        await this.onAccessRevoked?.();
+        return;
+      }
+      this.updateSnapshot({
+        connection: "disconnected",
+        synchronization: "offline",
+        durability: this.role === "viewer"
+          ? "read-only"
+          : this.hasPreHydrationChanges ? "pending" : "loading",
+        pendingUpdates: this.hasPreHydrationChanges ? 1 : 0,
+        lastError: null,
+      });
+    }).finally(() => {
+      this.bootstrapPromise = null;
+    });
+    return this.bootstrapPromise;
+  }
+
+  private async bootstrapFromCache(): Promise<void> {
+    this.updateSnapshot({
+      connection: "connecting",
+      synchronization: "loading",
+      durability: this.role === "viewer" ? "read-only" : "loading",
+      lastError: null,
+    });
+    const verifiedRole = await SupabaseCloudAdapter.loadRole(this.client, this.documentId);
+    if (this.destroyed) return;
+    if (!verifiedRole) throw new CloudAccessError();
+
+    this.currentRole = verifiedRole;
+    this.updateSnapshot({ role: verifiedRole });
+    this.notifyRoleVerified(verifiedRole);
+
+    const serverState = await SupabaseCloudAdapter.loadServerDocument(
+      this.client,
+      this.documentId,
+    );
+    if (this.destroyed) {
+      serverState.document.destroy();
+      return;
+    }
+    Y.applyUpdate(this.document, Y.encodeStateAsUpdate(serverState.document), REMOTE_ORIGIN);
+    const localOnly = Y.encodeStateAsUpdate(
+      this.document,
+      Y.encodeStateVector(serverState.document),
+    );
+    this.lastDurableUpdateId = serverState.lastUpdateId;
+    this.serverHydrated = true;
+    this.hasPreHydrationChanges = false;
+    serverState.document.destroy();
+
+    if (verifiedRole === "editor" && localOnly.length > 2) {
+      this.pendingUpdates.push(localOnly);
+      this.updateSnapshot({ durability: "pending", pendingUpdates: 1 });
+    } else if (verifiedRole === "viewer") {
+      this.pendingUpdates = [];
+      this.updateSnapshot({
+        durability: "read-only",
+        pendingUpdates: 0,
+        lastError: localOnly.length > 2
+          ? "Cloud access is now read-only; locally cached edits were not uploaded."
+          : null,
+      });
+    } else {
+      this.updateSnapshot({ durability: "saved", pendingUpdates: 0 });
+    }
+
+    this.connectRealtime();
+    await this.flush().catch(() => undefined);
   }
 
   private static async loadRole(
@@ -160,6 +298,7 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
   }
 
   private connectRealtime(): void {
+    if (this.provider || this.destroyed || !this.serverHydrated) return;
     const realtimeClient = {
       channel: (name: string) => this.createPrivateChannel(name),
       removeChannel: (channel: RealtimeChannel) => this.client.removeChannel(
@@ -248,13 +387,17 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
   }
 
   private async recoverConnectivity(): Promise<void> {
+    if (!this.serverHydrated) {
+      await this.ensureNetworkBootstrap();
+      return;
+    }
     await this.flush();
     await this.reconcileDurableUpdates();
     await this.sendDurableSignal();
   }
 
   private async reconcileDurableUpdates(): Promise<void> {
-    if (this.destroyed) return;
+    if (this.destroyed || !this.serverHydrated) return;
     this.reconcileRequested = true;
     if (this.reconcilePromise) return this.reconcilePromise;
 
@@ -325,7 +468,12 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
   }
 
   async flush(): Promise<void> {
-    if (this.role === "viewer" || this.destroyed || this.pendingUpdates.length === 0) return;
+    if (
+      this.role === "viewer"
+      || this.destroyed
+      || !this.serverHydrated
+      || this.pendingUpdates.length === 0
+    ) return;
     if (this.flushPromise) return this.flushPromise;
     this.flushPromise = this.flushPendingUpdates().finally(() => { this.flushPromise = null; });
     return this.flushPromise;
@@ -391,6 +539,7 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
     this.destroyed = true;
     this.document.off("update", this.handleDocumentUpdate);
     window.removeEventListener("online", this.handleOnline);
+    window.removeEventListener("focus", this.handleFocus);
     this.provider?.destroy();
     this.realtimeChannel = null;
     this.awareness.destroy();

@@ -273,8 +273,15 @@ The retained cache key is versioned and scoped by account ID plus document ID.
 It is opened before the network adapter so locally durable updates can be
 compared with the server state and uploaded after a restart. IndexedDB failure
 degrades to network-only editing with visible `Local: unavailable` status; it
-must not prevent an otherwise healthy Cloud document from opening. A cold
-launch while entirely offline still needs cached authorization/bootstrap work
+must not prevent an otherwise healthy Cloud document from opening. Each cache
+also retains the last server-verified document role. After one verified open,
+Ghost renders that document as soon as IndexedDB is ready and revalidates the
+role, catches up the durable log, and connects Realtime in the background.
+Edits made during catch-up are merged and durably uploaded once authorization
+is confirmed. A revoked cache is cleared when the server reports access loss;
+a cached editor that became a viewer is immediately made read-only and its
+local-only changes are not uploaded. The first open still needs the network,
+and a cold offline app launch still needs cached tree and selection metadata
 before the broader offline-open requirement is satisfied.
 
 Collaborative undo uses the Yjs editor binding as its only tracked origin.
@@ -544,6 +551,11 @@ hierarchical items, invitations, share links, and future operational queries.
   reload test proving local Yjs updates survive teardown/reopen. Tiptap's Yjs
   undo manager is configured and tested to preserve remote changes when a user
   undoes their own edit.
+- Previously verified documents now render from IndexedDB without blocking on
+  Supabase. Authorization, durable catch-up, and Realtime startup continue in
+  the background; tests cover edits made during that window, role downgrade,
+  and access revocation. Cached tree metadata for a fully cold offline launch
+  remains later work.
 - Automatic versions store both Markdown and binary Yjs snapshots behind
   inherited document RLS. Ghost creates a baseline, checkpoints after 30
   seconds idle while grouping versions at least five minutes apart, and forces
@@ -556,8 +568,9 @@ hierarchical items, invitations, share links, and future operational queries.
   removed afterward.
 - The joint Mac/web manual pass is documented in
   [`../spikes/cloud-web-mac-test.md`](../spikes/cloud-web-mac-test.md). This is
-  evidence toward the gate, not acceptance of the still-unrun cold-offline,
-  process-kill, revocation, disaster-restore, and provider-comparison checks.
+  evidence toward the gate, not acceptance of the still-unrun fully cold
+  offline tree, process-kill, live revocation, disaster-restore, and
+  provider-comparison checks.
 
 This ADR remains Proposed until the Phase 0 spike demonstrates all of the
 following with Ghost's actual extension schema:

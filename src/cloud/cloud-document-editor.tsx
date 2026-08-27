@@ -79,13 +79,35 @@ export function CloudDocumentEditor({
         await localPersistence.destroy().catch(() => undefined);
         return;
       }
+      const adapterOptions = {
+        client,
+        document,
+        documentId,
+        user: collaborationIdentity(user),
+        onRoleVerified: (role: CloudCollaborationSnapshot["role"]) => (
+          localPersistence?.rememberRole(role)
+        ),
+        onAccessRevoked: async () => {
+          await localPersistence?.clear().catch(() => undefined);
+          await session?.destroy().catch(() => undefined);
+          if (active) {
+            setBoot({
+              kind: "error",
+              message: "You no longer have access to this Cloud document.",
+            });
+          }
+        },
+      };
       try {
-        session = await SupabaseCloudAdapter.create({
-          client,
-          document,
-          documentId,
-          user: collaborationIdentity(user),
-        });
+        if (localPersistence.status === "ready" && localPersistence.cachedRole) {
+          session = SupabaseCloudAdapter.createFromCache(
+            adapterOptions,
+            localPersistence.cachedRole,
+          );
+        } else {
+          session = await SupabaseCloudAdapter.create(adapterOptions);
+          await localPersistence.rememberRole(session.role).catch(() => undefined);
+        }
       } catch (reason) {
         if (reason instanceof CloudAccessError) await localPersistence.clear();
         throw reason;
@@ -219,6 +241,10 @@ function CollaborativeSurface({
   }, [editor]);
 
   useEffect(() => {
+    editor?.setEditable(snapshot.role === "editor");
+  }, [editor, snapshot.role]);
+
+  useEffect(() => {
     const flush = () => { void flushRef.current().catch(() => undefined); };
     window.addEventListener("blur", flush);
     const flushCloudSave = () => flushRef.current();
@@ -238,7 +264,7 @@ function CollaborativeSurface({
         <CloudStatus label="Cloud" value={snapshot.durability} />
         <CloudStatus label="Local" value={localPersistence.status} />
         <span className="rounded-full bg-secondary px-2 py-1">{snapshot.role}</span>
-        {editor && session.role === "editor" ? (
+        {editor && snapshot.role === "editor" ? (
           <div className="flex items-center gap-0.5">
             <Button
               variant="ghost"
@@ -267,6 +293,7 @@ function CollaborativeSurface({
             client={client}
             documentId={documentId}
             editor={editor}
+            networkReady={snapshot.synchronization === "synced"}
             session={session}
           />
         ) : null}

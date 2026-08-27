@@ -42,7 +42,10 @@ are later slices and are not part of this test.
 9. Disconnect both clients, make different edits, reconnect them in either
    order, and confirm both show the merged content and `Sync: synced`.
 10. Confirm both clients show `Local: ready`. Make an edit, close and reopen the
-    document while online, and confirm the edit remains after server catch-up.
+    document while online, and confirm its cached content appears immediately
+    while the Cloud and Sync badges finish background catch-up. The first open
+    after this change seeds cached access metadata; test instant open on the
+    next reopen.
 11. Make an edit in each client. Undo in one client with Command-Z or the header
     button and confirm only that client's latest change is removed.
 12. Open History. Confirm an automatic baseline is present, preview it, then
@@ -70,8 +73,10 @@ environment variables are provided.
   client's tree; use Refresh.
 - Signing in as a second account does not grant access because invitation and
   sharing UI is not built yet.
-- Cold opening a cached document while entirely offline, process-kill timing,
-  cache clearing after live revocation, and disaster recovery still need
-  broader hardening even though local reload and durable divergent-update
-  catch-up pass automated tests.
+- A selected, previously verified document can open from its private cache and
+  accept edits before the network check finishes. A fully cold offline app
+  launch still needs cached tree/selection metadata. Process-kill timing, live
+  cache clearing after revocation, and disaster recovery also need broader
+  hardening even though cached bootstrap, downgrade/revocation, local reload,
+  and durable divergent-update catch-up pass automated tests.
 - Cloud images and rename/move/delete remain later slices.

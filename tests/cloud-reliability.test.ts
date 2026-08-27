@@ -38,6 +38,8 @@ describe("Cloud reliability helpers", () => {
       firstDocument,
     );
     expect(first.status).toBe("ready");
+    expect(first.cachedRole).toBeNull();
+    await first.rememberRole("editor");
     firstDocument.getText("probe").insert(0, "survives restart");
     await new Promise((resolve) => setTimeout(resolve, 10));
     await first.destroy();
@@ -50,6 +52,7 @@ describe("Cloud reliability helpers", () => {
       reopenedDocument,
     );
     expect(reopened.status).toBe("ready");
+    expect(reopened.cachedRole).toBe("editor");
     expect(reopenedDocument.getText("probe").toString()).toBe("survives restart");
 
     await reopened.clear();

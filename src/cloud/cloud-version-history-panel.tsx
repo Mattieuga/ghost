@@ -50,11 +50,13 @@ export function CloudVersionHistory({
   client,
   documentId,
   editor,
+  networkReady,
   session,
 }: {
   client: SupabaseClient;
   documentId: string;
   editor: Editor;
+  networkReady: boolean;
   session: CloudCollaborationSession;
 }) {
   const [open, setOpen] = useState(false);
@@ -149,6 +151,7 @@ export function CloudVersionHistory({
   }, [captureVersion, session.role]);
 
   useEffect(() => {
+    if (!networkReady) return;
     let active = true;
     void refreshVersions().then((loaded) => {
       if (!active || session.role !== "editor") return;
@@ -160,10 +163,10 @@ export function CloudVersionHistory({
       }
     });
     return () => { active = false; };
-  }, [captureVersion, editor, refreshVersions, scheduleAutomaticVersion, session.role]);
+  }, [captureVersion, editor, networkReady, refreshVersions, scheduleAutomaticVersion, session.role]);
 
   useEffect(() => {
-    if (session.role !== "editor") return;
+    if (!networkReady || session.role !== "editor") return;
     const handleUpdate = () => {
       changeRevisionRef.current += 1;
       dirtyRef.current = true;
@@ -171,7 +174,7 @@ export function CloudVersionHistory({
     };
     editor.on("update", handleUpdate);
     return () => { editor.off("update", handleUpdate); };
-  }, [editor, scheduleAutomaticVersion, session.role]);
+  }, [editor, networkReady, scheduleAutomaticVersion, session.role]);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);

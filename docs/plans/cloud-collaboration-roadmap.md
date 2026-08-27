@@ -286,8 +286,12 @@ operations remain
   Realtime and durable-save status.
 - Versioned and account-scoped the private IndexedDB cache, made local recovery
   readiness visible, and added a reload test proving cached Yjs updates survive
-  document teardown and reopening. Cold startup without a network access check
-  remains unfinished.
+  document teardown and reopening. The cache now retains the last verified
+  role, so a previously opened document renders immediately while access,
+  durable updates, and Realtime synchronize in the background. Edits made
+  during catch-up are preserved; role downgrade and revocation are handled
+  without uploading unauthorized local changes. A fully cold offline launch
+  still needs cached tree and selection metadata.
 - Enabled Yjs-aware undo/redo in the shared editor and verified that undoing a
   local edit retains a concurrently received collaborator edit.
 - Added automatic, deduplicated document versions containing Markdown and Yjs

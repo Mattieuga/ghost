@@ -90,6 +90,82 @@ const OPTIONS = {
 };
 
 describe("production Cloud collaboration adapter", () => {
+  it("opens cached state synchronously and preserves edits made during background catch-up", async () => {
+    const server = new Y.Doc();
+    server.getMap("probe").set("server", true);
+    const backend = createFakeBackend("editor", [encodeBase64(Y.encodeStateAsUpdate(server))]);
+    const document = new Y.Doc();
+    document.getMap("probe").set("cached", true);
+    const onRoleVerified = vi.fn();
+
+    const session = SupabaseCloudAdapter.createFromCache({
+      ...OPTIONS,
+      client: backend.client,
+      document,
+      onRoleVerified,
+    }, "editor");
+    expect(document.getMap("probe").get("cached")).toBe(true);
+    expect(session.getSnapshot()).toMatchObject({ role: "editor", synchronization: "loading" });
+
+    document.getMap("probe").set("typed-during-catch-up", true);
+    await vi.waitFor(() => {
+      expect(session.getSnapshot().synchronization).toBe("synced");
+      expect(session.getSnapshot().durability).toBe("saved");
+      expect(backend.persisted.length).toBeGreaterThan(1);
+    });
+
+    const durable = new Y.Doc();
+    backend.persisted.forEach((update) => Y.applyUpdate(durable, decodeBase64(update)));
+    expect(Object.fromEntries(durable.getMap("probe"))).toMatchObject({
+      cached: true,
+      server: true,
+      "typed-during-catch-up": true,
+    });
+    expect(onRoleVerified).toHaveBeenCalledWith("editor");
+    await session.destroy();
+    durable.destroy();
+    server.destroy();
+  });
+
+  it("stops a cached session when background authorization finds access revoked", async () => {
+    const backend = createFakeBackend(null);
+    const document = new Y.Doc();
+    document.getText("probe").insert(0, "cached copy");
+    const onAccessRevoked = vi.fn();
+
+    const session = SupabaseCloudAdapter.createFromCache({
+      ...OPTIONS,
+      client: backend.client,
+      document,
+      onAccessRevoked,
+    }, "editor");
+    document.getText("probe").insert(document.getText("probe").length, " local edit");
+
+    await vi.waitFor(() => expect(onAccessRevoked).toHaveBeenCalledOnce());
+    expect(session.getSnapshot()).toMatchObject({
+      role: "viewer",
+      synchronization: "error",
+      durability: "read-only",
+    });
+    expect(backend.persisted).toHaveLength(0);
+    await session.destroy();
+  });
+
+  it("downgrades a cached editor to read-only when the verified role changed", async () => {
+    const backend = createFakeBackend("viewer");
+    const document = new Y.Doc();
+    const session = SupabaseCloudAdapter.createFromCache({
+      ...OPTIONS,
+      client: backend.client,
+      document,
+    }, "editor");
+
+    await vi.waitFor(() => expect(session.getSnapshot().synchronization).toBe("synced"));
+    expect(session.role).toBe("viewer");
+    expect(session.getSnapshot().durability).toBe("read-only");
+    await session.destroy();
+  });
+
   it("loads durable Yjs updates before connecting", async () => {
     const source = new Y.Doc();
     source.getText("probe").insert(0, "from Supabase");

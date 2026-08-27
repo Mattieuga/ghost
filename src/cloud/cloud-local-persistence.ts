@@ -1,16 +1,26 @@
 import { IndexeddbPersistence } from "y-indexeddb";
 import type * as Y from "yjs";
+import type { CloudDocumentRole } from "@/cloud/collaboration/types";
 
 const LOCAL_PERSISTENCE_VERSION = 1;
 const LOCAL_PERSISTENCE_OPEN_TIMEOUT_MS = 5_000;
+const ACCESS_METADATA_KEY = "ghost-cloud-access";
 
 export type CloudLocalPersistenceStatus = "ready" | "unavailable";
 
 export interface CloudLocalPersistenceHandle {
   readonly status: CloudLocalPersistenceStatus;
   readonly message: string | null;
+  readonly cachedRole: CloudDocumentRole | null;
+  rememberRole(role: CloudDocumentRole): Promise<void>;
   destroy(): Promise<void>;
   clear(): Promise<void>;
+}
+
+interface CloudLocalAccessMetadata {
+  version: 1;
+  role: CloudDocumentRole;
+  verifiedAt: string;
 }
 
 export function cloudLocalPersistenceKey(userId: string, documentId: string): string {
@@ -21,6 +31,8 @@ function unavailableHandle(message: string): CloudLocalPersistenceHandle {
   return {
     status: "unavailable",
     message,
+    cachedRole: null,
+    rememberRole: async () => undefined,
     destroy: async () => undefined,
     clear: async () => undefined,
   };
@@ -79,10 +91,22 @@ export async function openCloudLocalPersistence(
     if (timeout) clearTimeout(timeout);
   }
 
+  const cachedMetadata = await persistence.get(ACCESS_METADATA_KEY).catch(() => null);
+  const cachedRole = parseCloudLocalAccessMetadata(cachedMetadata)?.role ?? null;
   let closed = false;
   return {
     status: "ready",
     message: null,
+    cachedRole,
+    rememberRole: async (role) => {
+      if (closed) return;
+      const metadata: CloudLocalAccessMetadata = {
+        version: 1,
+        role,
+        verifiedAt: new Date().toISOString(),
+      };
+      await persistence.set(ACCESS_METADATA_KEY, JSON.stringify(metadata));
+    },
     destroy: async () => {
       if (closed) return;
       closed = true;
@@ -94,4 +118,21 @@ export async function openCloudLocalPersistence(
       await persistence.clearData();
     },
   };
+}
+
+function parseCloudLocalAccessMetadata(value: unknown): CloudLocalAccessMetadata | null {
+  if (typeof value !== "string") return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const metadata = parsed as Partial<CloudLocalAccessMetadata>;
+  return metadata.version === 1
+    && (metadata.role === "editor" || metadata.role === "viewer")
+    && typeof metadata.verifiedAt === "string"
+    ? metadata as CloudLocalAccessMetadata
+    : null;
 }

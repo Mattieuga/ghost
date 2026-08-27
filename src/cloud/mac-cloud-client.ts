@@ -8,6 +8,8 @@ interface AsyncAuthStorage {
   removeItem(key: string): Promise<void>;
 }
 
+export const MAC_CLOUD_AUTH_REDIRECT_URL = "ghost-md://auth/callback";
+
 const keychainStorage: AsyncAuthStorage = {
   getItem: (key) => invoke<string | null>("cloud_auth_storage_get", { key }),
   setItem: (key, value) => invoke("cloud_auth_storage_set", { key, value }),
@@ -29,7 +31,12 @@ export function getMacCloudClient(): SupabaseClient | null {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: false,
+      flowType: "pkce",
     },
   });
   return macClient;
+}
+
+export async function openMacCloudOAuthUrl(url: string): Promise<void> {
+  await invoke("open_url", { url });
 }

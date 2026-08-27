@@ -2,7 +2,7 @@
 
 - Status: In progress; retained Mac/web Cloud vertical slice ready for joint testing
 - Date: 2026-08-25
-- Last updated: 2026-08-26
+- Last updated: 2026-08-27
 - Architecture: [`../architecture/0004-cloud-collaborative-markdown-workspaces.md`](../architecture/0004-cloud-collaborative-markdown-workspaces.md)
 
 ## Goal
@@ -180,9 +180,10 @@ blocked on the remaining Phase 0 gates
   cloud references cannot be passed to this gateway without a type error.
 - Added a separately built `web.html` entry whose loaded bundles contain no
   Tauri runtime imports.
-- Added a shared email/password account flow for web and Mac. Browser sessions
-  use browser storage while Mac refresh credentials use a dedicated Keychain
-  command boundary.
+- Added a shared passwordless email code/link and Sign in with Apple account
+  flow for web and Mac. Browser sessions use browser storage while Mac refresh
+  credentials use a dedicated Keychain command boundary and installed builds
+  receive PKCE callbacks through a registered deep link.
 - Added a shared, browser-safe collaborative Markdown surface while preserving
   the existing local editor and local-only source gateway.
 
@@ -220,7 +221,7 @@ blocked on the remaining Phase 0 gates
 Status: Initial retained control-plane slice implemented; broader operations,
 sharing, and recovery remain
 
-### Progress as of 2026-08-26
+### Progress as of 2026-08-27
 
 - Added version-controlled production `cloud_*` tables, inherited roles,
   stable item UUIDs, Markdown-only document creation, and append-only Yjs
@@ -233,6 +234,12 @@ sharing, and recovery remain
 - Verified live private-channel authorization: an owner could join and send an
   acknowledged Broadcast while an unrelated account was rejected.
 - Added permanent account onboarding and Keychain-backed Mac session storage.
+- Replaced Ghost passwords with passwordless email code/link plus Sign in with
+  Apple, retaining one Supabase user ID for ownership and memberships. Client
+  flows and Mac deep-link handling are implemented; the connected Supabase
+  project still needs the code-bearing email template, redirect allow-list,
+  and Apple credentials described in
+  [`../cloud-auth-setup.md`](../cloud-auth-setup.md).
 
 ### Scope
 

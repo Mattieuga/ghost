@@ -84,8 +84,13 @@ import {
   type SourceProfile,
 } from "@/lib/resource-policy";
 import type { FileOpenPerformanceTrace } from "@/lib/open-performance";
-import { getMacCloudClient } from "@/cloud/mac-cloud-client";
+import {
+  getMacCloudClient,
+  MAC_CLOUD_AUTH_REDIRECT_URL,
+  openMacCloudOAuthUrl,
+} from "@/cloud/mac-cloud-client";
 import { useCloudAccount } from "@/cloud/use-cloud-account";
+import { useMacCloudAuthCallback } from "@/cloud/use-mac-cloud-auth-callback";
 import { useCloudTree } from "@/cloud/use-cloud-tree";
 import { CloudSignIn } from "@/cloud/cloud-sign-in";
 import { CloudTree } from "@/cloud/cloud-tree";
@@ -99,6 +104,7 @@ export function GhostLayout() {
   const { settings, updateSettings, saveTheme, deleteTheme } = useSettings();
   const updater = useUpdater();
   const cloudClient = useMemo(() => getMacCloudClient(), []);
+  const cloudAuthCallbackError = useMacCloudAuthCallback(cloudClient);
   const cloudAccount = useCloudAccount(cloudClient);
   const cloudUser = cloudAccount.kind === "signed-in" ? cloudAccount.user : null;
   const cloudTree = useCloudTree(cloudClient, cloudUser?.id ?? null);
@@ -1383,7 +1389,14 @@ export function GhostLayout() {
               </p>
             </div>
           ) : cloudAccount.kind === "signed-out" ? (
-            <CloudSignIn client={cloudClient} compact />
+            <CloudSignIn
+              client={cloudClient}
+              compact
+              emailRedirectTo={MAC_CLOUD_AUTH_REDIRECT_URL}
+              oauthRedirectTo={MAC_CLOUD_AUTH_REDIRECT_URL}
+              openOAuthUrl={openMacCloudOAuthUrl}
+              externalError={cloudAuthCallbackError}
+            />
           ) : (
             <CloudTree
               client={cloudClient}

@@ -3,7 +3,7 @@
 - Status: Proposed; retained Mac/web vertical slice implemented, resilience
   and sharing gates remain
 - Date: 2026-08-25
-- Last updated: 2026-08-26
+- Last updated: 2026-08-27
 - Related plan: [`../plans/cloud-collaboration-roadmap.md`](../plans/cloud-collaboration-roadmap.md)
 - Related decisions:
   - [`0001-extensible-file-viewers.md`](0001-extensible-file-viewers.md)
@@ -55,6 +55,9 @@ product problems and are not prerequisites.
   Hocuspocus if the Supabase path fails Phase 0.
 - Require accounts for owners and direct members, while link recipients use
   anonymous authenticated sessions with explicit viewer/editor permissions.
+- Offer Sign in with Apple and passwordless email code/link for permanent
+  accounts. Treat the Supabase user ID, rather than an Apple ID or email
+  address, as Ghost's canonical account identity.
 - After the cloud product is stable, add filesystem integration in strict
   stages: untracked export, a managed read-only Finder location, external edits
   inside that location, and finally arbitrary-path tracking.
@@ -65,6 +68,23 @@ product problems and are not prerequisites.
 The sidebar will contain a first-class Cloud section alongside the existing
 local workspace. Local use remains available without an account. Creating or
 owning cloud content requires a recoverable Ghost account.
+
+Permanent-account onboarding has no Ghost password. The preferred action is
+Sign in with Apple, with a passwordless email one-time code and sign-in link as
+an equal fallback. Both clients use Supabase Auth's PKCE flow: the web client
+returns to its Cloud route, while an installed Apple-platform app returns
+through the registered `ghost-md://auth/callback` deep link and stores its
+refresh session in Keychain. Email-code entry remains available in development
+builds where macOS does not register app deep links.
+
+Provider credentials are an authentication detail, not document identity.
+Ghost authorization, memberships, and ownership reference `auth.users.id`.
+Supabase identity linking can therefore attach Apple and email identities to
+one account, and later Windows or Android clients can use the same email flow
+or add platform-appropriate OAuth providers without migrating documents.
+Automatic identity linking must follow Supabase's verified-identity rules;
+Ghost must never merge accounts based only on user-entered matching email
+text.
 
 Cloud folders are logical database containers, not filesystem directories or
 Finder mounts. Cloud documents use stable UUIDs and are not represented by
@@ -542,6 +562,11 @@ hierarchical items, invitations, share links, and future operational queries.
   collaborative Markdown editor and Ghost-owned adapter. Mac auth persists in
   Keychain; the browser retains its own session and neither client contains a
   service-role key.
+- Permanent-account onboarding now uses passwordless email code/link and Sign
+  in with Apple behind the same Supabase user identity. Web callbacks remain in
+  the Cloud route; installed Mac builds use a PKCE deep link. The connected
+  project still needs its email template and Apple provider configured before
+  both production methods are live.
 - Reconnect no longer relies only on a best-effort peer state-vector handshake:
   a committed update emits a private durable-change signal, and peers
   incrementally apply the authoritative Postgres log after their last update
@@ -638,6 +663,8 @@ alternative instead of silently changing providers during implementation.
 - [Liveblocks Tiptap integration](https://liveblocks.io/docs/collaboration-features/multiplayer/text-editor/tiptap)
 - [Liveblocks permissions](https://liveblocks.io/docs/authentication/permissions)
 - [Supabase anonymous sign-ins](https://supabase.com/docs/guides/auth/auth-anonymous)
+- [Supabase passwordless email](https://supabase.com/docs/guides/auth/auth-email-passwordless)
+- [Supabase Sign in with Apple](https://supabase.com/docs/guides/auth/social-login/auth-apple)
 - [Supabase Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security)
 - [Supabase Storage access control](https://supabase.com/docs/guides/storage/security/access-control)
 - [Supabase Edge Function authentication](https://supabase.com/docs/guides/functions/auth)

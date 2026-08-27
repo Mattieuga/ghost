@@ -12,6 +12,7 @@
     "core:window:allow-start-dragging",
     "core:window:allow-set-size-constraints",
     "core:window:allow-set-size",
+    "deep-link:default",
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-write-html",
     "dialog:default",

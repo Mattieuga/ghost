@@ -15,6 +15,7 @@ export function getBrowserCloudClient(): SupabaseClient | null {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      flowType: "pkce",
     },
   });
   return browserClient;

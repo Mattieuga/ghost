@@ -25,12 +25,14 @@ are later slices and are not part of this test.
 
 1. Keep the development app and Vite process running with `pnpm tauri dev`.
 2. Open `http://localhost:1420/web.html` in a browser.
-3. Create a Cloud account in the web client. If email confirmation is enabled,
-   follow the confirmation link; it should return to `web.html`. The local web
-   URL must be present in the Supabase Auth redirect allow list.
-4. Sign in to the Mac app's Cloud section with the same email and password.
+3. Enter an email in the web client and use either the six-digit code or the
+   sign-in link. The link should return to `web.html`; the local web URL must
+   be present in the Supabase Auth redirect allow list.
+4. Sign in to the Mac app's Cloud section with the same email and a fresh code.
    Browser and Mac sessions are intentionally separate; the Mac refresh token
-   is stored in Keychain.
+   is stored in Keychain. Sign-in links and Apple callbacks return to an
+   installed Mac build through `ghost-md://auth/callback`; macOS does not
+   register that deep link for `tauri dev`, so use the code during development.
 5. Create a Markdown document in either client. In the other client, click the
    Cloud refresh button, then open the same document.
 6. Type in one client while watching the other. Text and the remote caret should

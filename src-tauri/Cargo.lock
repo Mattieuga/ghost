@@ -1359,8 +1359,6 @@ dependencies = [
  "objc2-pdf-kit",
  "objc2-quick-look-ui",
  "pulldown-cmark",
- "security-framework",
- "security-framework-sys",
  "serde",
  "serde_json",
  "tauri",

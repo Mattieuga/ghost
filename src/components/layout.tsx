@@ -1384,6 +1384,7 @@ export function GhostLayout() {
                   setActiveCloudDocument(null);
                 }
               }}
+              onFocusEditor={() => focusEditor()}
               compact
             />
           )}

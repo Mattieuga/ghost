@@ -182,8 +182,10 @@ blocked on the remaining Phase 0 gates
   Tauri runtime imports.
 - Added a shared passwordless email code/link and Sign in with Apple account
   flow for web and Mac. Browser sessions use browser storage while Mac refresh
-  credentials use a dedicated Keychain command boundary and installed builds
-  receive PKCE callbacks through a registered deep link.
+  credentials use a dedicated Tauri app-data store and installed builds receive
+  PKCE callbacks through a registered deep link. This avoids repeated Keychain
+  prompts from development builds; the store is isolated from settings but is
+  protected by user/app-data permissions rather than Keychain encryption.
 - Added a shared, browser-safe collaborative Markdown surface while preserving
   the existing local editor and local-only source gateway.
 
@@ -233,7 +235,8 @@ sharing, and recovery remain
   workspace while the owner can create folders/documents and persist updates.
 - Verified live private-channel authorization: an owner could join and send an
   acknowledged Broadcast while an unrelated account was rejected.
-- Added permanent account onboarding and Keychain-backed Mac session storage.
+- Added permanent account onboarding and dedicated Mac app-data session
+  storage without system Keychain prompts.
 - Replaced Ghost passwords with passwordless email code/link plus Sign in with
   Apple, retaining one Supabase user ID for ownership and memberships. Client
   flows and Mac deep-link handling are implemented; the connected Supabase
@@ -251,7 +254,9 @@ sharing, and recovery remain
 - Implement deny-by-default RLS and adversarial policy tests for owners,
   members, guests, and unrelated users.
 - Add permanent account onboarding and anonymous guest sessions.
-- Store Mac refresh credentials through Keychain-backed secure storage.
+- Store Mac refresh credentials in a dedicated Tauri app-data store, document
+  its at-rest security tradeoff, and revisit non-prompting encrypted storage
+  before broad production distribution.
 - Add account deletion/export foundations before accepting user content.
 - Add Edge Function foundations for privileged operations and, only if the
   selected provider needs them, collaboration-token issuance.

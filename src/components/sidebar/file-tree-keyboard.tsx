@@ -149,6 +149,7 @@ export function useFileTreeNode(
 
 interface FileTreeKeyboardProps {
   activePath: string | null;
+  ariaLabel?: string;
   className?: string;
   children: ReactNode;
   scrollRef?: RefObject<HTMLDivElement | null>;
@@ -157,7 +158,7 @@ interface FileTreeKeyboardProps {
 
 export const FileTreeKeyboard = forwardRef<FileTreeKeyboardHandle, FileTreeKeyboardProps>(
   function FileTreeKeyboard(
-    { activePath, className, children, scrollRef, onFocusEditor },
+    { activePath, ariaLabel = "Workspace files", className, children, scrollRef, onFocusEditor },
     forwardedRef,
   ) {
     const rootRef = useRef<HTMLDivElement>(null);
@@ -621,7 +622,7 @@ export const FileTreeKeyboard = forwardRef<FileTreeKeyboardHandle, FileTreeKeybo
           ref={setRootRef}
           role="tree"
           data-tree-area
-          aria-label="Workspace files"
+          aria-label={ariaLabel}
           aria-activedescendant={focusedKey ? treeNodeId(focusedKey) : undefined}
           tabIndex={0}
           className={className}

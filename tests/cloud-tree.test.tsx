@@ -75,12 +75,23 @@ describe("CloudTree", () => {
       );
     });
 
-    expect(host.querySelector('[title="New Cloud document"]')).not.toBeNull();
+    expect(host.querySelector('[title="New Cloud document"]')?.textContent).toBe("+");
     expect(host.querySelector('[title="Refresh Cloud"]')).not.toBeNull();
     expect(host.querySelector('[title="New Cloud folder"]')).toBeNull();
     expect(host.querySelector('[title="Sign out of Cloud"]')).toBeNull();
     expect(host.querySelector('[data-file-active="true"]')?.textContent).toContain("Plan.md");
     expect(host.textContent).toContain("Notes");
+
+    const rootFolder = host.querySelector<HTMLElement>('[data-root-folder]');
+    expect(rootFolder).not.toBeNull();
+    expect(rootFolder?.querySelector('[data-root-dot]')).not.toBeNull();
+
+    await act(async () => {
+      rootFolder?.querySelector<HTMLButtonElement>('[data-tree-focus-target]')?.click();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    expect(rootFolder?.dataset.treeFocused).toBe("true");
+    expect(rootFolder?.querySelector('[data-tree-focus-target]')?.className).toContain("ring-ghost-amber");
 
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[data-file-active="true"] button')?.click();

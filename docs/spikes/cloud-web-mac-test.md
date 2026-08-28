@@ -31,9 +31,10 @@ slices and are not part of this test.
    be present in the Supabase Auth redirect allow list.
 4. Sign in to the Mac app's Cloud section with the same email and a fresh code.
    Browser and Mac sessions are intentionally separate; the Mac refresh token
-   is stored in Keychain. Sign-in links and Apple callbacks return to an
-   installed Mac build through `ghost-md://auth/callback`; macOS does not
-   register that deep link for `tauri dev`, so use the code during development.
+   is stored in dedicated Tauri app data. Sign-in links and Apple callbacks
+   return to an installed Mac build through `ghost-md://auth/callback`; macOS
+   does not register that deep link for `tauri dev`, so use the code during
+   development.
 5. Create a Markdown document in either client. In the other client, click the
    Cloud refresh button, then open the same document.
 6. Type in one client while watching the other. Text and the remote caret should

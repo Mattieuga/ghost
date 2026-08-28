@@ -3,7 +3,7 @@ import { readCloudConfig } from "@/cloud/cloud-config";
 
 let browserClient: SupabaseClient | null = null;
 
-/** Browser-only account client. The Mac shell will use Keychain-backed auth. */
+/** Browser-only account client. The Mac shell uses its own Tauri app-data session store. */
 export function getBrowserCloudClient(): SupabaseClient | null {
   const config = readCloudConfig();
   if (!config) return null;

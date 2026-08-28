@@ -70,7 +70,7 @@ disables the Apple button, and leaves email code sign-in available.
 3. Use a different email to create the second permanent identity needed for
    sharing tests.
 4. In an installed Mac build, follow an email link and confirm it returns to
-   Ghost and persists the session in Keychain.
+   Ghost and persists the session across relaunches without a Keychain prompt.
 5. After Apple is configured, repeat web and installed-Mac sign-in with Apple,
    sign out, and sign back in without creating another workspace.
 

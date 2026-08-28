@@ -74,8 +74,13 @@ Sign in with Apple, with a passwordless email one-time code and sign-in link as
 an equal fallback. Both clients use Supabase Auth's PKCE flow: the web client
 returns to its Cloud route, while an installed Apple-platform app returns
 through the registered `ghost-md://auth/callback` deep link and stores its
-refresh session in Keychain. Email-code entry remains available in development
-builds where macOS does not register app deep links.
+refresh session in a dedicated Tauri app-data store. Email-code entry remains
+available in development builds where macOS does not register app deep links.
+The app-data choice avoids repeated Keychain authorization prompts from
+unsigned and frequently rebuilt development binaries. It deliberately trades
+Keychain encryption for the protections of the current macOS user account and
+application-data directory; revisit encrypted, non-prompting credential
+storage before broad production distribution if the platform permits it.
 
 Provider credentials are an authentication detail, not document identity.
 Ghost authorization, memberships, and ownership reference `auth.users.id`.
@@ -308,9 +313,11 @@ Collaborative undo uses the Yjs editor binding as its only tracked origin.
 Remote, persistence, and reconnect transactions are not placed on the local
 undo stack, so one collaborator cannot undo another collaborator's work.
 
-Authentication refresh tokens and other durable credentials in the Mac app
-must be stored in Keychain-backed secure storage, not the existing plaintext
-settings store.
+Authentication refresh tokens in the Mac app are isolated in a dedicated
+`cloud-auth.json` Tauri app-data store rather than mixed into general settings.
+The store is not Keychain-encrypted. This keeps session persistence consistent
+with a browser while avoiding recurring system password prompts during local
+development; no application service keys or document content belong there.
 
 ### Stage filesystem materialization after the cloud product
 
@@ -560,8 +567,9 @@ hierarchical items, invitations, share links, and future operational queries.
   unrelated permanent account at both Realtime and Postgres boundaries.
 - The Mac app and focused `web.html` client now share one browser-safe
   collaborative Markdown editor and Ghost-owned adapter. Mac auth persists in
-  Keychain; the browser retains its own session and neither client contains a
-  service-role key.
+  dedicated Tauri app data; the browser retains its own session and neither
+  client contains a service-role key. The Mac store is intentionally not
+  Keychain-encrypted, as documented above.
 - Local and Cloud Markdown now render through the same `MarkdownEditor`
   component, extension surface, style toolbar, document header, spacing, and
   heading minimap. Cloud injects Yjs collaboration and source-specific actions
@@ -571,10 +579,11 @@ hierarchical items, invitations, share links, and future operational queries.
   distinct diagnostics for tests and future debug tooling.
 - Workspace and Cloud trees now use the same file row, folder row, inline
   rename, trash dialog, and context-menu components. Each source injects only
-  its backend-specific actions. Cloud keeps quick document creation and a
-  temporary manual refresh; account management is deliberately outside the
-  tree. Cloud duplicate and recursive soft-delete mutations require inherited
-  editor access.
+  its backend-specific actions. Both use root-folder dots, amber keyboard
+  focus, and the same literal quick-add `+`. Cloud keeps quick document
+  creation and a temporary manual refresh; account management is deliberately
+  outside the tree. Cloud duplicate and recursive soft-delete mutations
+  require inherited editor access.
 - Non-blocking Cloud failures no longer resize or cover the document with
   inline banners. They use the same compact, dismissible top notification
   treatment as app updates, while the header retains the quiet saved/offline

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, RefreshCw } from "lucide-react";
-import type { CloudItem, CloudItemKind } from "@/cloud/cloud-data";
+import { RefreshCw } from "lucide-react";
+import { cloudItemPath, type CloudItem, type CloudItemKind } from "@/cloud/cloud-data";
 import type { CloudTreeState } from "@/cloud/use-cloud-tree";
 import { AppNotification } from "@/components/ui/app-notification";
+import { FileTreeKeyboard, useFileTreeNode } from "@/components/sidebar/file-tree-keyboard";
 import { SidebarTrashDialog } from "@/components/sidebar/sidebar-trash-dialog";
 import {
   SIDEBAR_FILE_EXTRA_INDENT,
@@ -19,12 +20,14 @@ export function CloudTree({
   selectedId,
   onSelectDocument,
   onItemsDeleted,
+  onFocusEditor = focusCloudEditor,
   compact = false,
 }: {
   tree: CloudTreeState;
   selectedId: string | null;
   onSelectDocument(item: CloudItem): void;
   onItemsDeleted?(itemIds: string[]): void;
+  onFocusEditor?: () => void;
   compact?: boolean;
 }) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set());
@@ -57,21 +60,23 @@ export function CloudTree({
     setRenamingId(item.id);
   };
 
-  const finishRename = async (item: CloudItem) => {
+  const finishRename = async (item: CloudItem): Promise<boolean> => {
     const nextName = renameName.trim();
     if (!nextName || nextName === item.name) {
       setRenamingId(null);
-      return;
+      return true;
     }
     try {
       const renamed = await tree.rename(item.id, nextName);
       if (selectedId === item.id && renamed.kind === "document") onSelectDocument(renamed);
       setRenamingId(null);
+      return true;
     } catch (reason) {
       reportError(reason);
       setRenameError(true);
       setTimeout(() => setRenameError(false), 500);
       renameInputRef.current?.focus();
+      return false;
     }
   };
 
@@ -118,6 +123,9 @@ export function CloudTree({
   };
 
   const roots = tree.items.filter((item) => item.parent_id === null);
+  const projectPath = `cloud/${tree.workspace?.id ?? "workspace"}`;
+  const selectedItem = selectedId ? tree.items.find((item) => item.id === selectedId) : null;
+  const activePath = selectedItem ? cloudTreeNodePath(tree.items, selectedItem, projectPath) : null;
 
   return (
     <section className={compact ? "border-b border-sidebar-border pb-2" : "flex h-full flex-col border-r border-border bg-sidebar"}>
@@ -128,11 +136,11 @@ export function CloudTree({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="cursor-pointer text-ring transition-colors hover:text-sidebar-foreground"
+            className="cursor-pointer text-[16px] leading-none text-ring transition-colors hover:text-sidebar-foreground"
             title="New Cloud document"
             onClick={() => void create("document")}
           >
-            <Plus className="size-3.5" />
+            +
           </button>
           <button
             type="button"
@@ -151,7 +159,12 @@ export function CloudTree({
       {!tree.loading && roots.length === 0 ? (
         <div className="px-4 pb-3 text-xs leading-5 text-ring">No Cloud documents yet. Use + to create one.</div>
       ) : null}
-      <div className={compact ? "max-h-56 overflow-y-auto" : "flex-1 overflow-y-auto"}>
+      <FileTreeKeyboard
+        activePath={activePath}
+        ariaLabel="Cloud documents"
+        onFocusEditor={onFocusEditor}
+        className={`${compact ? "max-h-56" : "flex-1"} overflow-y-auto px-1 outline-none`}
+      >
         {roots.map((item) => (
           <CloudTreeItem
             key={item.id}
@@ -172,10 +185,11 @@ export function CloudTree({
             renameInputRef={renameInputRef}
             onFinishRename={finishRename}
             onCancelRename={() => setRenamingId(null)}
+            projectPath={projectPath}
             depth={0}
           />
         ))}
-      </div>
+      </FileTreeKeyboard>
       <SidebarTrashDialog
         open={pendingTrash !== null}
         kind={pendingTrash?.kind === "folder" ? "folder" : "file"}
@@ -207,8 +221,9 @@ interface CloudTreeItemProps {
   setRenameName(name: string): void;
   renameError: boolean;
   renameInputRef: React.RefObject<HTMLInputElement | null>;
-  onFinishRename(item: CloudItem): Promise<void>;
+  onFinishRename(item: CloudItem): Promise<boolean>;
   onCancelRename(): void;
+  projectPath: string;
   depth: number;
 }
 
@@ -231,6 +246,7 @@ function CloudTreeItem(props: CloudTreeItemProps) {
     renameInputRef,
     onFinishRename,
     onCancelRename,
+    projectPath,
     depth,
   } = props;
   const children = allItems.filter((candidate) => candidate.parent_id === item.id);
@@ -244,6 +260,46 @@ function CloudTreeItem(props: CloudTreeItemProps) {
     });
   };
   const createParentId = item.kind === "folder" ? item.id : item.parent_id;
+  const nodePath = cloudTreeNodePath(allItems, item, projectPath);
+  const parentItem = item.parent_id
+    ? allItems.find((candidate) => candidate.id === item.parent_id) ?? null
+    : null;
+  const parentPath = parentItem ? cloudTreeNodePath(allItems, parentItem, projectPath) : null;
+  const containsSelected = selectedId
+    ? collectDescendantIds(allItems, item.id).includes(selectedId)
+    : false;
+  const { isFocused, nodeProps, restoreTreeFocus, focusTreePath } = useFileTreeNode({
+    path: nodePath,
+    projectPath,
+    label: item.name,
+    kind: item.kind === "document" ? "file" : "folder",
+    parentPath,
+    expanded,
+    expand: item.kind === "folder" ? () => {
+      if (!expanded) toggle();
+    } : undefined,
+    collapse: item.kind === "folder" ? () => {
+      if (expanded) toggle();
+    } : undefined,
+    actions: {
+      activate: item.kind === "document" ? () => onSelectDocument(item) : toggle,
+      preview: item.kind === "document" ? () => onSelectDocument(item) : undefined,
+      rename: () => onStartRename(item),
+      duplicate: () => onDuplicate(item),
+      trash: () => onRequestTrash(item),
+      newFile: () => onCreate("document", createParentId),
+      newFolder: () => onCreate("folder", createParentId),
+    },
+  });
+  const restoreAfterRename = async () => {
+    if (await onFinishRename(item)) {
+      requestAnimationFrame(() => { void focusTreePath(nodePath, projectPath); });
+    }
+  };
+  const cancelRename = () => {
+    onCancelRename();
+    requestAnimationFrame(() => { void focusTreePath(nodePath, projectPath); });
+  };
   const menu = (
     <SidebarTreeContextMenu
       kind={item.kind === "document" ? "file" : "folder"}
@@ -273,15 +329,17 @@ function CloudTreeItem(props: CloudTreeItemProps) {
         inputRef={renameInputRef}
         value={renameName}
         onChange={(event) => setRenameName(event.target.value)}
-        onBlur={() => void onFinishRename(item)}
+        isRoot={item.kind === "folder" && depth === 0}
+        dotColor={containsSelected ? "var(--ghost-amber)" : "var(--muted-foreground)"}
+        onBlur={() => void restoreAfterRename()}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             event.preventDefault();
-            void onFinishRename(item);
+            void restoreAfterRename();
           }
           if (event.key === "Escape") {
             event.preventDefault();
-            onCancelRename();
+            cancelRename();
           }
         }}
         error={renameError}
@@ -297,8 +355,13 @@ function CloudTreeItem(props: CloudTreeItemProps) {
         label={item.name}
         indent={SIDEBAR_INDENT_BASE + depth * SIDEBAR_INDENT_STEP + SIDEBAR_FILE_EXTRA_INDENT}
         active={selectedId === item.id}
-        onActivate={() => onSelectDocument(item)}
+        focused={isFocused}
+        onActivate={() => {
+          onSelectDocument(item);
+          requestAnimationFrame(restoreTreeFocus);
+        }}
         menu={menu}
+        containerProps={nodeProps}
       />
     );
   }
@@ -308,8 +371,18 @@ function CloudTreeItem(props: CloudTreeItemProps) {
       label={item.name}
       depth={depth}
       expanded={expanded}
-      onActivate={toggle}
+      isRoot={depth === 0}
+      rootId={nodePath}
+      active={depth > 0 && !expanded && containsSelected}
+      focused={isFocused}
+      activeRootCollapsed={depth === 0 && !expanded && containsSelected}
+      dotColor={containsSelected ? "var(--ghost-amber)" : "var(--muted-foreground)"}
+      onActivate={() => {
+        toggle();
+        requestAnimationFrame(restoreTreeFocus);
+      }}
       menu={menu}
+      containerProps={nodeProps}
     >
       {descendants}
     </SidebarFolderTreeItem>
@@ -329,4 +402,12 @@ function collectDescendantIds(items: CloudItem[], rootId: string): string[] {
     }
   }
   return Array.from(ids);
+}
+
+function cloudTreeNodePath(items: CloudItem[], item: CloudItem, projectPath: string): string {
+  return `${projectPath}/${cloudItemPath(items, item).map((ancestor) => ancestor.id).join("/")}`;
+}
+
+function focusCloudEditor() {
+  document.querySelector<HTMLElement>("[data-ghost-editor-root] [contenteditable=true]")?.focus();
 }

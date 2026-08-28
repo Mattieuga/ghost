@@ -50,7 +50,11 @@ function createAuthClient() {
   return { client, signInWithOtp, verifyOtp, signInWithOAuth };
 }
 
-async function renderSignIn(client: SupabaseClient, openOAuthUrl = vi.fn()) {
+async function renderSignIn(
+  client: SupabaseClient,
+  openOAuthUrl = vi.fn(),
+  emailLinkSupported = true,
+) {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
@@ -61,6 +65,7 @@ async function renderSignIn(client: SupabaseClient, openOAuthUrl = vi.fn()) {
         client={client}
         capabilities={{ apple: true, email: true }}
         emailRedirectTo="ghost-md://auth/callback"
+        emailLinkSupported={emailLinkSupported}
         oauthRedirectTo="ghost-md://auth/callback"
         openOAuthUrl={openOAuthUrl}
       />,
@@ -117,6 +122,18 @@ describe("Cloud passwordless sign in", () => {
     expect(openOAuthUrl).toHaveBeenCalledWith(
       "https://project.supabase.co/auth/v1/authorize",
     );
+  });
+
+  it("explains the required OTP template when a development link cannot return to Mac", async () => {
+    const auth = createAuthClient();
+    const { host } = await renderSignIn(auth.client, vi.fn(), false);
+    const email = host.querySelector<HTMLInputElement>('input[aria-label="Email"]');
+    if (!email) throw new Error("Email input did not render");
+
+    await inputText(email, "person@example.com");
+    await act(async () => buttonWithText(host, "Continue with email").click());
+
+    expect(host.querySelector('[role="status"]')?.textContent).toContain("{{ .Token }}");
   });
 });
 

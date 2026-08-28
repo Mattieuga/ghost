@@ -12,6 +12,7 @@ export function CloudSignIn({
   client,
   compact = false,
   emailRedirectTo,
+  emailLinkSupported = true,
   oauthRedirectTo = emailRedirectTo,
   openOAuthUrl = (url) => { window.location.assign(url); },
   externalError = null,
@@ -20,6 +21,7 @@ export function CloudSignIn({
   client: SupabaseClient;
   compact?: boolean;
   emailRedirectTo?: string;
+  emailLinkSupported?: boolean;
   oauthRedirectTo?: string;
   openOAuthUrl?: (url: string) => void | Promise<void>;
   externalError?: string | null;
@@ -84,7 +86,10 @@ export function CloudSignIn({
       }
       setSentEmail(normalizedEmail);
       setStep("code");
-      setMessage("Check your email for a six-digit code or sign-in link.");
+      setMessage(emailLinkSupported
+        ? "Check your email for a six-digit code or sign-in link."
+        : "Enter the six-digit code from your email. If it only contains a link, " +
+          "add {{ .Token }} to the Supabase Magic Link template.");
     } catch (reason) {
       setMessage(reason instanceof Error ? reason.message : String(reason));
     } finally {

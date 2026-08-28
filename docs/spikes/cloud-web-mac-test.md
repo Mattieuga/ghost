@@ -34,7 +34,9 @@ slices and are not part of this test.
    is stored in dedicated Tauri app data. Sign-in links and Apple callbacks
    return to an installed Mac build through `ghost-md://auth/callback`; macOS
    does not register that deep link for `tauri dev`, so use the code during
-   development.
+   development. If the email contains only a link, update the Supabase Magic
+   Link template to include `{{ .Token }}` as described in
+   [`../cloud-auth-setup.md`](../cloud-auth-setup.md).
 5. Create a Markdown document in either client. In the other client, click the
    Cloud refresh button, then open the same document.
 6. Type in one client while watching the other. Text and the remote caret should

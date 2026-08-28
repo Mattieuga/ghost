@@ -28,16 +28,19 @@ A useful subject is `{{ .Token }} is your Ghost sign-in code`. Supabase's
 default magic-link-only template does not expose the code even though the API
 created one.
 
-In **Authentication → URL Configuration**, retain the deployed web URL and
-local test URL, and add:
+In **Authentication → URL Configuration**, add both development callbacks to
+the redirect allow list (plus the deployed web URL when one exists):
 
 ```text
+http://localhost:1420/web.html
 ghost-md://auth/callback
 ```
 
 The Mac app can exchange that PKCE callback only when macOS has registered an
 installed bundle. In `pnpm tauri dev`, enter the emailed code instead of
-clicking the link.
+clicking the link. Ghost redirects an accidental browser visit to the desktop
+root over to `web.html`, preserving callback parameters, but that cannot move a
+Mac app's PKCE verifier into the browser.
 
 ## Sign in with Apple
 

@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createCloudItem,
+  duplicateCloudItem,
   ensureCloudWorkspace,
   listCloudItems,
   renameCloudItem,
+  trashCloudItem,
   type CloudItem,
   type CloudItemKind,
   type CloudWorkspace,
@@ -17,6 +19,8 @@ export interface CloudTreeState {
   error: string | null;
   create(kind: CloudItemKind, name: string, parentId?: string | null): Promise<CloudItem>;
   rename(itemId: string, name: string): Promise<CloudItem>;
+  duplicate(itemId: string): Promise<CloudItem>;
+  trash(itemId: string): Promise<void>;
   reload(): Promise<void>;
 }
 
@@ -62,5 +66,31 @@ export function useCloudTree(client: SupabaseClient | null, userId: string | nul
     return item;
   }, [client]);
 
-  return { workspace, items, loading, error, create, rename, reload };
+  const duplicate = useCallback(async (itemId: string) => {
+    if (!client || !workspace) throw new Error("Ghost Cloud is not connected");
+    const item = await duplicateCloudItem(client, itemId);
+    setItems(await listCloudItems(client, workspace.id));
+    return item;
+  }, [client, workspace]);
+
+  const trash = useCallback(async (itemId: string) => {
+    if (!client) throw new Error("Ghost Cloud is not connected");
+    await trashCloudItem(client, itemId);
+    setItems((current) => {
+      const removed = new Set([itemId]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const item of current) {
+          if (item.parent_id && removed.has(item.parent_id) && !removed.has(item.id)) {
+            removed.add(item.id);
+            changed = true;
+          }
+        }
+      }
+      return current.filter((item) => !removed.has(item.id));
+    });
+  }, [client]);
+
+  return { workspace, items, loading, error, create, rename, duplicate, trash, reload };
 }

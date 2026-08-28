@@ -49,10 +49,12 @@ export function CloudWebApp() {
   return (
     <main className="grid h-svh min-h-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden bg-background text-foreground">
       <CloudTree
-        client={client}
         tree={tree}
         selectedId={activeDocument?.id ?? null}
         onSelectDocument={setActiveDocument}
+        onItemsDeleted={(itemIds) => {
+          if (activeDocument && itemIds.includes(activeDocument.id)) setActiveDocument(null);
+        }}
       />
       <section className="min-h-0 min-w-0">
         {activeDocument ? (

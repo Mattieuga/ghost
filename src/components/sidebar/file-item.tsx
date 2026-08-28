@@ -1,29 +1,15 @@
 import React, { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuShortcut,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import type { FileEntry } from "@/types";
 import { useIsActiveFile } from "./sidebar-context";
 import { useFileTreeNode } from "./file-tree-keyboard";
+import { SidebarTrashDialog } from "./sidebar-trash-dialog";
+import {
+  SidebarFileTreeItem,
+  SidebarTreeContextMenu,
+  SidebarTreeRenameItem,
+} from "./sidebar-tree-item";
 
 interface FileItemProps {
   entry: FileEntry;
@@ -240,23 +226,24 @@ export const FileItem = React.memo(function FileItem({
 
   if (isRenaming) {
     return (
-      <div className="py-0.5 pr-2" style={{ paddingLeft: `${indent}px` }}>
-        <input
-          ref={inputRef as React.RefObject<HTMLInputElement>}
-          value={renameName}
-          onChange={(e) => setRenameName(e.target.value)}
-          onFocus={() => {
+      <SidebarTreeRenameItem
+        kind="file"
+        indent={indent}
+        inputRef={inputRef as React.RefObject<HTMLInputElement>}
+        value={renameName}
+        onChange={(e) => setRenameName(e.target.value)}
+        onFocus={() => {
             if (blurTimeout.current) {
               clearTimeout(blurTimeout.current);
               blurTimeout.current = null;
             }
-          }}
-          onBlur={() => {
+        }}
+        onBlur={() => {
             if (!renameInFlightRef.current) {
               blurTimeout.current = setTimeout(() => void handleRename(), 50);
             }
-          }}
-          onKeyDown={(e) => {
+        }}
+        onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
               e.stopPropagation();
@@ -275,144 +262,61 @@ export const FileItem = React.memo(function FileItem({
                 void focusTreePath(entry.path, projectPath);
               });
             }
-          }}
-          className={`w-full bg-transparent text-[13px] text-card-foreground outline-none caret-ghost-amber border rounded-[4px] px-2 py-1 transition-colors ${
-            renameError ? "border-red-500 shake-error" : "border-ring"
-          }`}
-        />
-      </div>
+        }}
+        error={renameError}
+      />
     );
   }
 
   return (
-    <div
-      ref={setRefs}
-      {...listeners}
-      {...attributes}
-      {...nodeProps}
-      aria-current={isActive ? "page" : undefined}
-      style={{ opacity: isDragging ? 0.4 : 1, touchAction: "none" }}
-    >
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <div
-            data-tree-focus-target
-            data-file-active={isActive || undefined}
-            className={`mx-1.5 rounded-[5px] relative transition-colors ${
-              isFocused
-                ? "ring-1 ring-ghost-amber/80 bg-ghost-amber/[0.07] hover:bg-ghost-amber/[0.10]"
-                : isActive
-                  ? "bg-white/[0.06] hover:bg-white/[0.09]"
-                  : "data-[state=open]:bg-white/[0.06] hover:bg-sidebar-accent/70"
-            }`}
-          >
-          {/* Guide line rendered by SidebarGuide overlay */}
-          <button
-            data-tree-label
-            tabIndex={-1}
-            onClick={() => {
-              onSelect();
-              requestAnimationFrame(restoreTreeFocus);
+    <>
+      <SidebarFileTreeItem
+        label={displayName}
+        indent={indent}
+        active={isActive}
+        focused={isFocused}
+        onActivate={() => {
+          onSelect();
+          requestAnimationFrame(restoreTreeFocus);
+        }}
+        onDoubleClick={handleOpenInNewWindow}
+        containerRef={setRefs}
+        containerProps={{
+          ...listeners,
+          ...attributes,
+          ...nodeProps,
+          "aria-current": isActive ? "page" : undefined,
+          style: { opacity: isDragging ? 0.4 : 1, touchAction: "none" },
+        }}
+        menu={(
+          <SidebarTreeContextMenu
+            kind="file"
+            actions={{
+              open: () => { void onSelect(); },
+              openNewWindow: () => { void handleOpenInNewWindow(); },
+              openNewProject: onAddProject,
+              newFile: onNewSibling,
+              newFolder: onNewFolderSibling,
+              copy: () => { void handleCopyPath(); },
+              copyTextAs: (format) => { void handleCopyTextAs(format); },
+              reveal: () => { void handleRevealInFinder(); },
+              copyPath: () => { void handleCopyPath(); },
+              duplicate: () => { void handleDuplicate(); },
+              rename: startRename,
+              trash: () => setShowDeleteDialog(true),
             }}
-            onDoubleClick={handleOpenInNewWindow}
-            className={`w-full text-left py-1 pr-2 text-[13px] truncate transition-colors cursor-pointer select-none
-              ${isActive
-                ? "text-card-foreground font-medium"
-                : "text-sidebar-foreground hover:text-sidebar-primary"
-              }`}
-            style={{ paddingLeft: `${indent - 6}px` }}
-          >
-            {displayName}
-          </button>
-          </div>
-        </ContextMenuTrigger>
-        <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
-          <ContextMenuItem onSelect={onSelect} disabled={isActive}>
-            Open File
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={handleOpenInNewWindow}>
-            Open File in New Window
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={onAddProject}>
-            Open New Project
-            <ContextMenuShortcut>⌘O</ContextMenuShortcut>
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onSelect={onNewSibling}>
-            New File
-            <ContextMenuShortcut>⌘N</ContextMenuShortcut>
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={onNewFolderSibling}>
-            New Folder
-            <ContextMenuShortcut>⇧⌘N</ContextMenuShortcut>
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onSelect={() => handleCopyPath()}>
-            Copy File
-            <ContextMenuShortcut>⌘C</ContextMenuShortcut>
-          </ContextMenuItem>
-          <ContextMenuSub>
-            <ContextMenuSubTrigger>Copy Text As</ContextMenuSubTrigger>
-            <ContextMenuSubContent>
-              <ContextMenuItem onSelect={() => handleCopyTextAs("plain")}>
-                Plain Text
-              </ContextMenuItem>
-              <ContextMenuItem onSelect={() => handleCopyTextAs("markdown")}>
-                Markdown
-              </ContextMenuItem>
-              <ContextMenuItem onSelect={() => handleCopyTextAs("rich")}>
-                Rich Text
-              </ContextMenuItem>
-            </ContextMenuSubContent>
-          </ContextMenuSub>
-          <ContextMenuSeparator />
-          <ContextMenuItem onSelect={handleRevealInFinder}>
-            Reveal in Finder
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={handleCopyPath}>
-            Copy File Path
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onSelect={handleDuplicate}>
-            Duplicate
-          </ContextMenuItem>
-          <ContextMenuItem
-            onSelect={startRename}
-          >
-            Rename...
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem
-            onSelect={() => setShowDeleteDialog(true)}
-            className="text-destructive"
-          >
-            Move to Trash
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
+          />
+        )}
+      />
 
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent onKeyDown={(e) => { if (e.key === "Enter") handleDelete(); }}>
-          <DialogHeader>
-            <DialogTitle>Move file to Trash?</DialogTitle>
-            <DialogDescription>
-              “{displayName}” can be recovered from the macOS Trash.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowDeleteDialog(false)}
-            >
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete}>
-              Move to Trash
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+      <SidebarTrashDialog
+        open={showDeleteDialog}
+        kind="file"
+        name={displayName}
+        onOpenChange={setShowDeleteDialog}
+        onConfirm={() => void handleDelete()}
+      />
+    </>
   );
 // Callbacks are excluded: they are inline closures but always derive from
 // stable useCallback refs or the entry path (which IS compared). Adding

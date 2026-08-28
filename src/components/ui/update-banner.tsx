@@ -1,6 +1,7 @@
 import type { UpdateInfo } from "@/hooks/use-updater";
 import { Button } from "@/components/ui/button";
 import { Download, RefreshCw } from "lucide-react";
+import { TopNotification } from "@/components/ui/app-notification";
 
 interface UpdateBannerProps {
   updater: UpdateInfo;
@@ -18,8 +19,7 @@ export function UpdateBanner({ updater }: UpdateBannerProps) {
     : null;
 
   return (
-    <div className="fixed top-2 left-1/2 z-40 -translate-x-1/2 animate-in slide-in-from-top fade-in duration-300">
-      <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-2.5 shadow-lg">
+    <TopNotification>
         {state === "available" && (
           <>
             <Download className="size-4 text-muted-foreground" />
@@ -70,7 +70,6 @@ export function UpdateBanner({ updater }: UpdateBannerProps) {
             </Button>
           </>
         )}
-      </div>
-    </div>
+    </TopNotification>
   );
 }

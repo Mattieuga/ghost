@@ -19,6 +19,7 @@ import {
   MarkdownEditor,
   type MarkdownEditorPlatformActions,
 } from "@/components/editor/markdown-editor";
+import { AppNotification } from "@/components/ui/app-notification";
 
 type BootState =
   | { kind: "loading" }
@@ -208,6 +209,8 @@ function CollaborativeSurface({
   const [presence, setPresence] = useState<string[]>([]);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [scrollContainer, setScrollContainer] = useState<HTMLElement | null>(null);
+  const [notification, setNotification] = useState<string | null>(null);
+  const lastNotificationRef = useRef<string | null>(null);
   const flushRef = useRef(session.flush.bind(session));
   flushRef.current = session.flush.bind(session);
 
@@ -235,6 +238,20 @@ function CollaborativeSurface({
     };
   }, []);
 
+  useEffect(() => {
+    const message = snapshot.lastError
+      ?? (localPersistence.message ? `Local recovery is unavailable: ${localPersistence.message}` : null);
+    if (!message) {
+      lastNotificationRef.current = null;
+      setNotification(null);
+      return;
+    }
+    if (message !== lastNotificationRef.current) {
+      lastNotificationRef.current = message;
+      setNotification(message);
+    }
+  }, [localPersistence.message, snapshot.lastError]);
+
   return (
     <div className="relative h-full min-h-0 overflow-hidden bg-background">
       <DocumentHeader
@@ -258,16 +275,7 @@ function CollaborativeSurface({
           </>
         )}
       />
-      {localPersistence.message ? (
-        <div className="absolute left-0 right-0 top-12 z-10 border-b border-amber-400/30 bg-amber-400/10 px-4 py-2 text-xs text-amber-300">
-          Local recovery is unavailable: {localPersistence.message}
-        </div>
-      ) : null}
-      {snapshot.lastError ? (
-        <div className="absolute left-0 right-0 top-12 z-10 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive">
-          {snapshot.lastError}
-        </div>
-      ) : null}
+      <AppNotification message={notification} onDismiss={() => setNotification(null)} />
       <main
         ref={setScrollContainer}
         data-editor-scroll-container

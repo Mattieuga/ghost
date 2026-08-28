@@ -78,6 +78,28 @@ export async function renameCloudItem(
   return data as CloudItem;
 }
 
+export async function duplicateCloudItem(
+  client: SupabaseClient,
+  itemId: string,
+): Promise<CloudItem> {
+  const { data, error } = await client.rpc("cloud_duplicate_item", {
+    target_item_id: itemId,
+  });
+  throwDataError("Could not duplicate the Cloud item", error);
+  if (!data) throw new Error("Supabase did not return the duplicated Cloud item");
+  return data as CloudItem;
+}
+
+export async function trashCloudItem(
+  client: SupabaseClient,
+  itemId: string,
+): Promise<void> {
+  const { error } = await client.rpc("cloud_trash_item", {
+    target_item_id: itemId,
+  });
+  throwDataError("Could not move the Cloud item to Trash", error);
+}
+
 export function cloudItemPath(items: CloudItem[], item: CloudItem): CloudItem[] {
   const byId = new Map(items.map((candidate) => [candidate.id, candidate]));
   const path: CloudItem[] = [item];

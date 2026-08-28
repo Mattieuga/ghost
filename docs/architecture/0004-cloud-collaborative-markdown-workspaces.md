@@ -551,7 +551,7 @@ hierarchical items, invitations, share links, and future operational queries.
 
 ## Acceptance gate
 
-### Retained implementation evidence as of 2026-08-27
+### Retained implementation evidence as of 2026-08-28
 
 - Production `cloud_*` metadata and append-only Yjs update tables are separate
   from the disposable Phase 0 schema and are protected by deny-by-default RLS.
@@ -569,6 +569,16 @@ hierarchical items, invitations, share links, and future operational queries.
   Detailed transport/durability badges are no longer product chrome: a compact
   Saved/Saving/Offline label summarizes the state while the adapter retains
   distinct diagnostics for tests and future debug tooling.
+- Workspace and Cloud trees now use the same file row, folder row, inline
+  rename, trash dialog, and context-menu components. Each source injects only
+  its backend-specific actions. Cloud keeps quick document creation and a
+  temporary manual refresh; account management is deliberately outside the
+  tree. Cloud duplicate and recursive soft-delete mutations require inherited
+  editor access.
+- Non-blocking Cloud failures no longer resize or cover the document with
+  inline banners. They use the same compact, dismissible top notification
+  treatment as app updates, while the header retains the quiet saved/offline
+  state needed during normal disconnection.
 - Permanent-account onboarding now uses passwordless email code/link and Sign
   in with Apple behind the same Supabase user identity. Web callbacks remain in
   the Cloud route; installed Mac builds use a PKCE deep link. The connected

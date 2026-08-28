@@ -1376,10 +1376,14 @@ export function GhostLayout() {
             />
           ) : (
             <CloudTree
-              client={cloudClient}
               tree={cloudTree}
               selectedId={activeCloudDocument?.id ?? null}
               onSelectDocument={(item) => { void handleCloudDocumentSelect(item); }}
+              onItemsDeleted={(itemIds) => {
+                if (activeCloudDocument && itemIds.includes(activeCloudDocument.id)) {
+                  setActiveCloudDocument(null);
+                }
+              }}
               compact
             />
           )}

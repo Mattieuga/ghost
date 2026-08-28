@@ -2,30 +2,18 @@ import { FileItem } from "./file-item";
 import type { FileEntry } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
 import { useDroppable } from "@dnd-kit/core";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuShortcut,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import React, { useMemo, useState, useCallback, useRef, useEffect, useSyncExternalStore } from "react";
 import { useActiveFileStore } from "./sidebar-context";
 import { useFileTreeNode } from "./file-tree-keyboard";
-
-const INDENT_BASE = 16;
-const INDENT_STEP = 14;
-const FILE_EXTRA = 12;
+import { SidebarTrashDialog } from "./sidebar-trash-dialog";
+import {
+  SIDEBAR_FILE_EXTRA_INDENT,
+  SIDEBAR_INDENT_BASE,
+  SIDEBAR_INDENT_STEP,
+  SidebarFolderTreeItem,
+  SidebarTreeContextMenu,
+  SidebarTreeRenameItem,
+} from "./sidebar-tree-item";
 
 function startProjectDrag(
   e: PointerEvent,
@@ -333,7 +321,6 @@ function DroppableFolder({
     data: { folderPath: id },
   });
 
-  const togglePadding = INDENT_BASE + depth * INDENT_STEP;
   const dotColor = isRoot && hasActiveFile ? "var(--ghost-amber)" : "var(--muted-foreground)";
   // This is intentionally separate from data-folder-active. A collapsed root
   // keeps its active dot, but has no visible descendant for the guide to point
@@ -457,134 +444,46 @@ function DroppableFolder({
     },
   });
 
-  // Build context menu items based on folder type
-  const renderContextMenu = () => {
-    if (isRoot) {
-      return (
-        <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
-          <ContextMenuItem onSelect={() => onRemoveFolder?.(id)}>
-            Close Project
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={onAddProject}>
-            Open New Project
-            <ContextMenuShortcut>⌘O</ContextMenuShortcut>
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onSelect={() => { setOpen(true); onCreateFile(id); }}>
-            New File
-            <ContextMenuShortcut>⌘N</ContextMenuShortcut>
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={() => { setOpen(true); onCreateFolder(id); }}>
-            New Folder
-            <ContextMenuShortcut>⇧⌘N</ContextMenuShortcut>
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onSelect={handleRevealInFinder}>
-            Reveal in Finder
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={handleCopyPath}>
-            Copy File Path
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onSelect={handleDuplicate}>
-            Duplicate
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={startRename}>
-            Rename...
-          </ContextMenuItem>
-        </ContextMenuContent>
-      );
-    }
-
-    // Sub-folder menu
-    return (
-      <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
-        <ContextMenuItem onSelect={() => { const next = !open; setOpen(next); onOpenChange?.(next); }}>
-          {open ? "Collapse" : "Expand"}
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={onAddProject}>
-          Open New Project
-          <ContextMenuShortcut>⌘O</ContextMenuShortcut>
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onSelect={() => { setOpen(true); onCreateFile(id); }}>
-          New File
-          <ContextMenuShortcut>⌘N</ContextMenuShortcut>
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={() => { setOpen(true); onCreateFolder(id); }}>
-          New Folder
-          <ContextMenuShortcut>⇧⌘N</ContextMenuShortcut>
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onSelect={handleCopyPath}>
-          Copy Folder
-          <ContextMenuShortcut>⌘C</ContextMenuShortcut>
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onSelect={handleRevealInFinder}>
-          Reveal in Finder
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={handleCopyPath}>
-          Copy File Path
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onSelect={handleDuplicate}>
-          Duplicate
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={startRename}>
-          Rename...
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onSelect={() => setShowDeleteDialog(true)} className="text-destructive">
-          Move Folder to Trash
-        </ContextMenuItem>
-      </ContextMenuContent>
-    );
-  };
-
-  const guideLine = open ? (
-    <div className="relative" role="group">
-      <div
-        className="absolute top-0 bottom-0 w-[1.5px] rounded-full"
-        data-tree-guide={isRoot ? "root" : "sub"}
-        style={{
-          left: `${togglePadding + (isRoot ? 3 : 7)}px`,
-          backgroundColor: "var(--border)",
-        }}
-      />
-      {children}
-    </div>
-  ) : null;
+  const contextMenu = (
+    <SidebarTreeContextMenu
+      kind="folder"
+      expanded={open}
+      actions={{
+        toggle: isRoot ? undefined : () => {
+          const next = !open;
+          setOpen(next);
+          onOpenChange?.(next);
+        },
+        closeProject: isRoot ? () => onRemoveFolder?.(id) : undefined,
+        openNewProject: onAddProject,
+        newFile: () => { setOpen(true); onCreateFile(id); },
+        newFolder: () => { setOpen(true); onCreateFolder(id); },
+        copy: isRoot ? undefined : () => { void handleCopyPath(); },
+        reveal: () => { void handleRevealInFinder(); },
+        copyPath: () => { void handleCopyPath(); },
+        duplicate: () => { void handleDuplicate(); },
+        rename: startRename,
+        trash: isRoot ? undefined : () => setShowDeleteDialog(true),
+      }}
+    />
+  );
 
   if (isRenaming) {
     return (
-      <div
-        ref={setNodeRef}
-        className="rounded-md"
-      >
-        <div
-          className="flex items-center gap-2 py-1 pr-2"
-          style={{ paddingLeft: `${togglePadding}px` }}
-        >
-          {isRoot ? (
-            <span
-              className="inline-block size-[7px] shrink-0 rounded-full"
-              style={{
-                backgroundColor: open ? dotColor : "transparent",
-                border: `1.5px solid ${dotColor}`,
-              }}
-            />
-          ) : (
-            <span className="text-[16px] leading-none text-muted-foreground">{open ? "▾" : "▸"}</span>
-          )}
-          <input
-            ref={renameInputRef}
-            value={renameName}
-            onChange={(e) => setRenameName(e.target.value)}
-            onBlur={() => {
-              if (!renameInFlightRef.current) void handleRename();
-            }}
-            onKeyDown={(e) => {
+      <div ref={setNodeRef}>
+        <SidebarTreeRenameItem
+          kind="folder"
+          depth={depth}
+          expanded={open}
+          isRoot={isRoot}
+          dotColor={dotColor}
+          inputRef={renameInputRef}
+          value={renameName}
+          onChange={(e) => setRenameName(e.target.value)}
+          onBlur={() => {
+            if (!renameInFlightRef.current) void handleRename();
+          }}
+          onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
                 e.stopPropagation();
@@ -601,35 +500,38 @@ function DroppableFolder({
                   void focusTreePath(id, projectPath);
                 });
               }
-            }}
-            className={`flex-1 bg-transparent text-[13px] text-card-foreground font-medium outline-none caret-ghost-amber border rounded-[4px] px-2 py-0.5 transition-colors ${
-              renameError ? "border-red-500 shake-error" : "border-ring"
-            }`}
-          />
-        </div>
-        {guideLine}
+          }}
+          error={renameError}
+        >
+          {children}
+        </SidebarTreeRenameItem>
       </div>
     );
   }
 
   return (
-    <div
-      ref={setNodeRef}
-      {...nodeProps}
-      data-root-folder={isRoot ? id : undefined}
-      className={`rounded-md transition-colors ${isHighlighted ? "bg-muted/60 ring-1 ring-border" : ""}`}
-    >
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <button
-            data-tree-focus-target
-            tabIndex={-1}
-            onClick={() => {
-              const next = !open;
-              setExpanded(next);
-              requestAnimationFrame(restoreTreeFocus);
-            }}
-            onPointerDown={(e) => {
+    <>
+      <SidebarFolderTreeItem
+        label={displayFolderName}
+        depth={depth}
+        expanded={open}
+        isRoot={isRoot}
+        rootId={id}
+        active={containsActiveFile}
+        focused={isFocused}
+        highlighted={isHighlighted}
+        activeRootCollapsed={isCollapsedActiveRoot}
+        dotColor={dotColor}
+        onActivate={() => {
+          const next = !open;
+          setExpanded(next);
+          requestAnimationFrame(restoreTreeFocus);
+        }}
+        menu={contextMenu}
+        containerRef={setNodeRef}
+        containerProps={nodeProps}
+        buttonProps={{
+          onPointerDown: (e) => {
               if (!isRoot || folderIndex === undefined || !onReorderProject || (folderCount ?? 0) < 2) return;
               const startX = e.clientX;
               const startY = e.clientY;
@@ -648,57 +550,21 @@ function DroppableFolder({
               };
               document.addEventListener("pointermove", onMove);
               document.addEventListener("pointerup", onUp);
-            }}
-            data-folder-active={containsActiveFile || undefined}
-            data-root-active-collapsed={isCollapsedActiveRoot || undefined}
-            className={`relative w-full text-left flex items-center gap-2 py-1.5 pr-2 overflow-hidden hover:text-card-foreground transition-colors cursor-pointer select-none rounded-[5px] ${
-              isFocused
-                ? "ring-1 ring-inset ring-ghost-amber/80 bg-ghost-amber/[0.05] hover:bg-ghost-amber/[0.09]"
-                : containsActiveFile
-                  ? "bg-white/[0.06] hover:bg-white/[0.09]"
-                  : "data-[state=open]:bg-white/[0.06] hover:bg-sidebar-accent/70"
-            }`}
-            style={{ paddingLeft: `${togglePadding}px` }}
-          >
-            {/* Guide line rendered by SidebarGuide overlay */}
-            {isRoot ? (
-              <span
-                data-root-dot
-                className="inline-block size-[7px] shrink-0 rounded-full transition-colors"
-                style={{
-                  backgroundColor: open ? dotColor : "transparent",
-                  border: `1.5px solid ${dotColor}`,
-                }}
-              />
-            ) : (
-              <span data-tree-label className="text-[16px] leading-none text-muted-foreground">{open ? "▾" : "▸"}</span>
-            )}
-            <span data-tree-label className={`text-[13px] font-medium truncate ${containsActiveFile ? "text-card-foreground" : isRoot ? "text-card-foreground" : "text-sidebar-primary"}`}>{displayFolderName}</span>
-          </button>
-        </ContextMenuTrigger>
-        {renderContextMenu()}
-      </ContextMenu>
-      {guideLine}
+          },
+        }}
+      >
+        {children}
+      </SidebarFolderTreeItem>
 
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent onKeyDown={(e) => { if (e.key === "Enter") { handleDelete(); setShowDeleteDialog(false); } }}>
-          <DialogHeader>
-            <DialogTitle>Move folder to Trash?</DialogTitle>
-            <DialogDescription>
-              “{displayFolderName}” and its contents can be recovered from the macOS Trash.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={() => { handleDelete(); setShowDeleteDialog(false); }}>
-              Move to Trash
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+      <SidebarTrashDialog
+        open={showDeleteDialog}
+        kind="folder"
+        name={displayFolderName}
+        description={`“${displayFolderName}” and its contents can be recovered from the macOS Trash.`}
+        onOpenChange={setShowDeleteDialog}
+        onConfirm={() => { void handleDelete(); setShowDeleteDialog(false); }}
+      />
+    </>
   );
 }
 
@@ -834,7 +700,7 @@ const FileTree = React.memo(function FileTree({
             onDeleted={() => onFileDeleted(entry.path)}
             onNewSibling={() => onCreateFile(entry.path.substring(0, entry.path.lastIndexOf("/")))}
             onNewFolderSibling={() => onCreateFolder(entry.path.substring(0, entry.path.lastIndexOf("/")))}
-            indent={INDENT_BASE + (depth + 1) * INDENT_STEP + FILE_EXTRA}
+            indent={SIDEBAR_INDENT_BASE + (depth + 1) * SIDEBAR_INDENT_STEP + SIDEBAR_FILE_EXTRA_INDENT}
             autoRename={entry.path === newlyCreatedFile}
             onAutoRenameDone={onNewFileRenamed}
             onAddProject={onAddProject}

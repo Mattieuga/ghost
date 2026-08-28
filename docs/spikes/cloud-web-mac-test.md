@@ -41,11 +41,17 @@ slices and are not part of this test.
 7. Confirm both clients show `Saved` after typing stops. Confirm the style
    toolbar, document spacing, blurred title bar, and heading minimap match a
    local Markdown document. Click the Cloud title and rename it inline.
+   Confirm Cloud and Workspace use the same tree row, folder disclosure,
+   inline rename, trash dialog, and right-click menu treatment. Cloud's section
+   header should contain only quick-add plus temporary refresh; sign-out belongs
+   to the future account surface.
 8. Reload `web.html`, reopen the document, and confirm the text remains. Close
    and reopen the document in the Mac app and confirm the same state.
 9. Disconnect both clients, make different edits, reconnect them in either
    order, and confirm both show the merged content and return from `Offline` to
-   `Saved`.
+   `Saved`. Confirm disconnection does not add a full-width banner over the
+   document; actionable failures should use the compact dismissible top
+   notification.
 10. Make an edit, close and reopen the document while online, and confirm its
     cached content appears immediately while the compact status finishes
     background catch-up. Confirm no local-recovery warning appears. The first

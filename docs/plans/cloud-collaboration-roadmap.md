@@ -295,6 +295,13 @@ operations remain
   collaboration as a mode. Detailed transport badges were replaced with a
   compact Saved/Saving/Offline label; presence and History occupy right-side
   header slots, and Cloud documents support the same inline title rename.
+- Consolidated the Cloud and Workspace browsers onto shared sidebar tree rows,
+  inline rename, trash confirmation, and context-menu presentation. Cloud now
+  exposes the applicable Workspace actions (open, create sibling/child,
+  duplicate, rename, and trash), keeps only quick-add plus temporary refresh
+  in its section header, and leaves sign-out to the future account surface.
+  Disconnection and recovery failures use compact dismissible notifications
+  instead of full-width document banners.
 - Versioned and account-scoped the private IndexedDB cache, made local recovery
   readiness visible, and added a reload test proving cached Yjs updates survive
   document teardown and reopening. The cache now retains the last verified

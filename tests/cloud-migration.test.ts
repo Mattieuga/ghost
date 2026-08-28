@@ -13,6 +13,10 @@ const documentVersionsMigration = readFileSync(
   new URL("../supabase/migrations/20260827020000_cloud_document_versions.sql", import.meta.url),
   "utf8",
 );
+const itemMutationsMigration = readFileSync(
+  new URL("../supabase/migrations/20260828010000_cloud_item_mutations.sql", import.meta.url),
+  "utf8",
+);
 
 describe("Cloud foundation migration", () => {
   it("keeps retained Cloud tables separate from the disposable spike", () => {
@@ -70,5 +74,17 @@ describe("Cloud foundation migration", () => {
     expect(documentVersionsMigration).toContain("octet_length(snapshot_markdown) > 5242880");
     expect(documentVersionsMigration).toContain("octet_length(decode(snapshot_yjs, 'base64')) > 10485760");
     expect(documentVersionsMigration).toContain("latest.created_at > now() - interval '5 minutes'");
+  });
+
+  it("keeps shared sidebar mutations behind inherited editor access", () => {
+    expect(itemMutationsMigration).toContain("public.cloud_duplicate_item");
+    expect(itemMutationsMigration).toContain("public.cloud_trash_item");
+    expect(itemMutationsMigration.match(/private\.cloud_has_role\(target_item_id, 2/g)).toHaveLength(2);
+    expect(itemMutationsMigration).toContain("with recursive descendants");
+    expect(itemMutationsMigration).toContain("private.cloud_duplicate_item_recursive");
+    expect(itemMutationsMigration).toContain(
+      "revoke all on function private.cloud_duplicate_item_recursive",
+    );
+    expect(itemMutationsMigration.match(/security definer\nset search_path = ''/g)).toHaveLength(3);
   });
 });

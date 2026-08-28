@@ -15,11 +15,12 @@ tree currently refreshes on demand.
 After an offline divergence failure found during this pass, the retained
 adapter also uses the durable update log as a reconnect catch-up source. A
 private acknowledged signal tells peers to pull rows after their last applied
-update ID. The editor reports this separately as `Sync: loading`, `synced`,
-`offline`, or `error`; a connected socket alone is no longer called synced.
+update ID. The adapter retains separate connection, synchronization, and
+durability diagnostics, while product chrome summarizes them as
+`Connecting…`, `Saving…`, `Saved`, `Offline`, or `Save failed`.
 
-Direct invitations, share links, rename/move/delete, and two-account sharing
-are later slices and are not part of this test.
+Direct invitations, share links, move/delete, and two-account sharing are later
+slices and are not part of this test.
 
 ## Test
 
@@ -37,19 +38,21 @@ are later slices and are not part of this test.
    Cloud refresh button, then open the same document.
 6. Type in one client while watching the other. Text and the remote caret should
    appear live. Repeat in the other direction.
-7. Confirm both clients show `Realtime: connected` and `Cloud: saved` after
-   typing stops.
+7. Confirm both clients show `Saved` after typing stops. Confirm the style
+   toolbar, document spacing, blurred title bar, and heading minimap match a
+   local Markdown document. Click the Cloud title and rename it inline.
 8. Reload `web.html`, reopen the document, and confirm the text remains. Close
    and reopen the document in the Mac app and confirm the same state.
 9. Disconnect both clients, make different edits, reconnect them in either
-   order, and confirm both show the merged content and `Sync: synced`.
-10. Confirm both clients show `Local: ready`. Make an edit, close and reopen the
-    document while online, and confirm its cached content appears immediately
-    while the Cloud and Sync badges finish background catch-up. The first open
-    after this change seeds cached access metadata; test instant open on the
-    next reopen.
-11. Make an edit in each client. Undo in one client with Command-Z or the header
-    button and confirm only that client's latest change is removed.
+   order, and confirm both show the merged content and return from `Offline` to
+   `Saved`.
+10. Make an edit, close and reopen the document while online, and confirm its
+    cached content appears immediately while the compact status finishes
+    background catch-up. Confirm no local-recovery warning appears. The first
+    open after this change seeds cached access metadata; test instant open on
+    the next reopen.
+11. Make an edit in each client. Undo in one client with Command-Z and confirm
+    only that client's latest change is removed.
 12. Open History. Confirm an automatic baseline is present, preview it, then
     restore it. Confirm the pre-restore state appears as a separate `Before
     restore` version and the restored content synchronizes to the other client.

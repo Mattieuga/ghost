@@ -13,7 +13,6 @@ import {
   type DragOverEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +25,8 @@ import { Button } from "@/components/ui/button";
 import { FolderTree } from "@/components/sidebar/folder-tree";
 import { EmptyState } from "@/components/sidebar/empty-state";
 import { HeadingMinimap } from "@/components/editor/heading-minimap";
+import { DocumentHeader } from "@/components/editor/document-header";
+import { tauriMarkdownEditorActions } from "@/components/editor/tauri-markdown-editor";
 import { fontFamilyValue } from "@/lib/fonts";
 import { FileViewer } from "@/components/editor/file-viewer";
 import { TextStats } from "@/components/editor/text-stats";
@@ -95,7 +96,7 @@ import { useCloudTree } from "@/cloud/use-cloud-tree";
 import { CloudSignIn } from "@/cloud/cloud-sign-in";
 import { CloudTree } from "@/cloud/cloud-tree";
 import { CloudDocumentEditor } from "@/cloud/cloud-document-editor";
-import type { CloudItem } from "@/cloud/cloud-data";
+import { cloudItemPath, type CloudItem } from "@/cloud/cloud-data";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"]);
 
@@ -131,8 +132,6 @@ export function GhostLayout() {
   const [openPerformance, setOpenPerformance] = useState<FileOpenPerformanceTrace | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
-  const [isRenamingHeader, setIsRenamingHeader] = useState(false);
-  const [headerRenameName, setHeaderRenameName] = useState("");
   const [activeDragName, setActiveDragName] = useState<string | null>(null);
   const [liveText, setLiveText] = useState("");
   const [forceStaticTextStats, setForceStaticTextStats] = useState(false);
@@ -147,7 +146,6 @@ export function GhostLayout() {
   const sidebarHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sidebarCollapsedAt = useRef<number>(0);
   const sidebarContextMenuOpen = useRef(false);
-  const headerInputRef = useRef<HTMLInputElement>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandPaletteMode, setCommandPaletteMode] = useState<CommandPaletteMode>("files");
   const paletteReturnFocusRef = useRef<HTMLElement | null>(null);
@@ -872,26 +870,14 @@ export function GhostLayout() {
     return { folderName, fileName };
   }, [activeFile]);
 
-  const activeFileName = breadcrumb?.fileName ?? null;
+  const activeCloudPath = useMemo(() => activeCloudDocument
+    ? cloudItemPath(cloudTree.items, activeCloudDocument).slice(0, -1).map((item) => item.name)
+    : [], [activeCloudDocument, cloudTree.items]);
 
-  // Header rename
-  const startHeaderRename = useCallback(() => {
-    if (!activeFileName) return;
-    setHeaderRenameName(activeFileName);
-    setIsRenamingHeader(true);
-  }, [activeFileName]);
-
-  useEffect(() => {
-    if (isRenamingHeader && headerInputRef.current) {
-      headerInputRef.current.focus();
-      const dotIndex = headerRenameName.lastIndexOf(".");
-      if (dotIndex > 0) {
-        headerInputRef.current.setSelectionRange(0, dotIndex);
-      } else {
-        headerInputRef.current.select();
-      }
-    }
-  }, [isRenamingHeader]);
+  const handleActiveCloudRename = useCallback(async (nextName: string) => {
+    if (!activeCloudDocument) return;
+    setActiveCloudDocument(await cloudTree.rename(activeCloudDocument.id, nextName));
+  }, [activeCloudDocument, cloudTree]);
 
   // Sidebar hover handlers for collapsed mode
   const handleSidebarMouseEnter = useCallback(() => {
@@ -1163,24 +1149,15 @@ export function GhostLayout() {
     }
   }, [pendingMove, retargetActiveFile, handleFsChange]);
 
-  const handleHeaderRename = useCallback(async () => {
-    if (!activeFile || !headerRenameName || headerRenameName === activeFileName) {
-      setIsRenamingHeader(false);
-      return;
-    }
-    try {
-      await window.__ghostFlushSave?.();
-      const newPath = await invoke<string>("rename_file", {
-        oldPath: activeFile,
-        newName: headerRenameName,
-      });
-      await handleFileRenamed(activeFile, newPath);
-    } catch (err) {
-      console.error("Failed to rename:", err);
-      return;
-    }
-    setIsRenamingHeader(false);
-  }, [activeFile, headerRenameName, activeFileName, handleFileRenamed]);
+  const handleHeaderRename = useCallback(async (nextName: string) => {
+    if (!activeFile || nextName === breadcrumb?.fileName) return;
+    await window.__ghostFlushSave?.();
+    const newPath = await invoke<string>("rename_file", {
+      oldPath: activeFile,
+      newName: nextName,
+    });
+    await handleFileRenamed(activeFile, newPath);
+  }, [activeFile, breadcrumb?.fileName, handleFileRenamed]);
 
   const focusedTreeNode = treeKeyboardRef.current?.getFocusedNode() ?? null;
   const focusedTreeDetail = focusedTreeNode
@@ -1578,13 +1555,13 @@ export function GhostLayout() {
         } as React.CSSProperties}
       >
         {/* Floating header overlay — semi-transparent, content scrolls behind */}
-        {!activeCloudDocument && <div
-          className={`absolute top-0 left-0 right-0 z-10 flex h-12 items-center justify-between bg-background/80 backdrop-blur-sm ${
-            sidebarCollapsed ? "pl-[100px] pr-8" : "px-8"
-          }`}
-          data-tauri-drag-region
-        >
-          {search.searchOpen ? (
+        {!activeCloudDocument ? (
+          <DocumentHeader
+            pathSegments={breadcrumb?.folderName ? [breadcrumb.folderName] : []}
+            fileName={breadcrumb?.fileName ?? null}
+            onRename={activeFile ? handleHeaderRename : undefined}
+            sidebarCollapsed={sidebarCollapsed}
+            search={search.searchOpen ? (
             <div className="flex items-center flex-1 min-w-0 pointer-events-auto">
               <SearchBar
                 mode={search.searchMode}
@@ -1603,72 +1580,43 @@ export function GhostLayout() {
                 searchInputRef={search.searchInputRef}
               />
             </div>
-          ) : (
-            <>
-              <div className="flex items-center min-w-0 flex-1 text-[13px] pointer-events-none">
-                {isRenamingHeader ? (
-                  <Input
-                    ref={headerInputRef}
-                    value={headerRenameName}
-                    onChange={(e) => setHeaderRenameName(e.target.value)}
-                    onBlur={handleHeaderRename}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleHeaderRename();
-                      if (e.key === "Escape") setIsRenamingHeader(false);
-                    }}
-                    className="h-6 text-[13px] px-1 w-48 bg-transparent pointer-events-auto"
+            ) : undefined}
+            right={activeFile ? (
+              fileDescriptor?.editable ? (
+                <>
+                  <SaveStatus
+                    status={documentSave.status}
+                    error={documentSave.error}
+                    onRetry={documentSave.retry}
                   />
-                ) : breadcrumb ? (
-                  <div className="flex items-center min-w-0 overflow-hidden">
-                    <span className="text-muted-foreground pointer-events-none select-none truncate" style={{ flexShrink: 10 }}>{breadcrumb.folderName}</span>
-                    <span className="text-ring mx-1 pointer-events-none select-none shrink-0">/</span>
-                    <span
-                      className="text-sidebar-primary font-medium cursor-pointer hover:text-sidebar-foreground transition-colors truncate pointer-events-auto"
-                      style={{ flexShrink: 1 }}
-                      onClick={startHeaderRename}
-                    >
-                      {breadcrumb.fileName}
-                    </span>
-                  </div>
-                ) : null}
-              </div>
-              {activeFile && (
-                <div className="flex items-center gap-3">
-                  {fileDescriptor?.editable ? (
-                    <>
-                      <SaveStatus
-                        status={documentSave.status}
-                        error={documentSave.error}
-                        onRetry={documentSave.retry}
-                      />
-                      {fileDescriptor.showTextStats && (
-                        <TextStats
-                          text={liveText}
-                          countMode={settings.countMode}
-                          onCountModeChange={(countMode) => updateSettings({ countMode })}
-                          sourceInspection={sourceInspection}
-                          forceStatic={forceStaticTextStats}
-                        />
-                      )}
-                    </>
-                  ) : fileDescriptor?.canOpenExternally ? (
-                    <OpenExternalButton filePath={activeFile} />
+                  {fileDescriptor.showTextStats ? (
+                    <TextStats
+                      text={liveText}
+                      countMode={settings.countMode}
+                      onCountModeChange={(countMode) => updateSettings({ countMode })}
+                      sourceInspection={sourceInspection}
+                      forceStatic={forceStaticTextStats}
+                    />
                   ) : null}
-                </div>
-              )}
-            </>
-          )}
-        </div>}
+                </>
+              ) : fileDescriptor?.canOpenExternally ? (
+                <OpenExternalButton filePath={activeFile} />
+              ) : null
+            ) : null}
+          />
+        ) : null}
 
         {/* Editor — scrolls behind the floating header */}
         <main
           ref={setMainEl}
-          data-editor-scroll-container
+          data-editor-scroll-container={activeCloudDocument ? undefined : true}
           tabIndex={-1}
           onFocus={(event) => {
             if (event.target === event.currentTarget) focusViewerTarget(event.currentTarget);
           }}
-          className="h-full overflow-auto overscroll-contain relative outline-none"
+          className={`h-full overscroll-contain relative outline-none ${
+            activeCloudDocument ? "overflow-hidden" : "overflow-auto"
+          }`}
         >
           {activeCloudDocument && cloudClient && cloudUser ? (
             <CloudDocumentEditor
@@ -1677,6 +1625,12 @@ export function GhostLayout() {
               user={cloudUser}
               documentId={activeCloudDocument.id}
               title={activeCloudDocument.name}
+              pathSegments={activeCloudPath}
+              onRename={handleActiveCloudRename}
+              showStyleBar={settings.showStyleBar}
+              onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
+              sidebarCollapsed={sidebarCollapsed}
+              platformActions={tauriMarkdownEditorActions}
             />
           ) : activeFile && fileDescriptor ? (
             <FileViewer

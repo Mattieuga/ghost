@@ -63,3 +63,32 @@ export async function createCloudItem(
   if (!data) throw new Error(`Supabase did not return the created Cloud ${kind}`);
   return data as CloudItem;
 }
+
+export async function renameCloudItem(
+  client: SupabaseClient,
+  itemId: string,
+  name: string,
+): Promise<CloudItem> {
+  const { data, error } = await client.rpc("cloud_rename_item", {
+    target_item_id: itemId,
+    item_name: name,
+  });
+  throwDataError("Could not rename the Cloud item", error);
+  if (!data) throw new Error("Supabase did not return the renamed Cloud item");
+  return data as CloudItem;
+}
+
+export function cloudItemPath(items: CloudItem[], item: CloudItem): CloudItem[] {
+  const byId = new Map(items.map((candidate) => [candidate.id, candidate]));
+  const path: CloudItem[] = [item];
+  const visited = new Set([item.id]);
+  let parentId = item.parent_id;
+  while (parentId) {
+    const parent = byId.get(parentId);
+    if (!parent || visited.has(parent.id)) break;
+    path.unshift(parent);
+    visited.add(parent.id);
+    parentId = parent.parent_id;
+  }
+  return path;
+}

@@ -4,6 +4,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Editor } from "@tiptap/core";
+import { Awareness } from "y-protocols/awareness";
+import * as Y from "yjs";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async () => undefined),
@@ -45,6 +47,45 @@ afterEach(() => {
 });
 
 describe("MarkdownEditor React integration", () => {
+  it("uses the same editor chrome and extension surface for collaborative documents", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const yDocument = new Y.Doc();
+    const awareness = new Awareness(yDocument);
+    awareness.setLocalStateField("user", { name: "Alice", color: "#ff7145" });
+    const onContentChange = vi.fn();
+    let editor: Editor | null = null;
+
+    await act(async () => {
+      root.render(
+        <main data-editor-scroll-container>
+          <MarkdownEditor
+            collaboration={{
+              document: yDocument,
+              provider: { awareness },
+              user: { name: "Alice", color: "#ff7145" },
+            }}
+            onContentChange={onContentChange}
+            showStyleBar
+            onEditorReady={(readyEditor) => { editor = readyEditor; }}
+          />
+        </main>,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(editor).not.toBeNull();
+    expect(host.querySelector(".floating-toolbar")).not.toBeNull();
+    act(() => {
+      (editor as Editor).commands.setContent("# Shared heading", { contentType: "markdown" });
+    });
+    expect(host.querySelector(".ghost-editor h1")?.textContent).toContain("Shared heading");
+    expect(onContentChange).not.toHaveBeenCalled();
+    expect(Y.encodeStateAsUpdate(yDocument).length).toBeGreaterThan(2);
+  });
+
   it("moves to the start of the document with Cmd+ArrowUp", async () => {
     const host = document.createElement("div");
     document.body.appendChild(host);

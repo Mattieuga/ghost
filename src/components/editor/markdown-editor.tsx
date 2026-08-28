@@ -1,7 +1,7 @@
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
-import { Extension } from "@tiptap/core";
+import { Extension, type AnyExtension } from "@tiptap/core";
 import { Plugin, PluginKey, Selection } from "@tiptap/pm/state";
 import Link from "@tiptap/extension-link";
 import { Focus } from "@tiptap/extensions";
@@ -14,8 +14,11 @@ import {
 } from "@tiptap/extension-table";
 import { FindAndReplace } from "@tiptap/extension-find-and-replace";
 import { Markdown } from "@tiptap/markdown";
+import Collaboration from "@tiptap/extension-collaboration";
+import CollaborationCaret from "@tiptap/extension-collaboration-caret";
+import Image from "@tiptap/extension-image";
+import type * as Y from "yjs";
 
-import { ResizableImage } from "./image-extension";
 import { ResizableTable } from "./table-extension";
 import { Frontmatter } from "./frontmatter-extension";
 import { parseMarkdownDocument } from "./frontmatter";
@@ -32,8 +35,6 @@ import {
 import { CollapsibleHeadings } from "./collapsible-headings";
 import { useEffect, useRef, useCallback } from "react";
 import { DOMSerializer } from "@tiptap/pm/model";
-import { invoke } from "@tauri-apps/api/core";
-import { writeText, writeHtml } from "@tauri-apps/plugin-clipboard-manager";
 import { LinkBubbleMenu } from "./link-bubble-menu";
 import { ensureProtocol } from "./floating-toolbar";
 import { ImageBubbleMenu } from "./image-bubble-menu";
@@ -111,8 +112,8 @@ const MacDocumentStart = Extension.create({
 });
 
 interface MarkdownEditorProps {
-  content: string;
-  onContentChange: (markdown: string) => void | Promise<void>;
+  content?: string;
+  onContentChange?: (markdown: string) => void | Promise<void>;
   searchTerm?: string;
   replaceTerm?: string;
   onSearchResults?: (count: number, currentIndex: number) => void;
@@ -120,10 +121,31 @@ interface MarkdownEditorProps {
   showStyleBar?: boolean;
   onToggleStyleBar?: () => void;
   onEditorReady?: (editor: Editor | null) => void;
+  editable?: boolean;
+  collaboration?: {
+    document: Y.Doc;
+    provider: unknown;
+    user: Record<string, unknown>;
+  };
+  imageExtension?: AnyExtension;
+  platformActions?: MarkdownEditorPlatformActions;
 }
 
+export interface MarkdownEditorPlatformActions {
+  openUrl(url: string): void | Promise<void>;
+  writeText(text: string): void | Promise<void>;
+  writeHtml(html: string): void | Promise<void>;
+  insertImage?(editor: Editor): void | Promise<void>;
+}
+
+const browserPlatformActions: MarkdownEditorPlatformActions = {
+  openUrl: (url) => { window.open(url, "_blank", "noopener,noreferrer"); },
+  writeText: (text) => navigator.clipboard?.writeText(text),
+  writeHtml: (html) => navigator.clipboard?.writeText(html),
+};
+
 export function MarkdownEditor({
-  content,
+  content = "",
   onContentChange,
   searchTerm = "",
   replaceTerm = "",
@@ -132,6 +154,10 @@ export function MarkdownEditor({
   showStyleBar = true,
   onToggleStyleBar,
   onEditorReady,
+  editable = true,
+  collaboration,
+  imageExtension,
+  platformActions = browserPlatformActions,
 }: MarkdownEditorProps) {
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flushSaveRef = useRef<() => Promise<void>>(async () => undefined);
@@ -150,7 +176,7 @@ export function MarkdownEditor({
     markdown: string,
     revision: number,
   ) => {
-    await onContentChangeRef.current(markdown);
+    await onContentChangeRef.current?.(markdown);
     markMarkdownDocumentClean(currentEditor, revision);
   }, []);
 
@@ -181,12 +207,14 @@ export function MarkdownEditor({
   }, [persistRevision]);
 
   const editor = useEditor({
+    editable,
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3, 4, 5, 6] },
         link: false,
         trailingNode: false,
         underline: false,
+        undoRedo: collaboration ? false : undefined,
       }),
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -199,9 +227,7 @@ export function MarkdownEditor({
         isAllowedUri: (url, ctx) =>
           url.startsWith("#") || ctx.defaultValidate(url),
       }),
-      ResizableImage.configure({
-        allowBase64: true,
-      }),
+      imageExtension ?? Image.configure({ allowBase64: false }),
       Focus.configure({
         className: "has-focus",
         mode: "deepest",
@@ -222,9 +248,21 @@ export function MarkdownEditor({
         searchDebounceMs: 0,
       }),
       CollapsibleHeadings,
+      ...(collaboration ? [
+        Collaboration.configure({
+          document: collaboration.document,
+          field: "default",
+          yUndoOptions: { trackedOrigins: [] },
+        }),
+        CollaborationCaret.configure({
+          provider: collaboration.provider,
+          user: collaboration.user,
+        }),
+      ] : []),
     ],
     content: "",
     onUpdate: ({ editor }) => {
+      if (collaboration) return;
       const revision = markMarkdownDocumentDirty(editor);
       debouncedSave(editor, revision);
     },
@@ -293,7 +331,7 @@ export function MarkdownEditor({
           }
 
           // External link — open in system browser (add protocol if missing)
-          invoke("open_url", { url: ensureProtocol(href) });
+          void platformActions.openUrl(ensureProtocol(href));
           return true;
         },
       },
@@ -308,9 +346,9 @@ export function MarkdownEditor({
             try {
               if (!editor) throw new Error("Markdown serializer unavailable");
               const md = serializeMarkdownContent(editor, tempDoc.toJSON());
-              writeText(md);
+              void platformActions.writeText(md);
             } catch {
-              writeText(view.state.doc.textBetween(from, to, "\n"));
+              void platformActions.writeText(view.state.doc.textBetween(from, to, "\n"));
             }
             return true;
           }
@@ -327,7 +365,7 @@ export function MarkdownEditor({
   });
 
   const flushPendingSave = useCallback(async () => {
-    if (!editor || editor.isDestroyed || !isMarkdownDocumentDirty(editor)) return;
+    if (collaboration || !editor || editor.isDestroyed || !isMarkdownDocumentDirty(editor)) return;
     if (saveTimeout.current) {
       clearTimeout(saveTimeout.current);
       saveTimeout.current = null;
@@ -335,7 +373,7 @@ export function MarkdownEditor({
 
     const pending = getPendingMarkdownDocument(editor);
     await persistRevision(editor, pending.revision);
-  }, [editor, persistRevision]);
+  }, [collaboration, editor, persistRevision]);
   flushSaveRef.current = flushPendingSave;
 
   // Flush pending save when window loses focus (ensures other windows see latest content)
@@ -364,14 +402,18 @@ export function MarkdownEditor({
   // during re-renders, which would reset user's in-progress edits
   const contentSet = useRef(false);
   useEffect(() => {
-    if (editor && !contentSet.current) {
+    if (editor && !collaboration && !contentSet.current) {
       editor.commands.setContent(parseMarkdownDocument(editor, content), {
         emitUpdate: false,
       });
       resetMarkdownDocumentState(editor);
       contentSet.current = true;
     }
-  }, [editor]);
+  }, [collaboration, editor]);
+
+  useEffect(() => {
+    if (collaboration) editor?.setEditable(editable);
+  }, [collaboration, editable, editor]);
 
   // Notify parent when editor instance is ready; clear on unmount
   useEffect(() => {
@@ -429,24 +471,24 @@ export function MarkdownEditor({
 
       if (format === "plain") {
         const text = editor.state.doc.textBetween(from, to, "\n");
-        await writeText(text);
+        await platformActions.writeText(text);
       } else if (format === "markdown") {
         // Get just the selected portion — serialize the slice
         const slice = editor.state.doc.slice(from, to);
         const tempDoc = editor.schema.topNodeType.create(null, slice.content);
         try {
           const selectedMd = serializeMarkdownContent(editor, tempDoc.toJSON());
-          await writeText(selectedMd);
+          await platformActions.writeText(selectedMd);
         } catch {
           // Fallback to full markdown if serializer fails on slice
-          await writeText(editor.state.doc.textBetween(from, to, "\n"));
+          await platformActions.writeText(editor.state.doc.textBetween(from, to, "\n"));
         }
       } else if (format === "rich") {
         const slice = editor.state.doc.slice(from, to);
         const serializer = DOMSerializer.fromSchema(editor.schema);
         const div = document.createElement("div");
         div.appendChild(serializer.serializeFragment(slice.content));
-        await writeHtml(div.innerHTML);
+        await platformActions.writeHtml(div.innerHTML);
       }
     };
     return () => { delete window.__ghostCopyAs; };
@@ -454,11 +496,17 @@ export function MarkdownEditor({
 
   return (
     <div className="h-full relative" data-ghost-editor-root>
-      {editor && <LinkBubbleMenu editor={editor} />}
-      {editor && <ImageBubbleMenu editor={editor} />}
+      {editor && editable && <LinkBubbleMenu editor={editor} onOpenUrl={platformActions.openUrl} />}
+      {editor && editable && <ImageBubbleMenu editor={editor} />}
       <EditorContent editor={editor} className="h-full" />
-      {editor && <TableControls editor={editor} />}
-      {editor && showStyleBar && <FloatingToolbar editor={editor} onHide={() => onToggleStyleBar?.()} />}
+      {editor && editable && <TableControls editor={editor} />}
+      {editor && editable && showStyleBar && (
+        <FloatingToolbar
+          editor={editor}
+          onHide={() => onToggleStyleBar?.()}
+          onInsertImage={platformActions.insertImage}
+        />
+      )}
     </div>
   );
 }

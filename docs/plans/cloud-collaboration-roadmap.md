@@ -2,7 +2,7 @@
 
 - Status: In progress; retained Mac/web Cloud vertical slice ready for joint testing
 - Date: 2026-08-25
-- Last updated: 2026-08-27
+- Last updated: 2026-08-28
 - Architecture: [`../architecture/0004-cloud-collaborative-markdown-workspaces.md`](../architecture/0004-cloud-collaborative-markdown-workspaces.md)
 
 ## Goal
@@ -289,8 +289,12 @@ operations remain
   in both orders; disposable users and their workspace were removed afterward.
 - Added account-deletion-safe audit references after the live test found that
   `created_by` could otherwise retain a deleted account.
-- Added the same shared Tiptap/Yjs Markdown editor to both clients with separate
-  Realtime and durable-save status.
+- Consolidated local and Cloud editing onto the same `MarkdownEditor`
+  component and shared document header. Cloud now receives the local toolbar,
+  extension behavior, spacing, and minimap automatically while injecting Yjs
+  collaboration as a mode. Detailed transport badges were replaced with a
+  compact Saved/Saving/Offline label; presence and History occupy right-side
+  header slots, and Cloud documents support the same inline title rename.
 - Versioned and account-scoped the private IndexedDB cache, made local recovery
   readiness visible, and added a reload test proving cached Yjs updates survive
   document teardown and reopening. The cache now retains the last verified

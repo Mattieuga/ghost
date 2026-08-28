@@ -2,14 +2,14 @@ import type { Editor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import { useState, useRef, useCallback, useMemo } from "react";
 import { ExternalLink, Unlink } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
 import { ensureProtocol } from "./floating-toolbar";
 
 interface LinkBubbleMenuProps {
   editor: Editor;
+  onOpenUrl: (url: string) => void | Promise<void>;
 }
 
-export function LinkBubbleMenu({ editor }: LinkBubbleMenuProps) {
+export function LinkBubbleMenu({ editor, onOpenUrl }: LinkBubbleMenuProps) {
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const showRef = useRef(false);
@@ -82,7 +82,7 @@ export function LinkBubbleMenu({ editor }: LinkBubbleMenuProps) {
   const openLink = () => {
     const href = url.trim();
     if (!href || href.startsWith("#")) return;
-    invoke("open_url", { url: ensureProtocol(href) });
+    void onOpenUrl(ensureProtocol(href));
   };
 
   const inputClass =

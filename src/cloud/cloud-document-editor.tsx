@@ -1,22 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import { TaskItem, TaskList } from "@tiptap/extension-list";
-import Link from "@tiptap/extension-link";
-import Image from "@tiptap/extension-image";
-import Underline from "@tiptap/extension-underline";
-import Highlight from "@tiptap/extension-highlight";
-import { TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
-import { Focus } from "@tiptap/extensions";
-import { Markdown } from "@tiptap/markdown";
-import Collaboration from "@tiptap/extension-collaboration";
-import CollaborationCaret from "@tiptap/extension-collaboration-caret";
+import type { Editor } from "@tiptap/react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { Redo2, Undo2 } from "lucide-react";
 import * as Y from "yjs";
-import { ResizableTable } from "@/components/editor/table-extension";
-import { Frontmatter } from "@/components/editor/frontmatter-extension";
-import { CollapsibleHeadings } from "@/components/editor/collapsible-headings";
 import { SupabaseCloudAdapter } from "@/cloud/collaboration/supabase-cloud-adapter";
 import type {
   CloudCollaborationSession,
@@ -28,8 +13,12 @@ import {
   type CloudLocalPersistenceHandle,
 } from "@/cloud/cloud-local-persistence";
 import { CloudVersionHistory } from "@/cloud/cloud-version-history-panel";
-import { Button } from "@/components/ui/button";
-import "@/components/editor/editor-styles.css";
+import { DocumentHeader } from "@/components/editor/document-header";
+import { HeadingMinimap } from "@/components/editor/heading-minimap";
+import {
+  MarkdownEditor,
+  type MarkdownEditorPlatformActions,
+} from "@/components/editor/markdown-editor";
 
 type BootState =
   | { kind: "loading" }
@@ -58,11 +47,23 @@ export function CloudDocumentEditor({
   user,
   documentId,
   title,
+  pathSegments = [],
+  onRename,
+  showStyleBar = true,
+  onToggleStyleBar,
+  sidebarCollapsed = false,
+  platformActions,
 }: {
   client: SupabaseClient;
   user: User;
   documentId: string;
   title: string;
+  pathSegments?: string[];
+  onRename?: (nextName: string) => void | Promise<void>;
+  showStyleBar?: boolean;
+  onToggleStyleBar?: () => void;
+  sidebarCollapsed?: boolean;
+  platformActions?: MarkdownEditorPlatformActions;
 }) {
   const [boot, setBoot] = useState<BootState>({ kind: "loading" });
 
@@ -137,10 +138,29 @@ export function CloudDocumentEditor({
   }, [client, documentId, user.id, user.email, user.user_metadata?.display_name]);
 
   if (boot.kind === "loading") {
-    return <CloudEditorNotice>Loading {title}…</CloudEditorNotice>;
+    return (
+      <CloudEditorNotice
+        title={title}
+        pathSegments={pathSegments}
+        onRename={onRename}
+        sidebarCollapsed={sidebarCollapsed}
+      >
+        Loading {title}…
+      </CloudEditorNotice>
+    );
   }
   if (boot.kind === "error") {
-    return <CloudEditorNotice error>{boot.message}</CloudEditorNotice>;
+    return (
+      <CloudEditorNotice
+        error
+        title={title}
+        pathSegments={pathSegments}
+        onRename={onRename}
+        sidebarCollapsed={sidebarCollapsed}
+      >
+        {boot.message}
+      </CloudEditorNotice>
+    );
   }
   return (
     <CollaborativeSurface
@@ -149,6 +169,12 @@ export function CloudDocumentEditor({
       localPersistence={boot.localPersistence}
       session={boot.session}
       title={title}
+      pathSegments={pathSegments}
+      onRename={onRename}
+      showStyleBar={showStyleBar}
+      onToggleStyleBar={onToggleStyleBar}
+      sidebarCollapsed={sidebarCollapsed}
+      platformActions={platformActions}
     />
   );
 }
@@ -159,16 +185,29 @@ function CollaborativeSurface({
   localPersistence,
   session,
   title,
+  pathSegments,
+  onRename,
+  showStyleBar,
+  onToggleStyleBar,
+  sidebarCollapsed,
+  platformActions,
 }: {
   client: SupabaseClient;
   documentId: string;
   localPersistence: CloudLocalPersistenceHandle;
   session: CloudCollaborationSession;
   title: string;
+  pathSegments: string[];
+  onRename?: (nextName: string) => void | Promise<void>;
+  showStyleBar: boolean;
+  onToggleStyleBar?: () => void;
+  sidebarCollapsed: boolean;
+  platformActions?: MarkdownEditorPlatformActions;
 }) {
   const [snapshot, setSnapshot] = useState<CloudCollaborationSnapshot>(session.getSnapshot());
   const [presence, setPresence] = useState<string[]>([]);
-  const [, setHistoryRevision] = useState(0);
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [scrollContainer, setScrollContainer] = useState<HTMLElement | null>(null);
   const flushRef = useRef(session.flush.bind(session));
   flushRef.current = session.flush.bind(session);
 
@@ -185,65 +224,6 @@ function CollaborativeSurface({
     return () => session.awareness.off("change", refresh);
   }, [session]);
 
-  const editor = useEditor({
-    editable: session.role === "editor",
-    extensions: [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3, 4, 5, 6] },
-        link: false,
-        trailingNode: false,
-        underline: false,
-        undoRedo: false,
-      }),
-      TaskList,
-      TaskItem.configure({ nested: true }),
-      Link.configure({
-        openOnClick: false,
-        autolink: true,
-        linkOnPaste: true,
-        isAllowedUri: (url, context) => url.startsWith("#") || context.defaultValidate(url),
-      }),
-      Image.configure({ allowBase64: false }),
-      Focus.configure({ className: "has-focus", mode: "deepest" }),
-      Markdown.configure({
-        indentation: { style: "space", size: 2 },
-        markedOptions: { gfm: true },
-      }),
-      Underline,
-      Highlight,
-      ResizableTable.configure({ resizable: true }),
-      TableRow,
-      TableHeader,
-      TableCell,
-      Frontmatter,
-      CollapsibleHeadings,
-      Collaboration.configure({
-        document: session.document,
-        field: "default",
-        // The collaboration extension always adds its own local binding origin.
-        // Keeping this list empty makes undo/redo ignore remote and persistence
-        // transactions while retaining the current user's editor changes.
-        yUndoOptions: { trackedOrigins: [] },
-      }),
-      CollaborationCaret.configure({
-        provider: session,
-        user: session.awareness.getLocalState()?.user,
-      }),
-    ],
-    editorProps: { attributes: { class: "ghost-editor" } },
-  });
-
-  useEffect(() => {
-    if (!editor) return;
-    const refresh = () => setHistoryRevision((revision) => revision + 1);
-    editor.on("transaction", refresh);
-    return () => { editor.off("transaction", refresh); };
-  }, [editor]);
-
-  useEffect(() => {
-    editor?.setEditable(snapshot.role === "editor");
-  }, [editor, snapshot.role]);
-
   useEffect(() => {
     const flush = () => { void flushRef.current().catch(() => undefined); };
     window.addEventListener("blur", flush);
@@ -256,87 +236,128 @@ function CollaborativeSurface({
   }, []);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border px-4 py-2 text-[11px] text-muted-foreground">
-        <strong className="mr-2 truncate text-sm text-foreground">{title}</strong>
-        <CloudStatus label="Realtime" value={snapshot.connection} />
-        <CloudStatus label="Sync" value={snapshot.synchronization} />
-        <CloudStatus label="Cloud" value={snapshot.durability} />
-        <CloudStatus label="Local" value={localPersistence.status} />
-        <span className="rounded-full bg-secondary px-2 py-1">{snapshot.role}</span>
-        {editor && snapshot.role === "editor" ? (
-          <div className="flex items-center gap-0.5">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              title="Undo your last change"
-              disabled={!editor.can().undo()}
-              onClick={() => editor.chain().focus().undo().run()}
-            >
-              <Undo2 />
-              <span className="sr-only">Undo</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              title="Redo your last change"
-              disabled={!editor.can().redo()}
-              onClick={() => editor.chain().focus().redo().run()}
-            >
-              <Redo2 />
-              <span className="sr-only">Redo</span>
-            </Button>
-          </div>
-        ) : null}
-        {editor ? (
-          <CloudVersionHistory
-            client={client}
-            documentId={documentId}
-            editor={editor}
-            networkReady={snapshot.synchronization === "synced"}
-            session={session}
-          />
-        ) : null}
-        <span className="ml-auto truncate">Here: {presence.join(", ") || "you"}</span>
-      </div>
+    <div className="relative h-full min-h-0 overflow-hidden bg-background">
+      <DocumentHeader
+        pathSegments={pathSegments}
+        fileName={title}
+        onRename={snapshot.role === "editor" ? onRename : undefined}
+        sidebarCollapsed={sidebarCollapsed}
+        right={(
+          <>
+            <CloudSaveStatus snapshot={snapshot} />
+            <PresenceAvatars names={presence} />
+            {editor ? (
+              <CloudVersionHistory
+                client={client}
+                documentId={documentId}
+                editor={editor}
+                networkReady={snapshot.synchronization === "synced"}
+                session={session}
+              />
+            ) : null}
+          </>
+        )}
+      />
       {localPersistence.message ? (
-        <div className="border-b border-amber-400/30 bg-amber-400/10 px-4 py-2 text-xs text-amber-300">
+        <div className="absolute left-0 right-0 top-12 z-10 border-b border-amber-400/30 bg-amber-400/10 px-4 py-2 text-xs text-amber-300">
           Local recovery is unavailable: {localPersistence.message}
         </div>
       ) : null}
       {snapshot.lastError ? (
-        <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive">
+        <div className="absolute left-0 right-0 top-12 z-10 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive">
           {snapshot.lastError}
         </div>
       ) : null}
-      <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto min-h-full max-w-[var(--editor-max-width,800px)] px-8 pb-32 pt-14">
-          <EditorContent editor={editor} />
-        </div>
-      </div>
+      <main
+        ref={setScrollContainer}
+        data-editor-scroll-container
+        className="h-full overflow-auto overscroll-contain outline-none"
+      >
+        <MarkdownEditor
+          collaboration={{
+            document: session.document,
+            provider: session,
+            user: session.awareness.getLocalState()?.user ?? {},
+          }}
+          editable={snapshot.role === "editor"}
+          showStyleBar={showStyleBar}
+          onToggleStyleBar={onToggleStyleBar}
+          onEditorReady={setEditor}
+          platformActions={platformActions}
+        />
+      </main>
+      {editor && scrollContainer ? (
+        <HeadingMinimap editor={editor} scrollContainer={scrollContainer} />
+      ) : null}
     </div>
   );
 }
 
-function CloudStatus({ label, value }: { label: string; value: string }) {
-  const healthy = value === "connected" || value === "saved" || value === "synced" || value === "ready";
+function CloudSaveStatus({ snapshot }: { snapshot: CloudCollaborationSnapshot }) {
+  if (snapshot.lastError || snapshot.durability === "error") {
+    return <span className="text-[11px] text-destructive">Save failed</span>;
+  }
+  if (snapshot.role === "viewer") {
+    return <span className="text-[11px] text-ring/65">View only</span>;
+  }
+  if (snapshot.synchronization === "offline" || snapshot.connection === "disconnected") {
+    return <span className="text-[11px] text-ring/65">Offline</span>;
+  }
+  if (snapshot.durability === "pending" || snapshot.durability === "saving") {
+    return <span className="text-[11px] text-ring">Saving…</span>;
+  }
+  if (snapshot.durability === "saved" && snapshot.synchronization === "synced") {
+    return <span className="text-[11px] text-ring/65">Saved</span>;
+  }
+  return <span className="text-[11px] text-ring/65">Connecting…</span>;
+}
+
+function PresenceAvatars({ names }: { names: string[] }) {
+  if (names.length === 0) return null;
+  const visible = names.slice(0, 3);
   return (
-    <span className="flex items-center gap-1 rounded-full bg-secondary px-2 py-1">
-      <span className={`size-1.5 rounded-full ${healthy ? "bg-emerald-400" : "bg-amber-400"}`} />
-      {label}: {value}
-    </span>
+    <div className="flex -space-x-1" title={`Active: ${names.join(", ")}`} aria-label={`Active: ${names.join(", ")}`}>
+      {visible.map((name, index) => (
+        <span
+          key={name}
+          className="flex size-6 items-center justify-center rounded-full border-2 border-background bg-secondary text-[9px] font-semibold uppercase text-secondary-foreground"
+          style={{ zIndex: visible.length - index }}
+        >
+          {name.trim().charAt(0) || "?"}
+        </span>
+      ))}
+      {names.length > visible.length ? (
+        <span className="flex size-6 items-center justify-center rounded-full border-2 border-background bg-secondary text-[8px] text-secondary-foreground">
+          +{names.length - visible.length}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
 function CloudEditorNotice({
   children,
   error = false,
+  title,
+  pathSegments,
+  onRename,
+  sidebarCollapsed,
 }: {
   children: React.ReactNode;
   error?: boolean;
+  title: string;
+  pathSegments: string[];
+  onRename?: (nextName: string) => void | Promise<void>;
+  sidebarCollapsed: boolean;
 }) {
   return (
-    <div className="flex h-full items-center justify-center p-8">
+    <div className="relative flex h-full items-center justify-center p-8">
+      <DocumentHeader
+        pathSegments={pathSegments}
+        fileName={title}
+        onRename={onRename}
+        sidebarCollapsed={sidebarCollapsed}
+      />
       <p className={error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>{children}</p>
     </div>
   );

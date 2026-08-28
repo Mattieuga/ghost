@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { HeadingMinimap } from "@/components/editor/heading-minimap";
+import { DocumentHeader } from "@/components/editor/document-header";
 import { fontFamilyValue } from "@/lib/fonts";
 import { FileViewer } from "@/components/editor/file-viewer";
 import { TextStats } from "@/components/editor/text-stats";
@@ -504,12 +505,11 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
         '--editor-heading-after-spacing': `${settings.headingAfterSpacing}rem`,
       } as React.CSSProperties}
     >
-      {/* Title bar */}
-      <div
-        className="absolute top-0 left-0 right-0 z-10 flex h-12 items-center justify-between pl-[100px] pr-8 bg-background/80 backdrop-blur-sm"
-        data-tauri-drag-region
-      >
-        {search.searchOpen ? (
+      <DocumentHeader
+        pathSegments={parentFolder ? [parentFolder] : []}
+        fileName={fileName}
+        sidebarCollapsed
+        search={search.searchOpen ? (
           <div className="flex items-center flex-1 min-w-0 pointer-events-auto">
             <SearchBar
               mode={search.searchMode}
@@ -528,46 +528,28 @@ export function EditorWindow({ filePath: initialFilePath }: EditorWindowProps) {
               searchInputRef={search.searchInputRef}
             />
           </div>
-        ) : (
+        ) : undefined}
+        right={fileDescriptor.editable ? (
           <>
-            <div className="flex items-center min-w-0 flex-1 text-[13px] pointer-events-none">
-              <div className="flex items-center min-w-0 overflow-hidden">
-                {parentFolder && (
-                  <>
-                    <span className="text-muted-foreground pointer-events-none select-none truncate" style={{ flexShrink: 10 }}>{parentFolder}</span>
-                    <span className="text-ring mx-1 pointer-events-none select-none shrink-0">/</span>
-                  </>
-                )}
-                <span className="text-sidebar-primary font-medium truncate">
-                  {fileName}
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              {fileDescriptor.editable ? (
-                <>
-                  <SaveStatus
-                    status={documentSave.status}
-                    error={documentSave.error}
-                    onRetry={documentSave.retry}
-                  />
-                  {fileDescriptor.showTextStats && (
-                    <TextStats
-                      text={liveText}
-                      countMode={settings.countMode}
-                      onCountModeChange={(countMode) => updateSettings({ countMode })}
-                      sourceInspection={sourceInspection}
-                      forceStatic={forceStaticTextStats}
-                    />
-                  )}
-                </>
-              ) : fileDescriptor.canOpenExternally ? (
-                <OpenExternalButton filePath={filePath} />
-              ) : null}
-            </div>
+            <SaveStatus
+              status={documentSave.status}
+              error={documentSave.error}
+              onRetry={documentSave.retry}
+            />
+            {fileDescriptor.showTextStats ? (
+              <TextStats
+                text={liveText}
+                countMode={settings.countMode}
+                onCountModeChange={(countMode) => updateSettings({ countMode })}
+                sourceInspection={sourceInspection}
+                forceStatic={forceStaticTextStats}
+              />
+            ) : null}
           </>
-        )}
-      </div>
+        ) : fileDescriptor.canOpenExternally ? (
+          <OpenExternalButton filePath={filePath} />
+        ) : null}
+      />
 
       {/* Editor */}
       <div className="relative flex-1 overflow-hidden">

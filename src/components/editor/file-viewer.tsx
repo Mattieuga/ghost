@@ -23,6 +23,10 @@ import {
 } from "@/lib/resource-policy";
 import { LargeTextViewer } from "@/components/viewer/large-text-viewer";
 import type { FileOpenPerformanceTrace } from "@/lib/open-performance";
+import {
+  localMarkdownImageExtension,
+  tauriMarkdownEditorActions,
+} from "@/components/editor/tauri-markdown-editor";
 
 interface FileViewerProps {
   filePath: string;
@@ -123,6 +127,8 @@ export function FileViewer({
             showStyleBar={showStyleBar}
             onToggleStyleBar={onToggleStyleBar}
             onEditorReady={onTiptapReady}
+            imageExtension={localMarkdownImageExtension}
+            platformActions={tauriMarkdownEditorActions}
           />
         );
       }

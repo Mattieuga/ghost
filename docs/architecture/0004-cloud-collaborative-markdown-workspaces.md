@@ -3,7 +3,7 @@
 - Status: Proposed; retained Mac/web vertical slice implemented, resilience
   and sharing gates remain
 - Date: 2026-08-25
-- Last updated: 2026-08-27
+- Last updated: 2026-08-28
 - Related plan: [`../plans/cloud-collaboration-roadmap.md`](../plans/cloud-collaboration-roadmap.md)
 - Related decisions:
   - [`0001-extensible-file-viewers.md`](0001-extensible-file-viewers.md)
@@ -292,8 +292,8 @@ supplement IndexedDB if WKWebView does not meet the acceptance checks.
 The retained cache key is versioned and scoped by account ID plus document ID.
 It is opened before the network adapter so locally durable updates can be
 compared with the server state and uploaded after a restart. IndexedDB failure
-degrades to network-only editing with visible `Local: unavailable` status; it
-must not prevent an otherwise healthy Cloud document from opening. Each cache
+degrades to network-only editing with a visible recovery warning; it must not
+prevent an otherwise healthy Cloud document from opening. Each cache
 also retains the last server-verified document role. After one verified open,
 Ghost renders that document as soon as IndexedDB is ready and revalidates the
 role, catches up the durable log, and connects Realtime in the background.
@@ -562,6 +562,13 @@ hierarchical items, invitations, share links, and future operational queries.
   collaborative Markdown editor and Ghost-owned adapter. Mac auth persists in
   Keychain; the browser retains its own session and neither client contains a
   service-role key.
+- Local and Cloud Markdown now render through the same `MarkdownEditor`
+  component, extension surface, style toolbar, document header, spacing, and
+  heading minimap. Cloud injects Yjs collaboration and source-specific actions
+  into that component instead of maintaining a second Tiptap configuration.
+  Detailed transport/durability badges are no longer product chrome: a compact
+  Saved/Saving/Offline label summarizes the state while the adapter retains
+  distinct diagnostics for tests and future debug tooling.
 - Permanent-account onboarding now uses passwordless email code/link and Sign
   in with Apple behind the same Supabase user identity. Web callbacks remain in
   the Cloud route; installed Mac builds use a PKCE deep link. The connected
@@ -619,9 +626,10 @@ following with Ghost's actual extension schema:
    state.
 10. Hocuspocus and Liveblocks are rechecked against current cost, offline,
     export, and operational requirements before final acceptance.
-11. The UI distinguishes peer/provider synchronization from confirmed durable
-    persistence, and a forced-failure test cannot silently discard edits shown
-    as durably saved.
+11. Internal diagnostics distinguish peer/provider synchronization from
+    confirmed durable persistence, the compact product status never says
+    `Saved` prematurely, and a forced-failure test cannot silently discard
+    edits shown as durably saved.
 
 If the proposed stack fails this gate, update this ADR and record the selected
 alternative instead of silently changing providers during implementation.

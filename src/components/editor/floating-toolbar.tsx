@@ -1,11 +1,10 @@
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { useEditorState, type Editor } from "@tiptap/react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { handleImageFromPath } from "./image-extension";
 
 interface ToolbarProps {
   editor: Editor;
   onHide: () => void;
+  onInsertImage?: (editor: Editor) => void | Promise<void>;
 }
 
 // --- Shared util ---
@@ -83,7 +82,7 @@ function DropdownItem({ label, shortcut, active, icon, onSelect }: {
 
 // --- Main toolbar ---
 
-export function FloatingToolbar({ editor, onHide }: ToolbarProps) {
+export function FloatingToolbar({ editor, onHide, onInsertImage }: ToolbarProps) {
   // Tiptap 3 no longer rerenders the parent React tree for every transaction.
   // Subscribe only this stateful toolbar so active buttons still stay current.
   useEditorState({
@@ -109,25 +108,6 @@ export function FloatingToolbar({ editor, onHide }: ToolbarProps) {
     ro.observe(editorEl);
     return () => ro.disconnect();
   }, [editor]);
-
-  const insertImageFromPicker = async () => {
-    try {
-      const activeFile = window.__ghostActiveFile;
-      if (!activeFile) return;
-      const selected = await openDialog({
-        multiple: false,
-        title: "Select an image",
-        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"] }],
-      });
-      if (!selected || typeof selected !== "string") return;
-      const relativePath = await handleImageFromPath(selected);
-      if (relativePath) {
-        editor.chain().focus().setImage({ src: relativePath }).run();
-      }
-    } catch (err) {
-      console.error("Failed to insert image:", err);
-    }
-  };
 
   return (
     <div className="floating-toolbar" style={{ left: centerX ?? -9999, visibility: centerX ? "visible" : "hidden" }}>
@@ -246,9 +226,20 @@ export function FloatingToolbar({ editor, onHide }: ToolbarProps) {
       {/* Image — file picker */}
       <button
         type="button"
-        onMouseDown={(e) => { e.preventDefault(); insertImageFromPicker(); }}
-        className="toolbar-btn"
-        title="Insert Image"
+        disabled={!onInsertImage}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          if (!onInsertImage) return;
+          try {
+            void Promise.resolve(onInsertImage(editor)).catch((reason) => {
+              console.error("Failed to insert image:", reason);
+            });
+          } catch (reason) {
+            console.error("Failed to insert image:", reason);
+          }
+        }}
+        className="toolbar-btn disabled:cursor-not-allowed disabled:opacity-35"
+        title={onInsertImage ? "Insert Image" : "Cloud image uploads are not available yet"}
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <rect x="1" y="2" width="14" height="12" rx="2" />

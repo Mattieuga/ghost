@@ -5,7 +5,7 @@ import { CloudTree } from "@/cloud/cloud-tree";
 import { CloudDocumentEditor } from "@/cloud/cloud-document-editor";
 import { useCloudAccount } from "@/cloud/use-cloud-account";
 import { useCloudTree } from "@/cloud/use-cloud-tree";
-import type { CloudItem } from "@/cloud/cloud-data";
+import { cloudItemPath, type CloudItem } from "@/cloud/cloud-data";
 
 export function CloudWebApp() {
   const client = useMemo(() => getBrowserCloudClient(), []);
@@ -14,6 +14,15 @@ export function CloudWebApp() {
   const user = account.kind === "signed-in" ? account.user : null;
   const tree = useCloudTree(client, user?.id ?? null);
   const [activeDocument, setActiveDocument] = useState<CloudItem | null>(null);
+  const [showStyleBar, setShowStyleBar] = useState(true);
+  const activeDocumentPath = activeDocument
+    ? cloudItemPath(tree.items, activeDocument).slice(0, -1).map((item) => item.name)
+    : [];
+
+  const renameActiveDocument = async (nextName: string) => {
+    if (!activeDocument) return;
+    setActiveDocument(await tree.rename(activeDocument.id, nextName));
+  };
 
   if (!client || account.kind === "error") {
     return (
@@ -53,6 +62,10 @@ export function CloudWebApp() {
             user={account.user}
             documentId={activeDocument.id}
             title={activeDocument.name}
+            pathSegments={activeDocumentPath}
+            onRename={renameActiveDocument}
+            showStyleBar={showStyleBar}
+            onToggleStyleBar={() => setShowStyleBar((visible) => !visible)}
           />
         ) : (
           <div className="flex h-full items-center justify-center px-8 text-center">

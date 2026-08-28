@@ -56,6 +56,7 @@ export function SettingsPage({
     <>
       {/* Backdrop */}
       <div
+        data-native-view-overlay
         className="fixed inset-0 z-50 bg-black/60 animate-in fade-in-0 duration-150"
         onClick={onClose}
       />

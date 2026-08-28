@@ -253,11 +253,25 @@ export function GhostLayout() {
   }, [focusEditor]);
 
   const openFile = useCallback(async (path: string, recordHistory = true): Promise<boolean> => {
+    const previousPath = activeFileRef.current;
+    if (previousPath === path && fileDescriptorRef.current) {
+      // Activating the already-open row is a focus operation, not a reload.
+      // Re-reading here replaced the last-known disk snapshot underneath a
+      // dirty editor and weakened the external-change/conflict guard. Cancel
+      // any older navigation still in flight, but keep this editor model and
+      // its save baseline intact.
+      ++openRequestRef.current;
+      openAbortRef.current?.abort();
+      openAbortRef.current = null;
+      setShowSettings(false);
+      closeSearch();
+      return true;
+    }
+
     const requestId = ++openRequestRef.current;
     openAbortRef.current?.abort();
     const abortController = new AbortController();
     openAbortRef.current = abortController;
-    const previousPath = activeFileRef.current;
     if (activeFileRef.current && activeFileRef.current !== path) {
       try {
         await window.__ghostFlushSave?.();
@@ -1672,6 +1686,7 @@ export function GhostLayout() {
           onFileSelect={handlePaletteFileSelect}
           folders={folders}
           extensions={extensions}
+          showHiddenFiles={settings.showHiddenFiles}
           commands={paletteCommands}
         />
       )}

@@ -68,6 +68,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   while (mounted.length) {
     const item = mounted.pop();
     act(() => item?.root.unmount());
@@ -137,6 +138,7 @@ describe("file-tree refresh stability", () => {
   });
 
   it("refreshes only the nearest loaded directory and preserves deeper rows", async () => {
+    vi.useFakeTimers();
     let nestedReads = 0;
     mocks.invoke.mockImplementation((_command: string, args: { path: string }) => {
       if (args.path === "/project") return Promise.resolve([directory("/project/nested")]);
@@ -155,8 +157,34 @@ describe("file-tree refresh stability", () => {
     expect(host.textContent).toContain("kept.md");
 
     act(() => tree?.refreshPath("/project/nested/new.md"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(120); });
     await flush();
     expect(host.textContent).toContain("new.md");
     expect(host.textContent).toContain("kept.md");
+  });
+
+  it("coalesces a burst of watcher paths into one directory refresh", async () => {
+    vi.useFakeTimers();
+    let nestedReads = 0;
+    mocks.invoke.mockImplementation((_command: string, args: { path: string }) => {
+      if (args.path === "/project") return Promise.resolve([directory("/project/nested")]);
+      nestedReads += 1;
+      return Promise.resolve([file("/project/nested/file.md")]);
+    });
+
+    await render();
+    await act(async () => { await tree?.expandFolder("/project/nested"); });
+    expect(nestedReads).toBe(1);
+
+    act(() => {
+      tree?.refreshPath("/project/nested/.ghost-file.tmp");
+      tree?.refreshPath("/project/nested/file.md");
+      tree?.refreshPath("/project/nested");
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(119); });
+    expect(nestedReads).toBe(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    await flush();
+    expect(nestedReads).toBe(2);
   });
 });

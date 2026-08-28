@@ -9,6 +9,7 @@ const SKIP_DIRS = new Set([
   "target", ".build", "Pods",
   ".turbo", ".vercel", ".output",
 ]);
+const DIRECTORY_REFRESH_DEBOUNCE_MS = 120;
 
 function flattenEntries(
   entries: FileEntry[],
@@ -183,6 +184,7 @@ export function useFileTree(
   const [dataByFolder, setDataByFolder] = useState<Record<string, FolderData>>({});
   const loadedDirs = useRef(new Set<string>());
   const directoryRefreshes = useRef(new Map<string, number>());
+  const scheduledDirectoryRefreshes = useRef(new Map<string, number>());
 
   const foldersKey = JSON.stringify(folders);
   const extensionsKey = JSON.stringify(extensions);
@@ -292,6 +294,7 @@ export function useFileTree(
       });
     } catch {
       // Silently ignore — folder may have been deleted
+      loadedDirs.current.delete(folderPath);
     }
   }, [extensionsKey, showHiddenFiles]);
 
@@ -375,6 +378,42 @@ export function useFileTree(
     return refresh(directoryPath, true);
   }, [extensionsKey, foldersKey, showHiddenFiles]);
 
+  const scheduleDirectoryRefresh = useCallback((directoryPath: string) => {
+    let target = directoryPath;
+
+    // If an ancestor is already queued, refresh that ancestor once. If the
+    // new event targets an ancestor, discard queued descendants. A single
+    // save often emits temporary-file, file, and directory events together;
+    // none of those should start parallel reads of the same tree segment.
+    for (const scheduledPath of scheduledDirectoryRefreshes.current.keys()) {
+      if (target === scheduledPath || target.startsWith(`${scheduledPath}/`)) {
+        target = scheduledPath;
+        break;
+      }
+    }
+    for (const [scheduledPath, timer] of scheduledDirectoryRefreshes.current) {
+      if (scheduledPath !== target && scheduledPath.startsWith(`${target}/`)) {
+        window.clearTimeout(timer);
+        scheduledDirectoryRefreshes.current.delete(scheduledPath);
+      }
+    }
+
+    const existing = scheduledDirectoryRefreshes.current.get(target);
+    if (existing !== undefined) window.clearTimeout(existing);
+    const timer = window.setTimeout(() => {
+      scheduledDirectoryRefreshes.current.delete(target);
+      void refreshDirectory(target);
+    }, DIRECTORY_REFRESH_DEBOUNCE_MS);
+    scheduledDirectoryRefreshes.current.set(target, timer);
+  }, [refreshDirectory]);
+
+  useEffect(() => () => {
+    for (const timer of scheduledDirectoryRefreshes.current.values()) {
+      window.clearTimeout(timer);
+    }
+    scheduledDirectoryRefreshes.current.clear();
+  }, [foldersKey, extensionsKey, showHiddenFiles]);
+
   const refreshPath = useCallback((changedPath: string) => {
     const root = [...folders]
       .filter((folder) => changedPath === folder || changedPath.startsWith(`${folder}/`))
@@ -390,8 +429,8 @@ export function useFileTree(
       }
       directoryPath = parent;
     }
-    void refreshDirectory(directoryPath);
-  }, [foldersKey, refreshDirectory]);
+    scheduleDirectoryRefresh(directoryPath);
+  }, [foldersKey, scheduleDirectoryRefresh]);
 
   const isSkippedDir = useCallback((name: string) => SKIP_DIRS.has(name), []);
 

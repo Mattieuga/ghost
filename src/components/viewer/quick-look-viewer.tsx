@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { OpenExternalButton } from "@/components/viewer/open-external-button";
 import type { FileVersionToken } from "@/lib/source-document";
+import { useNativeViewOverlay } from "@/hooks/use-native-view-overlay";
 
 let nextQuickLookViewId = 0;
 
@@ -17,6 +18,9 @@ export function QuickLookViewer({ filePath }: QuickLookViewerProps) {
   const [mounted, setMounted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
+  const overlayActive = useNativeViewOverlay();
+  const overlayActiveRef = useRef(overlayActive);
+  overlayActiveRef.current = overlayActive;
 
   const frame = useCallback(() => {
     const surface = surfaceRef.current;
@@ -25,7 +29,7 @@ export function QuickLookViewer({ filePath }: QuickLookViewerProps) {
     return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
   }, []);
 
-  const action = useCallback((name: "focus" | "refresh") => {
+  const action = useCallback((name: "focus" | "refresh" | "suspend" | "resume") => {
     const viewId = activeViewIdRef.current;
     if (!viewId) return;
     void invoke("quick_look_view_action", { viewId, action: name }).catch((reason) => {
@@ -49,6 +53,11 @@ export function QuickLookViewer({ filePath }: QuickLookViewerProps) {
   }, [mounted, focusPreview]);
 
   useEffect(() => {
+    if (!mounted) return;
+    action(overlayActive ? "suspend" : "resume");
+  }, [mounted, overlayActive, action]);
+
+  useEffect(() => {
     let cancelled = false;
     let nativeMounted = false;
     const surface = surfaceRef.current;
@@ -69,6 +78,7 @@ export function QuickLookViewer({ filePath }: QuickLookViewerProps) {
           path: filePath,
           viewId,
           generation,
+          hidden: overlayActiveRef.current,
           ...bounds,
         });
         nativeMounted = true;

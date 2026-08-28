@@ -2,14 +2,12 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(async () => ({
-    matches: [],
-    total_matches: 0,
-    files_searched: 0,
-  })),
+  invoke: mocks.invoke,
 }));
 
 import {
@@ -21,6 +19,22 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 HTMLElement.prototype.scrollIntoView = vi.fn();
 
 const mounted: Array<{ root: ReturnType<typeof createRoot>; host: HTMLDivElement }> = [];
+
+beforeEach(() => {
+  mocks.invoke.mockReset().mockImplementation(async (command: string) => {
+    if (command === "list_workspace_files") {
+      return {
+        files: ["/project/alpha.md", "/project/beta.md", "/project/collapsed/deep-note.md"],
+        truncated: false,
+      };
+    }
+    return {
+      matches: [],
+      total_matches: 0,
+      files_searched: 0,
+    };
+  });
+});
 
 afterEach(() => {
   while (mounted.length) {
@@ -104,6 +118,17 @@ describe("CommandPalette keyboard modes", () => {
 
     await press(input, "Enter");
     expect(onFileSelect).toHaveBeenCalledWith("/project/beta.md");
+  });
+
+  it("finds files that are outside the lazily loaded sidebar rows", async () => {
+    const { input } = await renderPalette();
+
+    await type(input, "deep-note");
+    expect(document.body.textContent).toContain("deep-note.md");
+    expect(document.body.textContent).toContain("project/collapsed");
+    expect(mocks.invoke).toHaveBeenCalledWith("list_workspace_files", expect.objectContaining({
+      directories: ["/project"],
+    }));
   });
 
   it("keeps Quick Open mounted until the selected file finishes opening", async () => {

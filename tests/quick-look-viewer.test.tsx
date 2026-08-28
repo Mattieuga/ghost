@@ -51,6 +51,7 @@ describe("QuickLookViewer", () => {
     expect(mocks.invoke).toHaveBeenCalledWith("show_quick_look_view", expect.objectContaining({
       path: "/project/proposal.docx",
       viewId: expect.stringMatching(/^quick-look-/),
+      hidden: false,
     }));
     expect(host.textContent).not.toContain("Loading Quick Look…");
 
@@ -65,6 +66,53 @@ describe("QuickLookViewer", () => {
     mountedRoots.pop();
     expect(mocks.invoke).toHaveBeenCalledWith("hide_quick_look_view", expect.objectContaining({
       viewId: expect.stringMatching(/^quick-look-/),
+    }));
+  });
+
+  it("suspends the native surface while a DOM overlay is present", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    mountedRoots.push(root);
+
+    await act(async () => {
+      root.render(<QuickLookViewer filePath="/project/proposal.docx" />);
+    });
+
+    const overlay = document.createElement("div");
+    overlay.setAttribute("data-native-view-overlay", "");
+    await act(async () => {
+      document.body.append(overlay);
+      await Promise.resolve();
+    });
+    expect(mocks.invoke).toHaveBeenCalledWith("quick_look_view_action", expect.objectContaining({
+      action: "suspend",
+    }));
+
+    await act(async () => {
+      overlay.remove();
+      await Promise.resolve();
+    });
+    expect(mocks.invoke).toHaveBeenCalledWith("quick_look_view_action", expect.objectContaining({
+      action: "resume",
+    }));
+  });
+
+  it("mounts hidden when an overlay already owns the window", async () => {
+    const overlay = document.createElement("div");
+    overlay.setAttribute("data-native-view-overlay", "");
+    document.body.append(overlay);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    mountedRoots.push(root);
+
+    await act(async () => {
+      root.render(<QuickLookViewer filePath="/project/proposal.docx" />);
+    });
+
+    expect(mocks.invoke).toHaveBeenCalledWith("show_quick_look_view", expect.objectContaining({
+      hidden: true,
     }));
   });
 

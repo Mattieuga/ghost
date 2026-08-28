@@ -43,6 +43,7 @@ pub fn run() {
             commands::archive_preview::release_archive_preview,
             commands::fs::is_directory,
             commands::fs::read_directory,
+            commands::fs::list_workspace_files,
             commands::fs::read_file,
             commands::fs::read_text_preview,
             commands::fs::read_file_if_text,

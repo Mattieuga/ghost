@@ -24,6 +24,13 @@ const AWARENESS_EVENT = "y-supabase-awareness";
 const DURABLE_UPDATE_EVENT = "ghost-cloud-durable-update";
 const STORE_DELAY_MS = 120;
 
+function isTransientRealtimeDisconnect(reason: unknown): boolean {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  return /\b(?:web)?socket (?:is )?closed\b/i.test(message)
+    || /\bconnection (?:is )?closed\b/i.test(message)
+    || /^connection timed out\.?$/i.test(message);
+}
+
 interface UpdateRow {
   id: number;
   update: string;
@@ -331,7 +338,14 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
         void this.recoverConnectivity().catch(() => undefined);
       }
     });
-    this.provider.on("error", (error) => this.updateSnapshot({ lastError: error.message }));
+    this.provider.on("error", (error) => {
+      // Realtime sockets routinely close while a laptop sleeps or the app is
+      // backgrounded. The provider reconnects automatically and the durable
+      // update log catches up anything it missed, so this is connection state,
+      // not a user-actionable document error.
+      if (isTransientRealtimeDisconnect(error)) return;
+      this.updateSnapshot({ lastError: error.message });
+    });
   }
 
   private createPrivateChannel(name: string): RealtimeChannel {
@@ -355,10 +369,11 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
             }
             const result = send(args, options);
             void result.then((status) => {
-              if (status !== "ok") {
+              if (status !== "ok" && status !== "timed out") {
                 this.updateSnapshot({ lastError: `Realtime was not acknowledged (${status}).` });
               }
             }).catch((reason: unknown) => {
+              if (isTransientRealtimeDisconnect(reason)) return;
               this.updateSnapshot({
                 lastError: reason instanceof Error ? reason.message : "Realtime failed.",
               });
@@ -459,6 +474,7 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
       }
       this.pendingDurableSignal = false;
     } catch (reason) {
+      if (isTransientRealtimeDisconnect(reason)) return;
       this.updateSnapshot({
         lastError: reason instanceof Error
           ? `Could not announce durable Cloud changes: ${reason.message}`

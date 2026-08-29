@@ -16,6 +16,8 @@ function createFakeBackend(role: EffectiveRole, initialUpdates: string[] = []) {
   const broadcastListeners = new Map<string, Array<(message: unknown) => void>>();
   let removedChannels = 0;
   let rejectDurableSignals = false;
+  let durableSignalError = "simulated signal failure";
+  let subscriptionCallback: ((status: string, error?: Error) => void) | null = null;
   const client = {
     rpc: async () => ({ data: role, error: null }),
     from: () => {
@@ -54,13 +56,14 @@ function createFakeBackend(role: EffectiveRole, initialUpdates: string[] = []) {
           return channel;
         },
         subscribe: (callback: (status: string) => void) => {
+          subscriptionCallback = callback;
           queueMicrotask(() => callback("SUBSCRIBED"));
           return channel;
         },
         send: async (args: { event: string }) => {
           sentEvents.push(args.event);
           if (args.event === "ghost-cloud-durable-update" && rejectDurableSignals) {
-            throw new Error("simulated signal failure");
+            throw new Error(durableSignalError);
           }
           return "ok";
         },
@@ -79,7 +82,13 @@ function createFakeBackend(role: EffectiveRole, initialUpdates: string[] = []) {
     emitBroadcast: (event: string) => {
       for (const listener of broadcastListeners.get(event) ?? []) listener({ payload: {} });
     },
-    rejectDurableSignals: () => { rejectDurableSignals = true; },
+    rejectDurableSignals: (message = "simulated signal failure") => {
+      durableSignalError = message;
+      rejectDurableSignals = true;
+    },
+    emitSubscriptionStatus: (status: string, error?: Error) => {
+      subscriptionCallback?.(status, error);
+    },
     removedChannels: () => removedChannels,
   };
 }
@@ -241,6 +250,41 @@ describe("production Cloud collaboration adapter", () => {
     expect(backend.persisted).toHaveLength(1);
     expect(session.getSnapshot()).toMatchObject({ durability: "saved", pendingUpdates: 0 });
     expect(session.getSnapshot().lastError).toContain("simulated signal failure");
+    await session.destroy();
+  });
+
+  it("treats a socket closing in the background as ordinary offline state", async () => {
+    const backend = createFakeBackend("editor");
+    const document = new Y.Doc();
+    const session = await SupabaseCloudAdapter.create({ ...OPTIONS, client: backend.client, document });
+    await vi.waitFor(() => expect(session.getSnapshot().connection).toBe("connected"));
+
+    backend.emitSubscriptionStatus("CHANNEL_ERROR", new Error("Socket closed"));
+
+    expect(session.getSnapshot()).toMatchObject({
+      connection: "disconnected",
+      synchronization: "offline",
+      lastError: null,
+    });
+    await session.destroy();
+  });
+
+  it("does not report a socket closing after a durable save as a save error", async () => {
+    const backend = createFakeBackend("editor");
+    const document = new Y.Doc();
+    const session = await SupabaseCloudAdapter.create({ ...OPTIONS, client: backend.client, document });
+    await vi.waitFor(() => expect(session.getSnapshot().connection).toBe("connected"));
+    backend.rejectDurableSignals("Socket closed");
+
+    document.getText("probe").insert(0, "saved while realtime closed");
+    await session.flush();
+
+    expect(backend.persisted).toHaveLength(1);
+    expect(session.getSnapshot()).toMatchObject({
+      durability: "saved",
+      pendingUpdates: 0,
+      lastError: null,
+    });
     await session.destroy();
   });
 

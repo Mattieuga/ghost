@@ -52,12 +52,16 @@ It authorizes only `/auth/native/*` for Apple application identifier
 successful status and JSON content type—without a redirect. After deployment,
 verify the live response rather than only the repository copy.
 
-The current marketing site is published by GitHub Pages. Pages does not offer
-repository-controlled response headers, so its live AASA response is a release
-gate: run `curl -i` against the URL above and confirm `Content-Type:
-application/json`. If Pages serves the extensionless file as a generic binary,
-move the static site to hosting that can set this header before relying on
-universal links. The custom-scheme fallback continues to work meanwhile.
+The current marketing site is published by GitHub Pages, which serves the
+extensionless origin file as `application/octet-stream`. The deployed manifest
+was nevertheless fetched and parsed successfully by Apple's associated-domain
+CDN, whose response identifies the origin format as JSON and serves it as
+`application/json`. Treat both live checks as a release gate: verify the origin
+is a direct `200` containing the expected manifest, then verify
+`https://app-site-association.cdn-apple.com/a/v1/ghosteditor.app` contains that
+same manifest. If Apple's CDN ever stops accepting the Pages response, use a
+Cloudflare header transform or static host with configurable headers. The
+custom-scheme fallback continues to work meanwhile.
 
 Ghost's macOS bundle declares `applinks:ghosteditor.app`. Universal-link testing
 requires the signed app bundle to be installed and launched at least once.

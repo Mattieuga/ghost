@@ -245,9 +245,10 @@ sharing, and recovery remain
   project still needs the redirect allow-list and Apple credentials described in
   [`../cloud-auth-setup.md`](../cloud-auth-setup.md).
 - Added the restricted native callback page, AASA manifest, and explicit macOS
-  associated-domain entitlement. Publishing and validating the live AASA
-  response remains a release gate because GitHub Pages cannot configure its
-  content type directly.
+  associated-domain entitlement. The callback and manifest are published on
+  `ghosteditor.app`; Apple's CDN successfully parses the GitHub Pages origin
+  response and serves the association as JSON. Keep the origin and Apple CDN
+  checks in the release gate.
 
 ### Scope
 

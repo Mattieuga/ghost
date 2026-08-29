@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "9D4KH55H97.com.ghost.app"
+        ],
+        "components": [
+          {
+            "/": "/auth/native/*",
+            "comment": "Open native Ghost authentication callbacks in the signed app."
+          }
+        ]
+      }
+    ]
+  }
+}

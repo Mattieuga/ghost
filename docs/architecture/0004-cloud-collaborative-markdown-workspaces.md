@@ -55,7 +55,7 @@ product problems and are not prerequisites.
   Hocuspocus if the Supabase path fails Phase 0.
 - Require accounts for owners and direct members, while link recipients use
   anonymous authenticated sessions with explicit viewer/editor permissions.
-- Offer Sign in with Apple and passwordless email code/link for permanent
+- Offer Sign in with Apple and passwordless email magic links for permanent
   accounts. Treat the Supabase user ID, rather than an Apple ID or email
   address, as Ghost's canonical account identity.
 - After the cloud product is stable, add filesystem integration in strict
@@ -70,12 +70,23 @@ local workspace. Local use remains available without an account. Creating or
 owning cloud content requires a recoverable Ghost account.
 
 Permanent-account onboarding has no Ghost password. The preferred action is
-Sign in with Apple, with a passwordless email one-time code and sign-in link as
-an equal fallback. Both clients use Supabase Auth's PKCE flow: the web client
-returns to its Cloud route, while an installed Apple-platform app returns
-through the registered `ghost-md://auth/callback` deep link and stores its
-refresh session in a dedicated Tauri app-data store. Email-code entry remains
-available in development builds where macOS does not register app deep links.
+Sign in with Apple, with a passwordless email magic link as an equal fallback.
+Both clients use Supabase Auth's PKCE flow, but use distinct callback paths so
+the authorization code returns to the client that owns its verifier. The web
+client returns to its Cloud route. An installed Apple-platform app returns
+through `https://ghosteditor.app/auth/native/callback/`, an associated-domain
+universal link restricted to native authentication. If Apple has not yet
+associated the domain or the user prefers the browser, that HTTPS page offers
+the existing `ghost-md://auth/callback` custom scheme as a fallback while
+preserving the callback parameters. The Mac app stores its refresh session in
+a dedicated Tauri app-data store.
+
+New Supabase Free projects using the default mailer cannot customize the magic
+link template, so Ghost does not require an emailed numeric OTP. A future
+custom SMTP provider may add code entry as an alternate path, but the standard
+link must remain sufficient. Loose `tauri dev` executables do not own macOS
+universal links; native callback testing uses an installed signed development
+or release bundle.
 The app-data choice avoids repeated Keychain authorization prompts from
 unsigned and frequently rebuilt development binaries. It deliberately trades
 Keychain encryption for the protections of the current macOS user account and
@@ -588,11 +599,13 @@ hierarchical items, invitations, share links, and future operational queries.
   inline banners. They use the same compact, dismissible top notification
   treatment as app updates, while the header retains the quiet saved/offline
   state needed during normal disconnection.
-- Permanent-account onboarding now uses passwordless email code/link and Sign
+- Permanent-account onboarding now uses passwordless email magic links and Sign
   in with Apple behind the same Supabase user identity. Web callbacks remain in
-  the Cloud route; installed Mac builds use a PKCE deep link. The connected
-  project still needs its email template and Apple provider configured before
-  both production methods are live.
+  the Cloud route; installed Mac builds use a dedicated HTTPS universal-link
+  path with a custom-scheme fallback. The default Supabase magic-link email is
+  sufficient; optional numeric codes require custom SMTP on new Free projects.
+  The connected project still needs its redirect allow-list and Apple provider
+  configured before both production methods are live.
 - Reconnect no longer relies only on a best-effort peer state-vector handshake:
   a committed update emits a private durable-change signal, and peers
   incrementally apply the authoritative Postgres log after their last update

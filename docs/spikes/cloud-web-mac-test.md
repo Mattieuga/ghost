@@ -24,45 +24,44 @@ slices and are not part of this test.
 
 ## Test
 
-1. Keep the development app and Vite process running with `pnpm tauri dev`.
-2. Open `http://localhost:1420/web.html` in a browser.
-3. Enter an email in the web client and use either the six-digit code or the
-   sign-in link. The link should return to `web.html`; the local web URL must
-   be present in the Supabase Auth redirect allow list.
-4. Sign in to the Mac app's Cloud section with the same email and a fresh code.
-   Browser and Mac sessions are intentionally separate; the Mac refresh token
-   is stored in dedicated Tauri app data. Sign-in links and Apple callbacks
-   return to an installed Mac build through `ghost-md://auth/callback`; macOS
-   does not register that deep link for `tauri dev`, so use the code during
-   development. If the email contains only a link, update the Supabase Magic
-   Link template to include `{{ .Token }}` as described in
-   [`../cloud-auth-setup.md`](../cloud-auth-setup.md).
-5. Create a Markdown document in either client. In the other client, click the
+1. Keep the Vite process running with `pnpm dev` and open
+   `http://localhost:1420/web.html` in a browser.
+2. Enter an email in the web client and follow the sign-in link in the same
+   browser. The link should return to `web.html`; the local web URL must be in
+   the Supabase Auth redirect allow list.
+3. Install and launch a signed Ghost build, then sign in to its Cloud section
+   with the same email and a fresh link. Browser and Mac sessions are
+   intentionally separate; the Mac refresh token is stored in dedicated Tauri
+   app data. Sign-in links and Apple callbacks return through
+   `https://ghosteditor.app/auth/native/callback/`. The associated domain opens
+   Ghost, with `ghost-md://auth/callback` available from the landing page as a
+   fallback. A loose `pnpm tauri dev` executable cannot own the universal link.
+4. Create a Markdown document in either client. In the other client, click the
    Cloud refresh button, then open the same document.
-6. Type in one client while watching the other. Text and the remote caret should
+5. Type in one client while watching the other. Text and the remote caret should
    appear live. Repeat in the other direction.
-7. Confirm both clients show `Saved` after typing stops. Confirm the style
+6. Confirm both clients show `Saved` after typing stops. Confirm the style
    toolbar, document spacing, blurred title bar, and heading minimap match a
    local Markdown document. Click the Cloud title and rename it inline.
    Confirm Cloud and Workspace use the same tree row, folder disclosure,
    inline rename, trash dialog, and right-click menu treatment. Cloud's section
    header should contain only quick-add plus temporary refresh; sign-out belongs
    to the future account surface.
-8. Reload `web.html`, reopen the document, and confirm the text remains. Close
+7. Reload `web.html`, reopen the document, and confirm the text remains. Close
    and reopen the document in the Mac app and confirm the same state.
-9. Disconnect both clients, make different edits, reconnect them in either
+8. Disconnect both clients, make different edits, reconnect them in either
    order, and confirm both show the merged content and return from `Offline` to
    `Saved`. Confirm disconnection does not add a full-width banner over the
    document; actionable failures should use the compact dismissible top
    notification.
-10. Make an edit, close and reopen the document while online, and confirm its
+9. Make an edit, close and reopen the document while online, and confirm its
     cached content appears immediately while the compact status finishes
     background catch-up. Confirm no local-recovery warning appears. The first
     open after this change seeds cached access metadata; test instant open on
     the next reopen.
-11. Make an edit in each client. Undo in one client with Command-Z and confirm
+10. Make an edit in each client. Undo in one client with Command-Z and confirm
     only that client's latest change is removed.
-12. Open History. Confirm an automatic baseline is present, preview it, then
+11. Open History. Confirm an automatic baseline is present, preview it, then
     restore it. Confirm the pre-restore state appears as a separate `Before
     restore` version and the restored content synchronizes to the other client.
 

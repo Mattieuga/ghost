@@ -42,6 +42,9 @@
     "resources": {
       "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
     },
+    "macOS": {
+      "entitlements": "Entitlements.plist"
+    },
     "fileAssociations": [
       {
         "ext": ["md", "markdown"],
@@ -69,6 +72,12 @@
         {
           "scheme": ["ghost-md"],
           "appLink": false
+        },
+        {
+          "scheme": ["https"],
+          "host": "ghosteditor.app",
+          "pathPrefix": ["/auth/native"],
+          "appLink": true
         }
       ]
     },

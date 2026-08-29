@@ -180,12 +180,13 @@ blocked on the remaining Phase 0 gates
   cloud references cannot be passed to this gateway without a type error.
 - Added a separately built `web.html` entry whose loaded bundles contain no
   Tauri runtime imports.
-- Added a shared passwordless email code/link and Sign in with Apple account
-  flow for web and Mac. Browser sessions use browser storage while Mac refresh
-  credentials use a dedicated Tauri app-data store and installed builds receive
-  PKCE callbacks through a registered deep link. This avoids repeated Keychain
-  prompts from development builds; the store is isolated from settings but is
-  protected by user/app-data permissions rather than Keychain encryption.
+- Added a shared passwordless email link and Sign in with Apple account flow
+  for web and Mac. Browser sessions use browser storage while Mac refresh
+  credentials use a dedicated Tauri app-data store. Installed builds receive
+  PKCE callbacks through the `ghosteditor.app` associated domain, with the
+  registered custom scheme retained as a fallback. This avoids repeated
+  Keychain prompts from development builds; the store is isolated from settings
+  but is protected by user/app-data permissions rather than Keychain encryption.
 - Added a shared, browser-safe collaborative Markdown surface while preserving
   the existing local editor and local-only source gateway.
 
@@ -237,12 +238,16 @@ sharing, and recovery remain
   acknowledged Broadcast while an unrelated account was rejected.
 - Added permanent account onboarding and dedicated Mac app-data session
   storage without system Keychain prompts.
-- Replaced Ghost passwords with passwordless email code/link plus Sign in with
-  Apple, retaining one Supabase user ID for ownership and memberships. Client
-  flows and Mac deep-link handling are implemented; the connected Supabase
-  project still needs the code-bearing email template, redirect allow-list,
-  and Apple credentials described in
+- Replaced Ghost passwords with passwordless email magic links plus Sign in
+  with Apple, retaining one Supabase user ID for ownership and memberships.
+  Client flows and native HTTPS callback handling are implemented without
+  depending on paid email-template customization; the connected Supabase
+  project still needs the redirect allow-list and Apple credentials described in
   [`../cloud-auth-setup.md`](../cloud-auth-setup.md).
+- Added the restricted native callback page, AASA manifest, and explicit macOS
+  associated-domain entitlement. Publishing and validating the live AASA
+  response remains a release gate because GitHub Pages cannot configure its
+  content type directly.
 
 ### Scope
 

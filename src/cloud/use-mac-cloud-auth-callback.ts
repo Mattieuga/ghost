@@ -15,7 +15,13 @@ export function parseMacCloudAuthCallback(rawUrl: string): MacCloudAuthCallback 
   } catch {
     return null;
   }
-  if (url.protocol !== "ghost-md:" || url.hostname !== "auth" || url.pathname !== "/callback") {
+  const customScheme = url.protocol === "ghost-md:" &&
+    url.hostname === "auth" &&
+    url.pathname === "/callback";
+  const universalLink = url.protocol === "https:" &&
+    url.hostname === "ghosteditor.app" &&
+    (url.pathname === "/auth/native/callback" || url.pathname === "/auth/native/callback/");
+  if (!customScheme && !universalLink) {
     return null;
   }
 

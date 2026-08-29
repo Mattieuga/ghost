@@ -9,7 +9,8 @@ interface AsyncAuthStorage {
   removeItem(key: string): Promise<void>;
 }
 
-export const MAC_CLOUD_AUTH_REDIRECT_URL = "ghost-md://auth/callback";
+export const MAC_CLOUD_AUTH_REDIRECT_URL =
+  "https://ghosteditor.app/auth/native/callback/";
 
 let authStorePromise: Promise<Store> | null = null;
 

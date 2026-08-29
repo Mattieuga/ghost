@@ -39,21 +39,19 @@ async function inputText(input: HTMLInputElement, value: string): Promise<void> 
 
 function createAuthClient() {
   const signInWithOtp = vi.fn(async () => ({ data: {}, error: null }));
-  const verifyOtp = vi.fn(async () => ({ data: {}, error: null }));
   const signInWithOAuth = vi.fn(async () => ({
     data: { provider: "apple", url: "https://project.supabase.co/auth/v1/authorize" },
     error: null,
   }));
   const client = {
-    auth: { signInWithOtp, verifyOtp, signInWithOAuth },
+    auth: { signInWithOtp, signInWithOAuth },
   } as unknown as SupabaseClient;
-  return { client, signInWithOtp, verifyOtp, signInWithOAuth };
+  return { client, signInWithOtp, signInWithOAuth };
 }
 
 async function renderSignIn(
   client: SupabaseClient,
   openOAuthUrl = vi.fn(),
-  emailLinkSupported = true,
 ) {
   const host = document.createElement("div");
   document.body.appendChild(host);
@@ -64,9 +62,8 @@ async function renderSignIn(
       <CloudSignIn
         client={client}
         capabilities={{ apple: true, email: true }}
-        emailRedirectTo="ghost-md://auth/callback"
-        emailLinkSupported={emailLinkSupported}
-        oauthRedirectTo="ghost-md://auth/callback"
+        emailRedirectTo="https://ghosteditor.app/auth/native/callback/"
+        oauthRedirectTo="https://ghosteditor.app/auth/native/callback/"
         openOAuthUrl={openOAuthUrl}
       />,
     );
@@ -75,7 +72,7 @@ async function renderSignIn(
 }
 
 describe("Cloud passwordless sign in", () => {
-  it("sends and verifies an email code without asking for a password", async () => {
+  it("sends a magic link without asking for a password or paid email template", async () => {
     const auth = createAuthClient();
     const { host } = await renderSignIn(auth.client);
     expect(host.querySelector('input[type="password"]')).toBeNull();
@@ -89,21 +86,13 @@ describe("Cloud passwordless sign in", () => {
       email: "person@example.com",
       options: {
         shouldCreateUser: true,
-        emailRedirectTo: "ghost-md://auth/callback",
+        emailRedirectTo: "https://ghosteditor.app/auth/native/callback/",
       },
     });
 
-    const code = host.querySelector<HTMLInputElement>('input[aria-label="Six-digit code"]');
-    if (!code) throw new Error("Code input did not render");
-    await inputText(code, "123456");
-    await act(async () => {
-      code.form?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
-    expect(auth.verifyOtp).toHaveBeenCalledWith({
-      email: "person@example.com",
-      token: "123456",
-      type: "email",
-    });
+    expect(host.querySelector('input[aria-label="Six-digit code"]')).toBeNull();
+    expect(host.querySelector('[role="status"]')?.textContent).toContain("sign-in link");
+    expect(host.textContent).toContain("person@example.com");
   });
 
   it("opens Apple OAuth externally with the Mac callback", async () => {
@@ -115,25 +104,13 @@ describe("Cloud passwordless sign in", () => {
     expect(auth.signInWithOAuth).toHaveBeenCalledWith({
       provider: "apple",
       options: {
-        redirectTo: "ghost-md://auth/callback",
+        redirectTo: "https://ghosteditor.app/auth/native/callback/",
         skipBrowserRedirect: true,
       },
     });
     expect(openOAuthUrl).toHaveBeenCalledWith(
       "https://project.supabase.co/auth/v1/authorize",
     );
-  });
-
-  it("explains the required OTP template when a development link cannot return to Mac", async () => {
-    const auth = createAuthClient();
-    const { host } = await renderSignIn(auth.client, vi.fn(), false);
-    const email = host.querySelector<HTMLInputElement>('input[aria-label="Email"]');
-    if (!email) throw new Error("Email input did not render");
-
-    await inputText(email, "person@example.com");
-    await act(async () => buttonWithText(host, "Continue with email").click());
-
-    expect(host.querySelector('[role="status"]')?.textContent).toContain("{{ .Token }}");
   });
 });
 
@@ -143,8 +120,17 @@ describe("Mac Cloud auth callback", () => {
       .toEqual({ kind: "code", code: "secret-code" });
     expect(parseMacCloudAuthCallback("ghost-md://auth/callback?error_description=Denied"))
       .toEqual({ kind: "error", message: "Denied" });
+    expect(parseMacCloudAuthCallback(
+      "https://ghosteditor.app/auth/native/callback/?code=universal-code",
+    )).toEqual({ kind: "code", code: "universal-code" });
+    expect(parseMacCloudAuthCallback(
+      "https://ghosteditor.app/auth/native/callback#error_description=Denied",
+    )).toEqual({ kind: "error", message: "Denied" });
     expect(parseMacCloudAuthCallback("https://example.com/callback?code=secret-code"))
       .toBeNull();
+    expect(parseMacCloudAuthCallback(
+      "http://ghosteditor.app/auth/native/callback/?code=secret-code",
+    )).toBeNull();
     expect(parseMacCloudAuthCallback("ghost-md://different/callback?code=secret-code"))
       .toBeNull();
   });

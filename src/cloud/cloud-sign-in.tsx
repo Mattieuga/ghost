@@ -6,13 +6,12 @@ import {
   type CloudAuthCapabilities,
 } from "@/cloud/cloud-auth";
 
-type EmailStep = "address" | "code";
+type EmailStep = "address" | "sent";
 
 export function CloudSignIn({
   client,
   compact = false,
   emailRedirectTo,
-  emailLinkSupported = true,
   oauthRedirectTo = emailRedirectTo,
   openOAuthUrl = (url) => { window.location.assign(url); },
   externalError = null,
@@ -21,7 +20,6 @@ export function CloudSignIn({
   client: SupabaseClient;
   compact?: boolean;
   emailRedirectTo?: string;
-  emailLinkSupported?: boolean;
   oauthRedirectTo?: string;
   openOAuthUrl?: (url: string) => void | Promise<void>;
   externalError?: string | null;
@@ -32,9 +30,8 @@ export function CloudSignIn({
   );
   const [email, setEmail] = useState("");
   const [sentEmail, setSentEmail] = useState("");
-  const [code, setCode] = useState("");
   const [step, setStep] = useState<EmailStep>("address");
-  const [submitting, setSubmitting] = useState<"apple" | "email" | "code" | null>(null);
+  const [submitting, setSubmitting] = useState<"apple" | "email" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -67,7 +64,7 @@ export function CloudSignIn({
     }
   };
 
-  const sendCode = async (event: FormEvent) => {
+  const sendLink = async (event: FormEvent) => {
     event.preventDefault();
     const normalizedEmail = email.trim();
     setSubmitting("email");
@@ -85,29 +82,8 @@ export function CloudSignIn({
         return;
       }
       setSentEmail(normalizedEmail);
-      setStep("code");
-      setMessage(emailLinkSupported
-        ? "Check your email for a six-digit code or sign-in link."
-        : "Enter the six-digit code from your email. If it only contains a link, " +
-          "add {{ .Token }} to the Supabase Magic Link template.");
-    } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setSubmitting(null);
-    }
-  };
-
-  const verifyCode = async (event: FormEvent) => {
-    event.preventDefault();
-    setSubmitting("code");
-    setMessage(null);
-    try {
-      const { error } = await client.auth.verifyOtp({
-        email: sentEmail,
-        token: code.trim(),
-        type: "email",
-      });
-      if (error) setMessage(error.message);
+      setStep("sent");
+      setMessage("Check your email and follow the sign-in link.");
     } catch (reason) {
       setMessage(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -117,7 +93,6 @@ export function CloudSignIn({
 
   const changeEmail = () => {
     setStep("address");
-    setCode("");
     setMessage(null);
   };
 
@@ -160,7 +135,7 @@ export function CloudSignIn({
       </div>
 
       {step === "address" ? (
-        <form className="space-y-2.5" onSubmit={(event) => void sendCode(event)}>
+        <form className="space-y-2.5" onSubmit={(event) => void sendLink(event)}>
           <input
             aria-label="Email"
             type="email"
@@ -181,33 +156,10 @@ export function CloudSignIn({
           </button>
         </form>
       ) : (
-        <form className="space-y-2.5" onSubmit={(event) => void verifyCode(event)}>
+        <div className="space-y-2.5">
           <p className="text-xs leading-5 text-muted-foreground">
-            Enter the code sent to <span className="text-foreground">{sentEmail}</span>.
+            We sent a sign-in link to <span className="text-foreground">{sentEmail}</span>.
           </p>
-          <input
-            aria-label="Six-digit code"
-            type="text"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            pattern="[0-9]{6}"
-            minLength={6}
-            maxLength={6}
-            required
-            autoFocus
-            disabled={submitting !== null}
-            value={code}
-            onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-center font-mono text-base tracking-[0.35em] outline-none focus:border-ring disabled:opacity-50"
-            placeholder="000000"
-          />
-          <button
-            type="submit"
-            disabled={submitting !== null || code.length !== 6}
-            className="h-9 w-full rounded-md border border-border bg-secondary px-3 text-xs font-semibold text-secondary-foreground hover:bg-accent disabled:opacity-50"
-          >
-            {submitting === "code" ? "Checking…" : "Continue"}
-          </button>
           <button
             type="button"
             className="w-full text-center text-[11px] text-muted-foreground hover:text-foreground"
@@ -215,7 +167,7 @@ export function CloudSignIn({
           >
             Use a different email
           </button>
-        </form>
+        </div>
       )}
 
       {visibleMessage ? (

@@ -44,7 +44,11 @@ beforeEach(() => {
 
 describe("Mac Cloud authentication storage", () => {
   it("persists the Supabase session in app data without invoking Keychain commands", async () => {
-    const { getMacCloudClient } = await import("../src/cloud/mac-cloud-client");
+    const { getMacCloudClient, MAC_CLOUD_AUTH_REDIRECT_URL } =
+      await import("../src/cloud/mac-cloud-client");
+    expect(MAC_CLOUD_AUTH_REDIRECT_URL).toBe(
+      "https://ghosteditor.app/auth/native/callback/",
+    );
     expect(getMacCloudClient()).toEqual({ client: "mac" });
 
     const options = mocks.createClient.mock.calls[0]?.[2] as {

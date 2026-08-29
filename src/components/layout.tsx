@@ -1370,7 +1370,6 @@ export function GhostLayout() {
               client={cloudClient}
               compact
               emailRedirectTo={MAC_CLOUD_AUTH_REDIRECT_URL}
-              emailLinkSupported={!__GHOST_DEV_BUILD__}
               oauthRedirectTo={MAC_CLOUD_AUTH_REDIRECT_URL}
               openOAuthUrl={openMacCloudOAuthUrl}
               externalError={cloudAuthCallbackError}

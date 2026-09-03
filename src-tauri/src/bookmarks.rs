@@ -38,7 +38,8 @@ pub fn resolve_bookmark(bytes: &[u8]) -> Result<ResolvedBookmark, String> {
     let url = unsafe {
         NSURL::URLByResolvingBookmarkData_options_relativeToURL_bookmarkDataIsStale_error(
             &data,
-            NSURLBookmarkResolutionOptions::WithoutUI,
+            // Never mount a volume to answer; an absent share reports as unavailable.
+            NSURLBookmarkResolutionOptions::WithoutUI | NSURLBookmarkResolutionOptions::WithoutMounting,
             None,
             &mut stale,
         )
@@ -61,17 +62,23 @@ pub fn resolve_bookmark(_bytes: &[u8]) -> Result<ResolvedBookmark, String> {
     Err("Folder bookmarks are only available on macOS".to_string())
 }
 
+// Both run on a blocking thread: resolution can touch the disk or the
+// network, and the main thread paints the window.
 #[tauri::command]
-pub fn create_folder_bookmark(path: String) -> Result<String, String> {
-    Ok(STANDARD.encode(create_bookmark(&path)?))
+pub async fn create_folder_bookmark(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || create_bookmark(&path).map(|data| STANDARD.encode(data)))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub fn resolve_folder_bookmark(bookmark: String) -> Result<ResolvedBookmark, String> {
+pub async fn resolve_folder_bookmark(bookmark: String) -> Result<ResolvedBookmark, String> {
     let bytes = STANDARD
         .decode(bookmark.as_bytes())
         .map_err(|error| format!("The bookmark is not valid base64: {error}"))?;
-    resolve_bookmark(&bytes)
+    tauri::async_runtime::spawn_blocking(move || resolve_bookmark(&bytes))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[cfg(all(test, target_os = "macos"))]
@@ -95,7 +102,7 @@ mod tests {
         assert_eq!(fs::canonicalize(&resolved.path).unwrap(), expected);
 
         let encoded = STANDARD.encode(&bookmark);
-        assert_eq!(resolve_folder_bookmark(encoded).unwrap().path, resolved.path);
+        assert_eq!(tauri::async_runtime::block_on(resolve_folder_bookmark(encoded)).unwrap().path, resolved.path);
 
         let _ = fs::remove_dir_all(&base);
     }

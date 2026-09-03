@@ -16,6 +16,9 @@
 -- 7. Invitations attach only to confirmed email addresses.
 -- 8. Uploaded version timestamps are clamped to now, so a clock in the
 --    future cannot suppress automatic versions.
+-- 9. An item name is one path segment: never '.', '..', or '.ghost', and
+--    never a separator or control character, because a member's Mac turns
+--    it into a path under its Shared root.
 
 -- 1. Duplicate into an editable parent only.
 create or replace function public.cloud_duplicate_item(target_item_id uuid)
@@ -418,6 +421,16 @@ drop trigger if exists cloud_document_versions_clamped on public.cloud_document_
 create trigger cloud_document_versions_clamped
 before insert on public.cloud_document_versions
 for each row execute function private.cloud_clamp_version_time();
+
+-- 9. Names stay within one path segment.
+alter table public.cloud_items drop constraint if exists cloud_items_name_safe;
+alter table public.cloud_items
+  add constraint cloud_items_name_safe
+  check (
+    name not in ('.', '..')
+    and lower(name) <> '.ghost'
+    and name !~ '[[:cntrl:]/\\]'
+  );
 
 revoke all on function private.cloud_require_root_owner(uuid, uuid) from public, anon, authenticated;
 revoke all on function private.cloud_order_document_updates() from public, anon, authenticated;

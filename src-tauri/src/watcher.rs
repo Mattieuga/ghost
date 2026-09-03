@@ -9,7 +9,7 @@
 
 use notify::event::{ModifyKind, RenameMode};
 use notify::{EventKind, RecommendedWatcher, RecursiveMode};
-use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, RecommendedCache};
+use notify_debouncer_full::{new_debouncer_opt, DebounceEventResult, Debouncer, NoCache};
 use serde::Serialize;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
@@ -18,9 +18,24 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::own_writes::OwnWriteRegistry;
 
+/// A watched root as the frontend spelled it and as the platform reports
+/// it. FSEvents delivers canonical paths (`/private/tmp`, symlinks
+/// resolved), so events are rewritten back to the given spelling before
+/// they leave here.
+#[derive(Debug, Clone)]
+pub struct WatchedRoot {
+    pub given: PathBuf,
+    pub canonical: PathBuf,
+}
+
+/// The debouncer runs without a file-id cache: building one walks every
+/// watched folder, symlinks included, which is far too much for an open
+/// code checkout. Renames therefore arrive unpaired, as a remove and a
+/// create, which the frontend already handles; synced roots pair them by
+/// content hash.
 pub struct WatcherState {
-    pub watched_paths: Mutex<Vec<PathBuf>>,
-    _watcher: Mutex<Option<Debouncer<RecommendedWatcher, RecommendedCache>>>,
+    pub watched_paths: Mutex<Vec<WatchedRoot>>,
+    _watcher: Mutex<Option<Debouncer<RecommendedWatcher, NoCache>>>,
 }
 
 impl WatcherState {
@@ -139,26 +154,51 @@ fn dispatch(app: &AppHandle, result: DebounceEventResult) {
             return;
         }
     };
-    let roots: Vec<PathBuf> = app
+    let watched: Vec<WatchedRoot> = app
         .state::<WatcherState>()
         .watched_paths
         .lock()
         .map(|paths| paths.clone())
         .unwrap_or_default();
+    let roots: Vec<PathBuf> = watched.iter().map(|root| root.given.clone()).collect();
     let own_writes = app.state::<OwnWriteRegistry>();
+    let as_given = |path: &Path| -> PathBuf {
+        for root in &watched {
+            if root.canonical != root.given {
+                if let Ok(rest) = path.strip_prefix(&root.canonical) {
+                    return root.given.join(rest);
+                }
+            }
+        }
+        path.to_path_buf()
+    };
 
     for debounced in events {
-        for event in map_event(&debounced.kind, &debounced.paths) {
+        let paths: Vec<PathBuf> = debounced.paths.iter().map(|path| as_given(path)).collect();
+        for event in map_event(&debounced.kind, &paths) {
             let path = Path::new(&event.path);
             if should_ignore(&roots, path) {
                 continue;
             }
-            // Atomic saves end in a rename onto the target, so a rename that
-            // lands on a file Ghost just wrote is Ghost's own too.
-            if matches!(event.kind, FsEventKind::Create | FsEventKind::Modify | FsEventKind::Rename)
-                && own_writes.is_own_write(path)
-            {
+            // Ghost's own writes: a create or modify carrying the stamp it
+            // recorded, or a rename whose source is its own temp file. A
+            // rename by another app keeps the stamp, so the stamp alone must
+            // not silence it.
+            let own = match event.kind {
+                FsEventKind::Create | FsEventKind::Modify => own_writes.is_own_write(path),
+                FsEventKind::Rename => event
+                    .from
+                    .as_deref()
+                    .and_then(|from| Path::new(from).file_name())
+                    .map(|name| is_ignored_file_name(&name.to_string_lossy()))
+                    .unwrap_or(false),
+                _ => false,
+            };
+            if own {
                 continue;
+            }
+            if let Some(from) = &event.from {
+                let _ = app.emit("fs-change", from.clone());
             }
             let _ = app.emit("fs-change", event.path.clone());
             let _ = app.emit("fs-event", event);
@@ -171,10 +211,12 @@ pub async fn watch_directories(app: AppHandle, paths: Vec<String>) -> Result<(),
     let state = app.state::<WatcherState>();
 
     let handler_app = app.clone();
-    let mut debouncer = new_debouncer(
+    let mut debouncer = new_debouncer_opt::<_, RecommendedWatcher, NoCache>(
         Duration::from_millis(500),
         None,
         move |result: DebounceEventResult| dispatch(&handler_app, result),
+        NoCache,
+        notify::Config::default(),
     )
     .map_err(|e| format!("Failed to create watcher: {}", e))?;
 
@@ -185,7 +227,8 @@ pub async fn watch_directories(app: AppHandle, paths: Vec<String>) -> Result<(),
             debouncer
                 .watch(&path, RecursiveMode::Recursive)
                 .map_err(|e| format!("Failed to watch {}: {}", path_str, e))?;
-            watched_now.push(path);
+            let canonical = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+            watched_now.push(WatchedRoot { given: path, canonical });
         }
     }
 

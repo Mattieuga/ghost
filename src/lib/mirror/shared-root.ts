@@ -22,6 +22,26 @@ export interface SharedRootPlan {
   folders: Record<string, string>;
 }
 
+/**
+ * A name from another account's Cloud becomes a path segment on this Mac,
+ * so it must be exactly one segment: no separators, no `.` or `..`, never
+ * Ghost's own metadata folder, no control characters.
+ */
+export function isSafeSharedName(name: string): boolean {
+  return name.length > 0
+    && name !== "."
+    && name !== ".."
+    && name.toLowerCase() !== ".ghost"
+    // eslint-disable-next-line no-control-regex
+    && !/[/\\\u0000-\u001f]/.test(name);
+}
+
+function safeSuffix(text: string | null): string {
+  // eslint-disable-next-line no-control-regex
+  const cleaned = (text ?? "").replace(/[/\\()\u0000-\u001f]/g, " ").trim();
+  return cleaned || "shared";
+}
+
 function withSuffix(name: string, suffix: string, isDocument: boolean): string {
   const dot = isDocument ? name.lastIndexOf(".") : -1;
   return dot > 0 ? `${name.slice(0, dot)} (${suffix})${name.slice(dot)}` : `${name} (${suffix})`;
@@ -47,14 +67,18 @@ export function planSharedRoot(visible: VisibleCloudItem[]): SharedRootPlan {
       return;
     }
     plan.folders[relativePath] = item.id;
-    for (const child of (children.get(item.id) ?? []).sort(byName)) place(child, `${relativePath}/${child.name}`);
+    for (const child of (children.get(item.id) ?? []).sort(byName)) {
+      if (!isSafeSharedName(child.name)) continue;
+      place(child, `${relativePath}/${child.name}`);
+    }
   };
 
   const taken = new Map<string, string>();
   for (const root of shared.filter((item) => item.shared_root_id === item.id).sort(byName)) {
+    if (!isSafeSharedName(root.name)) continue;
     let name = root.name;
     const owner = taken.get(name.toLowerCase());
-    if (owner && owner !== root.id) name = withSuffix(name, root.shared_by ?? "shared", root.kind === "document");
+    if (owner && owner !== root.id) name = withSuffix(name, safeSuffix(root.shared_by), root.kind === "document");
     taken.set(name.toLowerCase(), root.id);
     place(root, name);
   }

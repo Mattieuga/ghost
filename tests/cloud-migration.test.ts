@@ -245,6 +245,12 @@ describe("Review hardening migration", () => {
     expect(hardeningMigration).toContain("shared.depth desc, shared.shared_root_id");
   });
 
+  it("keeps item names to one safe path segment", () => {
+    expect(hardeningMigration).toContain("add constraint cloud_items_name_safe");
+    expect(hardeningMigration).toContain("name not in ('.', '..')");
+    expect(hardeningMigration).toContain("lower(name) <> '.ghost'");
+  });
+
   it("attaches invitations only to confirmed addresses and clamps version times", () => {
     expect(hardeningMigration).toContain("account.email_confirmed_at is not null");
     expect(hardeningMigration).toContain("new.created_at := least(new.created_at, now());");

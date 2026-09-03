@@ -20,6 +20,19 @@ const SOURCE_LINE_SCAN_LIMIT: u64 = 5_000_001;
 // beyond this boundary are probed only; scanning the full file here would
 // defeat the fast bounded-viewer path selected by the frontend.
 const EXTREME_SOURCE_BYTES: u64 = 128 * 1024 * 1024;
+/// Paths reach these commands from the frontend already resolved. A `..`
+/// component can only mean an untrusted name leaked into a path, so every
+/// command that changes the filesystem refuses it.
+fn reject_parent_dir(path: &str) -> Result<(), String> {
+    if Path::new(path)
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err("Paths may not contain '..'".to_string());
+    }
+    Ok(())
+}
+
 /// Per-folder Ghost metadata. Never listed, even when hidden files are shown.
 pub const GHOST_METADATA_DIR: &str = ".ghost";
 
@@ -1398,6 +1411,7 @@ pub async fn begin_source_save(
     expected_version: Option<FileVersionToken>,
     force: Option<bool>,
 ) -> Result<SourceSaveHandle, WriteFileError> {
+    reject_parent_dir(&path).map_err(WriteFileError::io)?;
     let target_path = fs::canonicalize(&path)
         .map_err(|error| WriteFileError::io(format!("Failed to prepare save: {}", error)))?;
     if !force.unwrap_or(false) {
@@ -1584,6 +1598,7 @@ pub async fn write_file(
     expected_version: Option<FileVersionToken>,
     force: Option<bool>,
 ) -> Result<FileVersionToken, WriteFileError> {
+    reject_parent_dir(&path).map_err(WriteFileError::io)?;
     if content.len() as u64 > COMPLETE_TEXT_READ_MAX_BYTES {
         return Err(WriteFileError::io(format!(
             "Complete string saves are limited to {} MiB; use the streaming source saver",
@@ -1608,6 +1623,8 @@ pub async fn write_file(
 
 #[tauri::command]
 pub async fn create_file(dir: String, name: String) -> Result<String, String> {
+    reject_parent_dir(&dir)?;
+    reject_parent_dir(&name)?;
     validate_name(&name)?;
     let file_path = Path::new(&dir).join(&name);
     if file_path.exists() {
@@ -1619,6 +1636,8 @@ pub async fn create_file(dir: String, name: String) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn create_directory(parent: String, name: String) -> Result<String, String> {
+    reject_parent_dir(&parent)?;
+    reject_parent_dir(&name)?;
     validate_name(&name)?;
     let dir_path = Path::new(&parent).join(&name);
     if dir_path.exists() {
@@ -1652,6 +1671,7 @@ pub fn conflict_copy_path(path: &Path, label: &str) -> PathBuf {
 
 #[tauri::command]
 pub async fn write_conflict_copy(path: String, content: String, label: String) -> Result<String, String> {
+    reject_parent_dir(&path)?;
     if label.is_empty() || label.contains('/') || label.contains("..") {
         return Err("Invalid conflict label".to_string());
     }
@@ -1691,6 +1711,7 @@ pub fn hash_text_content(text: String) -> String {
 /// an existing directory is not an error.
 #[tauri::command]
 pub async fn ensure_directory(path: String) -> Result<(), String> {
+    reject_parent_dir(&path)?;
     fs::create_dir_all(&path).map_err(|error| format!("Failed to create {}: {}", path, error))
 }
 
@@ -1698,6 +1719,7 @@ pub async fn ensure_directory(path: String) -> Result<(), String> {
 /// Version history is pruned this way; user files never go through here.
 #[tauri::command]
 pub async fn remove_ghost_metadata_file(path: String) -> Result<(), String> {
+    reject_parent_dir(&path)?;
     let target = Path::new(&path);
     let inside_ghost = target
         .components()
@@ -1798,6 +1820,8 @@ fn trash_backup(backup: Option<PathBuf>) {
 
 #[tauri::command]
 pub async fn move_file(file_path: String, target_dir: String, force: Option<bool>) -> Result<String, String> {
+    reject_parent_dir(&file_path)?;
+    reject_parent_dir(&target_dir)?;
     let source = Path::new(&file_path);
     if !source.exists() {
         return Err("Source no longer exists".to_string());
@@ -1862,6 +1886,8 @@ pub async fn move_file(file_path: String, target_dir: String, force: Option<bool
 
 #[tauri::command]
 pub async fn rename_file(old_path: String, new_name: String) -> Result<String, String> {
+    reject_parent_dir(&old_path)?;
+    reject_parent_dir(&new_name)?;
     validate_name(&new_name)?;
     let old = Path::new(&old_path);
     let old_is_file = old.is_file();
@@ -1915,6 +1941,7 @@ pub async fn rename_file(old_path: String, new_name: String) -> Result<String, S
 
 #[tauri::command]
 pub async fn delete_file(path: String) -> Result<(), String> {
+    reject_parent_dir(&path)?;
     let path = Path::new(&path);
     let mut items = vec![path.to_path_buf()];
     if let Some(assets) = companion_assets_path(path).filter(|assets| assets.is_dir()) {
@@ -1925,6 +1952,7 @@ pub async fn delete_file(path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn duplicate_file(path: String) -> Result<String, String> {
+    reject_parent_dir(&path)?;
     let source = Path::new(&path);
     let parent = source.parent().ok_or("Cannot determine parent directory")?;
 
@@ -2040,6 +2068,8 @@ pub async fn duplicate_file(path: String) -> Result<String, String> {
 /// the "Copy to Notes" and "Save a copy" bridge: always a copy, never a link.
 #[tauri::command]
 pub async fn copy_file_into(source: String, target_dir: String) -> Result<String, String> {
+    reject_parent_dir(&source)?;
+    reject_parent_dir(&target_dir)?;
     let source = Path::new(&source);
     let target_dir = Path::new(&target_dir);
     if !source.is_file() {
@@ -2189,6 +2219,8 @@ fn reserve_image_asset(active_file: &Path, filename: &str) -> Result<(String, Pa
 
 #[tauri::command]
 pub async fn save_image(active_file: String, filename: String, data: Vec<u8>) -> Result<String, String> {
+    reject_parent_dir(&active_file)?;
+    reject_parent_dir(&filename)?;
     if data.len() > INLINE_IMAGE_IMPORT_MAX_BYTES {
         return Err(format!(
             "Clipboard and browser image imports are limited to {} MiB; use the file picker for larger images",
@@ -2203,6 +2235,8 @@ pub async fn save_image(active_file: String, filename: String, data: Vec<u8>) ->
 
 #[tauri::command]
 pub async fn save_image_from_path(active_file: String, source_path: String) -> Result<String, String> {
+    reject_parent_dir(&active_file)?;
+    reject_parent_dir(&source_path)?;
     let source = Path::new(&source_path);
     if !source.is_file() {
         return Err("The selected image is no longer a file".to_string());

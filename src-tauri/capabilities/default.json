@@ -5,10 +5,6 @@
   "windows": ["main", "editor-*"],
   "permissions": [
     "core:default",
-    "core:webview:allow-create-webview-window",
-    "core:window:allow-show",
-    "core:window:allow-unminimize",
-    "core:window:allow-set-focus",
     "core:window:allow-start-dragging",
     "core:window:allow-set-size-constraints",
     "core:window:allow-set-size",

@@ -71,10 +71,9 @@ export default defineConfig(async ({ command }) => ({
   clearScreen: false,
   build: {
     rollupOptions: {
-      input: {
-        desktop: path.resolve(__dirname, "index.html"),
-        app: path.resolve(__dirname, "app.html"),
-      },
+      // The desktop bundle is the desktop entry only; the browser client is
+      // built by vite.web.config.ts and served by the dev server as app.html.
+      input: { desktop: path.resolve(__dirname, "index.html") },
     },
   },
   server: {

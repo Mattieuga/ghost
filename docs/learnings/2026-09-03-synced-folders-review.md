@@ -10,6 +10,9 @@ The 2026-09-03 review of the synced-folders and sharing work (rationale in the [
 - A record with no version is not permission to write. It means nobody has established what the file holds.
 - Launch order matters: reconciliation ran before the session was restored, so "signed out" was the state for the first pass on every launch.
 - On the server, authorizing the source of an operation is not authorizing its destination. Duplicate wrote into the parent; trash and rename accepted a root from an editor.
+- A name from someone else's Cloud is untrusted input to the filesystem. It must be one path segment, checked on both sides, and the native commands must refuse `..` regardless.
+- Suppressing a watcher event by file stamp is right for writes and wrong for renames: a rename keeps the stamp, so another app's rename looked like Ghost's own.
+- A file-id cache for rename pairing walks every watched folder, symlinks included. That is fine for a notes folder and disastrous for an open code checkout.
 - Identity columns are assigned at insert, not commit. "Everything after ID n" can skip a row committed later with a smaller ID.
 
 ## The pull resurrected deleted files
@@ -35,3 +38,15 @@ The 2026-09-03 review of the synced-folders and sharing work (rationale in the [
 ## Update IDs are not commit order
 
 **Symptom:** none seen, found by reading. Two editors insert concurrently; the one with the smaller ID commits second; a client that already read past it never fetches it. **Fix:** a before-insert trigger takes a per-document advisory lock and assigns the ID under it, so ID order is commit order.
+
+## A sharer's folder names became paths on the member's Mac
+
+**Symptom:** none seen, found by reading. A shared folder named `..` under another `..` would have written the shared note into the member's home folder, and trashed it on revoke. **Cause:** `planSharedRoot` joined item names into relative paths, and the native write, move, and trash commands accept any absolute path. **Fix:** names that are not one safe path segment are skipped with their subtree, the server rejects them with a check constraint, and every mutating native command refuses a `..` component.
+
+## Own-write suppression swallowed external renames
+
+**Symptom:** rename a note in Finder within ten seconds of saving it in Ghost and nothing happens: the sidebar keeps the old name and the editor keeps writing to it. **Cause:** a rename keeps the inode and modification time that the own-write registry matched on. **Fix:** a rename counts as Ghost's own only when its source is Ghost's temp file; the stamp is used for creates and modifies alone.
+
+## Watching a code checkout walked it whole
+
+**Symptom:** opening a large folder made the app unresponsive for a while. **Cause:** the debouncer's file-id cache, used to pair renames, walks every watched folder on registration and follows symlinks. **Fix:** no cache. Renames arrive as a remove and a create, which the tree already handles and synced roots pair by content hash. Watched roots are also canonicalized, so events under `/tmp` or a symlinked folder are matched to the root they came from.

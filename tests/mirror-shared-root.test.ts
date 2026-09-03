@@ -39,6 +39,27 @@ describe("planSharedRoot", () => {
   });
 });
 
+describe("planSharedRoot safety", () => {
+  it("drops names that could leave the Shared root, and their subtrees", () => {
+    const up = item({ id: "up", name: "..", kind: "folder" });
+    const inside = item({ id: "inside", name: "Plan.md", parent_id: "up", shared_root_id: "up" });
+    const ghost = item({ id: "g", name: ".ghost", kind: "folder" });
+    const slash = item({ id: "s", name: "a/b.md" });
+    const nested = item({ id: "n", name: "Ok", kind: "folder" });
+    const nestedBad = item({ id: "nb", name: "..", kind: "folder", parent_id: "n", shared_root_id: "n" });
+    const nestedDoc = item({ id: "nd", name: "x.md", parent_id: "nb", shared_root_id: "n" });
+    const evilSharer = item({ id: "e1", name: "Trip.md", shared_by: "../../x" });
+    const other = item({ id: "e2", name: "Trip.md", shared_by: "Sam" });
+
+    // Same names sort stably, so the later share takes the sharer suffix.
+    const plan = planSharedRoot([up, inside, ghost, slash, nested, nestedBad, nestedDoc, other, evilSharer]);
+
+    expect(Object.keys(plan.documents).sort()).toEqual(["Trip (.. .. x).md", "Trip.md"]);
+    expect(plan.documents["Trip (.. .. x).md"].id).toBe("e1");
+    expect(plan.folders).toEqual({ Ok: "n" });
+  });
+});
+
 describe("refreshSharedRoot", () => {
   it("adds, moves, and trashes files to match what is shared, then pulls content", async () => {
     const { fs, files, trashed, moves } = memoryFs({

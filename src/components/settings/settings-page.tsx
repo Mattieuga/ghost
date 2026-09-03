@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
-import { createPortal } from "react-dom";
-import { Settings2, Type, Palette, UserRound, X } from "lucide-react";
+import { useState } from "react";
+import { Settings2, Type, Palette, UserRound } from "lucide-react";
+import { FloatingPanel } from "@/components/ui/floating-panel";
 import { cn } from "@/lib/utils";
 import type { Settings } from "@/hooks/use-settings";
 import type { ThemePreset } from "@/lib/theme-engine";
@@ -47,50 +47,13 @@ export function SettingsPage({
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const compact = useCompactMode();
 
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose]);
-
-  return createPortal(
-    <>
-      {/* Backdrop */}
-      <div
-        data-native-view-overlay
-        className="fixed inset-0 z-50 bg-black/60 animate-in fade-in-0 duration-150"
-        onClick={onClose}
-      />
-
-      {/* Floating panel */}
-      <div
-        className="fixed left-1/2 z-50 -translate-x-1/2 animate-in fade-in-0 zoom-in-95 duration-150"
-        style={{ top: "min(12%, calc(100vh - 520px))", width: compact ? "calc(100vw - 1.5rem)" : 520, maxWidth: "calc(100vw - 1rem)" }}
-      >
-        <div
-          className="rounded-xl border border-border bg-popover shadow-2xl overflow-hidden flex flex-col"
-          style={{ maxHeight: "min(72vh, calc(100vh - 2rem))" }}
-        >
-          {/* Header: title + tab bar */}
-          <div className="px-5 pt-5 pb-3 border-b border-border shrink-0">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold">Settings</h2>
-              <button
-                onClick={onClose}
-                aria-label="Close"
-                className="text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
-
-            {/* Tab bar */}
-            <div className="flex items-center gap-1">
+  return (
+    <FloatingPanel
+      title="Settings"
+      onClose={onClose}
+      data-settings-panel
+      headerExtra={(
+        <div className="flex items-center gap-1">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
@@ -106,11 +69,9 @@ export function SettingsPage({
                   <span>{tab.label}</span>
                 </button>
               ))}
-            </div>
-          </div>
-
-          {/* Tab content */}
-          <div className="overflow-y-auto p-5">
+        </div>
+      )}
+    >
             {activeTab === "general" && (
               <GeneralTab
                 settings={settings}
@@ -138,10 +99,6 @@ export function SettingsPage({
                 compact={compact}
               />
             )}
-          </div>
-        </div>
-      </div>
-    </>,
-    document.body,
+    </FloatingPanel>
   );
 }

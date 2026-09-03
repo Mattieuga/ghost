@@ -16,14 +16,7 @@ import {
 import type { TrackedRoot } from "@/hooks/use-tracked-folders";
 import { SettingRow, SettingSelect, SettingSwitch } from "@/components/settings/setting-row";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { FloatingPanel } from "@/components/ui/floating-panel";
 import { Input } from "@/components/ui/input";
 
 export interface SignInSurfaceProps {
@@ -188,8 +181,8 @@ export function SharePanel({
         : "Only people you invite can open it.";
 
   return (
-    <div className="mt-2 space-y-5 text-sm" data-share-panel>
-      <div className="space-y-4">
+    <div className="space-y-4 text-sm" data-share-panel>
+      <div className="rounded-xl border bg-card p-6 space-y-4">
         <SettingRow label="Anyone with the link" description={linkDescription}>
           <SettingSwitch
             label="Anyone with the link"
@@ -212,7 +205,7 @@ export function SharePanel({
         </SettingRow>
       </div>
 
-      <div className="space-y-4">
+      <div className="rounded-xl border bg-card p-6 space-y-4">
         <SettingRow label="People" description="Invite someone by email. They open it after signing in." />
         <form className="flex gap-2" onSubmit={invite}>
           <Input
@@ -273,7 +266,7 @@ export function SharePanel({
         ))}
       </div>
 
-      <p className={`min-h-5 text-xs ${error ? "text-destructive" : "text-muted-foreground"}`} role={error ? "alert" : "status"}>
+      <p className={`min-h-5 px-1 text-xs ${error ? "text-destructive" : "text-muted-foreground"}`} role={error ? "alert" : "status"}>
         {error ?? notice ?? ""}
       </p>
     </div>
@@ -316,66 +309,47 @@ export function ShareSheet({
   const folderName = root ? nameOf(root.path) : null;
 
   let title: string;
-  let body: React.ReactNode;
-  let footer: React.ReactNode;
+  let description: React.ReactNode = null;
+  let body: React.ReactNode = null;
+  let footer: React.ReactNode = null;
 
   if (!client) {
     title = "Sharing isn't available";
-    body = (
-      <DialogDescription>
-        This build of Ghost has no Cloud configured, so notes stay on this Mac.
-      </DialogDescription>
-    );
-    footer = <Button variant="outline" onClick={onClose}>Close</Button>;
+    description = "This build of Ghost has no Cloud configured, so notes stay on this Mac.";
   } else if (account.kind === "signed-out" || account.kind === "loading" || account.kind === "error") {
     title = "Sign in to share";
+    description = "Sharing and your phone need an account. Your notes stay where they are; signing in only adds Cloud on top.";
     body = (
-      <>
-        <DialogDescription>
-          Sharing and your phone need an account. Your notes stay where they are; signing
-          in only adds Cloud on top.
-        </DialogDescription>
-        <div className="mt-2" data-share-sign-in>
-          <CloudSignIn
-            client={client}
-            emailRedirectTo={signIn.emailRedirectTo}
-            oauthRedirectTo={signIn.oauthRedirectTo}
-            openOAuthUrl={signIn.openOAuthUrl}
-            externalError={account.kind === "error" ? account.message : signIn.externalError}
-            onCallbackUrl={signIn.completeCallback}
-          />
-        </div>
-      </>
+      <div className="rounded-xl border bg-card p-6 [&>div]:max-w-none [&>div]:border-0 [&>div]:bg-transparent [&>div]:p-0 [&>div]:shadow-none" data-share-sign-in>
+        <CloudSignIn
+          client={client}
+          emailRedirectTo={signIn.emailRedirectTo}
+          oauthRedirectTo={signIn.oauthRedirectTo}
+          openOAuthUrl={signIn.openOAuthUrl}
+          externalError={account.kind === "error" ? account.message : signIn.externalError}
+          onCallbackUrl={signIn.completeCallback}
+        />
+      </div>
     );
-    footer = <Button variant="outline" onClick={onClose}>Not now</Button>;
   } else if (root && root.kind === "mirrored") {
     title = `Share ${itemName}`;
+    description = `On your phone at ${webAppUrl}, signed in as ${account.user.email ?? "you"}.`;
     body = (
-      <>
-        <DialogDescription>
-          On your phone at {webAppUrl}, signed in as {account.user.email ?? "you"}.
-        </DialogDescription>
-        <SharePanel
-          client={client}
-          itemId={cloudItemId ?? null}
-          itemName={itemName}
-          itemKind={target?.kind === "folder" ? "folder" : "document"}
-          webAppUrl={webAppUrl}
-        />
-      </>
+      <SharePanel
+        client={client}
+        itemId={cloudItemId ?? null}
+        itemName={itemName}
+        itemKind={target?.kind === "folder" ? "folder" : "document"}
+        webAppUrl={webAppUrl}
+      />
     );
-    footer = <Button variant="outline" onClick={onClose}>Done</Button>;
   } else {
     title = `Share ${itemName}`;
-    body = (
-      <DialogDescription>
-        {target?.kind === "folder"
-          ? `To share ${itemName}, sync it to Cloud. The folder stays where it is.`
-          : folderName
-            ? `To share ${itemName}, sync ${folderName} to Cloud. The folder stays where it is. Or copy the note into Notes and share it from there.`
-            : `Copy ${itemName} into Notes to share it from there.`}
-      </DialogDescription>
-    );
+    description = target?.kind === "folder"
+      ? `To share ${itemName}, sync it to Cloud. The folder stays where it is.`
+      : folderName
+        ? `To share ${itemName}, sync ${folderName} to Cloud. The folder stays where it is. Or copy the note into Notes and share it from there.`
+        : `Copy ${itemName} into Notes to share it from there.`;
     footer = (
       <>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -397,15 +371,10 @@ export function ShareSheet({
     );
   }
 
+  // The same panel as Settings, with the same cards inside.
   return (
-    <Dialog open onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent data-share-sheet>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          {body}
-        </DialogHeader>
-        <DialogFooter>{footer}</DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <FloatingPanel title={title} description={description} onClose={onClose} footer={footer} width={560} data-share-sheet>
+      {body ?? <div className="text-xs text-muted-foreground">Nothing to share here.</div>}
+    </FloatingPanel>
   );
 }

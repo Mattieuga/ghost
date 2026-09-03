@@ -256,7 +256,7 @@ src-tauri/tauri.conf.json
 
 ## References
 
-- Brainstorm: `docs/brainstorms/2026-03-23-ghost-editor-brainstorm.md`
+- Brainstorm: `docs/discovery/2026-03-23-ghost-editor-brainstorm.md`
 - Tauri v2 docs: https://v2.tauri.app
 - Tiptap docs: https://tiptap.dev/docs
 - shadcn/ui docs: https://ui.shadcn.com

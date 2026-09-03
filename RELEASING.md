@@ -71,7 +71,7 @@ Apple notarization and stapling. The published release contains:
 
 ### 5. Update the landing page
 
-Update the download button URL in `docs/index.html`:
+Update the download button URL in `site/index.html`:
 
 ```html
 <a href="https://github.com/Mattieuga/ghost/releases/download/v<version>/Ghost_<version>_aarch64.dmg" ...>
@@ -80,12 +80,13 @@ Update the download button URL in `docs/index.html`:
 ### 6. Commit and push the landing page
 
 ```sh
-git add docs/index.html
-git commit -m "docs: update download link to v<version>"
+git add site/index.html
+git commit -m "site: update download link to v<version>"
 git push origin main
 ```
 
-GitHub Pages will deploy the updated landing page automatically.
+Vercel deploys the site from `main` automatically; see
+`docs/runbooks/cloud-auth-setup.md` for how the site is assembled.
 
 ### 7. Verify
 

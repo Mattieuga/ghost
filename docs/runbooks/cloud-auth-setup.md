@@ -20,16 +20,16 @@ In **Authentication → URL Configuration**, add these exact development and
 native callback URLs to the redirect allow list:
 
 ```text
-http://localhost:1420/web.html
+http://localhost:1420/app.html
 https://ghosteditor.app/auth/native/callback/
 ghost-md://auth/callback
 ```
 
 Keep `ghost-md://auth/callback` while older builds and the browser fallback are
-in use. Add the deployed web app's own `web.html` URL when it is hosted.
+in use. Add the deployed web app's own `app.html` URL when it is hosted.
 
 The web and Mac clients intentionally use different PKCE callbacks. A browser
-request returns to `web.html`, where that browser owns the verifier. A request
+request returns to `app.html`, where that browser owns the verifier. A request
 from the Mac app returns to the HTTPS native callback. macOS opens the installed
 Ghost app through its associated-domain entitlement, and Ghost exchanges the
 authorization code using the verifier stored by that app.
@@ -52,16 +52,14 @@ It authorizes only `/auth/native/*` for Apple application identifier
 successful status and JSON content type—without a redirect. After deployment,
 verify the live response rather than only the repository copy.
 
-The current marketing site is published by GitHub Pages, which serves the
-extensionless origin file as `application/octet-stream`. The deployed manifest
-was nevertheless fetched and parsed successfully by Apple's associated-domain
-CDN, whose response identifies the origin format as JSON and serves it as
-`application/json`. Treat both live checks as a release gate: verify the origin
-is a direct `200` containing the expected manifest, then verify
-`https://app-site-association.cdn-apple.com/a/v1/ghosteditor.app` contains that
-same manifest. If Apple's CDN ever stops accepting the Pages response, use a
-Cloudflare header transform or static host with configurable headers. The
-custom-scheme fallback continues to work meanwhile.
+The site is served by Vercel from `site/`, and `vercel.json` sets
+`Content-Type: application/json` on the association file. Treat both live
+checks as a release gate: verify the origin is a direct `200` containing the
+expected manifest, then verify
+`https://app-site-association.cdn-apple.com/a/v1/ghosteditor.app` contains
+that same manifest. The custom-scheme fallback continues to work meanwhile.
+(Before 2026-09 the file was served by GitHub Pages as
+`application/octet-stream`, which Apple's CDN accepted.)
 
 Ghost's macOS bundle declares `applinks:ghosteditor.app`. Universal-link testing
 requires the signed app bundle to be installed and launched at least once.
@@ -94,7 +92,7 @@ disables the Apple button, and leaves email magic-link sign-in available.
 
 ## Test matrix
 
-1. Request an email link from local `web.html`, click it in the same browser,
+1. Request an email link from local `app.html`, click it in the same browser,
    and confirm the Cloud account survives a reload.
 2. Install and launch a signed Ghost build, request a fresh email link from its
    Cloud section, and confirm clicking it opens Ghost and signs in.
@@ -114,3 +112,37 @@ disables the Apple button, and leaves email magic-link sign-in available.
 - [Supabase Sign in with Apple](https://supabase.com/docs/guides/auth/social-login/auth-apple)
 - [Apple supporting associated domains](https://developer.apple.com/documentation/xcode/supporting-associated-domains)
 - [Tauri deep linking](https://v2.tauri.app/plugin/deep-linking/)
+
+## Hosting ghosteditor.app (Vercel)
+
+Vercel serves the whole domain. `pnpm build:web` assembles `dist-web/`:
+everything in `site/` as is (the landing page and its images, the native
+auth callback at `/auth/native/callback/`, and the Apple association file
+at `/.well-known/apple-app-site-association`, served as JSON by a header in
+`vercel.json`), plus the browser client at `/app/`, built from the
+`app.html` entry with `/app/` as its base. The desktop entry and the
+project docs under `docs/` are never deployed. `vercel.json` at the
+repository root carries the build settings, so a Vercel project pointed at
+this repository needs only:
+
+- Environment variables `VITE_SUPABASE_URL` and
+  `VITE_SUPABASE_PUBLISHABLE_KEY`, the same two values as `.env.local`.
+  `VITE_GHOST_WEB_URL` overrides the address baked into share links, which
+  defaults to `https://ghosteditor.app/app`.
+- The domain `ghosteditor.app` (and `www` if wanted), with DNS pointed at
+  Vercel. GitHub Pages is then switched off for the repository; the site
+  no longer lives under `docs/`.
+
+Supabase needs the deployed address in Authentication → URL Configuration
+→ Redirect URLs: `https://ghosteditor.app/app/` and, for preview
+deployments, `https://*.vercel.app/app/`. Magic links and OAuth for the web
+client return to the page they started from, and `trailingSlash` in
+`vercel.json` keeps that page at `/app/`.
+
+The universal link for Mac sign-in keeps working across the move as long
+as the association file is reachable at the same path; Apple's CDN
+re-fetches it on its own schedule.
+
+Routes in the browser client are hash-based, so no rewrites are needed:
+`/app/#/d/<documentId>` opens one document and `/app/#share=<token>`
+redeems a share link.

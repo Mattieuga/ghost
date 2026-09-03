@@ -112,7 +112,7 @@ let _: () = msg_send![menu, insertItem: parent_item, atIndex: insert_index];
 
 - `src-tauri/src/context_menu.rs` — The ObjC hook implementation
 - `src-tauri/src/lib.rs:153` — Where the hook is installed during app setup
-- `docs/solutions/ui-bugs/radix-context-menu-focus-stealing.md` — Related: Radix JS-layer context menu issues
+- `docs/learnings/radix-context-menu-focus-stealing.md` — Related: Radix JS-layer context menu issues
 
 ## References
 

@@ -72,8 +72,8 @@ export default defineConfig(async ({ command }) => ({
   build: {
     rollupOptions: {
       input: {
-        app: path.resolve(__dirname, "index.html"),
-        web: path.resolve(__dirname, "web.html"),
+        desktop: path.resolve(__dirname, "index.html"),
+        app: path.resolve(__dirname, "app.html"),
       },
     },
   },

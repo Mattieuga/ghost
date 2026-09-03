@@ -1,8 +1,13 @@
 # Cloud collaboration Phase 0 prototype
 
+> The disposable spike code (`src/spikes/`, its migration, and its adapter
+> test) was removed on 2026-09-02 in Phase 1 of the
+> [synced folders roadmap](../plans/synced-folders-roadmap.md). This document
+> remains as the record of what the spike proved.
+
 - Status: Live Supabase validation in progress; online collaboration and access controls pass
 - Date: 2026-08-26
-- Architecture: [`../architecture/0004-cloud-collaborative-markdown-workspaces.md`](../architecture/0004-cloud-collaborative-markdown-workspaces.md)
+- Architecture: [`../adrs/0004-cloud-collaborative-markdown-workspaces.md`](../adrs/0004-cloud-collaborative-markdown-workspaces.md)
 - Roadmap: [`../plans/cloud-collaboration-roadmap.md`](../plans/cloud-collaboration-roadmap.md)
 
 ## What this spike proves

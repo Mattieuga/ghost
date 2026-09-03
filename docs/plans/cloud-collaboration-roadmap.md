@@ -1,9 +1,18 @@
 # Cloud collaboration roadmap
 
-- Status: In progress; retained Mac/web Cloud vertical slice ready for joint testing
+- Status: Phases 0 to 3 retained as implementation evidence; Phases 4 to 9
+  superseded by [`synced-folders-roadmap.md`](synced-folders-roadmap.md) on
+  2026-09-02
 - Date: 2026-08-25
-- Last updated: 2026-08-28
-- Architecture: [`../architecture/0004-cloud-collaborative-markdown-workspaces.md`](../architecture/0004-cloud-collaborative-markdown-workspaces.md)
+- Last updated: 2026-09-02
+- Architecture: [`../adrs/0004-cloud-collaborative-markdown-workspaces.md`](../adrs/0004-cloud-collaborative-markdown-workspaces.md)
+
+> **Superseded from Phase 4 onward.** [ADR 0005](../adrs/0005-synced-folders.md)
+> replaces the separate-Cloud-source framing and the filesystem stages of
+> this plan. Phases 0 to 3 below record what was built and verified.
+> Sharing, assets, offline hardening, export, the managed Finder location,
+> external edits, and arbitrary-path tracking continue in the
+> [synced folders roadmap](synced-folders-roadmap.md).
 
 ## Goal
 
@@ -100,7 +109,7 @@ Still required before accepting ADR 0004:
   Liveblocks terms.
 
 Setup and the live test script are recorded in
-[`../spikes/cloud-collaboration-prototype.md`](../spikes/cloud-collaboration-prototype.md).
+[`../discovery/cloud-collaboration-prototype.md`](../discovery/cloud-collaboration-prototype.md).
 
 ### Scope
 
@@ -178,7 +187,7 @@ blocked on the remaining Phase 0 gates
   version-checked writes, streamed source writes, and focus reloads through it.
 - Preserved the current Rust file commands and local save/conflict behavior;
   cloud references cannot be passed to this gateway without a type error.
-- Added a separately built `web.html` entry whose loaded bundles contain no
+- Added a separately built `app.html` entry whose loaded bundles contain no
   Tauri runtime imports.
 - Added a shared passwordless email link and Sign in with Apple account flow
   for web and Mac. Browser sessions use browser storage while Mac refresh
@@ -243,7 +252,7 @@ sharing, and recovery remain
   Client flows and native HTTPS callback handling are implemented without
   depending on paid email-template customization; the connected Supabase
   project still needs the redirect allow-list and Apple credentials described in
-  [`../cloud-auth-setup.md`](../cloud-auth-setup.md).
+  [`../cloud-auth-setup.md`](../runbooks/cloud-auth-setup.md).
 - Added the restricted native callback page, AASA manifest, and explicit macOS
   associated-domain entitlement. The callback and manifest are published on
   `ghosteditor.app`; Apple's CDN successfully parses the GitHub Pages origin
@@ -335,7 +344,7 @@ operations remain
   project, including RLS rejection for an unrelated account and cleanup of all
   disposable test data.
 - Recorded the joint manual test in
-  [`../spikes/cloud-web-mac-test.md`](../spikes/cloud-web-mac-test.md).
+  [`../discovery/cloud-web-mac-test.md`](../discovery/cloud-web-mac-test.md).
 
 ### Scope
 

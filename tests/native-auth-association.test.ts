@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const appAssociation = JSON.parse(readFileSync(
-  new URL("../docs/.well-known/apple-app-site-association", import.meta.url),
+  new URL("../site/.well-known/apple-app-site-association", import.meta.url),
   "utf8",
 )) as {
   applinks: {
@@ -58,11 +58,11 @@ describe("native authentication domain association", () => {
 
   it("keeps the hosted fallback page on the registered custom scheme", () => {
     const html = readFileSync(
-      new URL("../docs/auth/native/callback/index.html", import.meta.url),
+      new URL("../site/auth/native/callback/index.html", import.meta.url),
       "utf8",
     );
     const script = readFileSync(
-      new URL("../docs/auth/native/callback/callback.js", import.meta.url),
+      new URL("../site/auth/native/callback/callback.js", import.meta.url),
       "utf8",
     );
     expect(html).toContain('href="ghost-md://auth/callback"');

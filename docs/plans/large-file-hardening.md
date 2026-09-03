@@ -1,7 +1,7 @@
 # Large-file hardening plan
 
 - Created: 2026-08-24
-- Architecture: [`../architecture/0002-bounded-large-file-loading.md`](../architecture/0002-bounded-large-file-loading.md)
+- Architecture: [`../adrs/0002-bounded-large-file-loading.md`](../adrs/0002-bounded-large-file-loading.md)
 - Parent roadmap: [`file-viewer-roadmap.md`](file-viewer-roadmap.md)
 
 ## Goal

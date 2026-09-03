@@ -25,9 +25,9 @@ slices and are not part of this test.
 ## Test
 
 1. Keep the Vite process running with `pnpm dev` and open
-   `http://localhost:1420/web.html` in a browser.
+   `http://localhost:1420/app.html` in a browser.
 2. Enter an email in the web client and follow the sign-in link in the same
-   browser. The link should return to `web.html`; the local web URL must be in
+   browser. The link should return to `app.html`; the local web URL must be in
    the Supabase Auth redirect allow list.
 3. Install and launch a signed Ghost build, then sign in to its Cloud section
    with the same email and a fresh link. Browser and Mac sessions are
@@ -47,7 +47,7 @@ slices and are not part of this test.
    inline rename, trash dialog, and right-click menu treatment. Cloud's section
    header should contain only quick-add plus temporary refresh; sign-out belongs
    to the future account surface.
-7. Reload `web.html`, reopen the document, and confirm the text remains. Close
+7. Reload `app.html`, reopen the document, and confirm the text remains. Close
    and reopen the document in the Mac app and confirm the same state.
 8. Disconnect both clients, make different edits, reconnect them in either
    order, and confirm both show the merged content and return from `Offline` to

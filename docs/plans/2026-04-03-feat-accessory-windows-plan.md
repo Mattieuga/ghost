@@ -312,9 +312,9 @@ Handle the case where the same file is open in multiple windows.
 
 ## References
 
-- [Brainstorm: Accessory Windows](../brainstorms/2026-04-01-accessory-windows-brainstorm.md)
-- [Ghost Architecture & Learnings](../solutions/architecture/ghost-architecture-and-learnings.md)
+- [Brainstorm: Accessory Windows](../discovery/2026-04-01-accessory-windows-brainstorm.md)
+- [Ghost Architecture & Learnings](../learnings/ghost-build-learnings.md)
 - [Tauri v2 WebviewWindowBuilder API](https://docs.rs/tauri/latest/tauri/webview/struct.WebviewWindowBuilder.html)
 - [Tauri v2 Capabilities for Windows](https://v2.tauri.app/learn/security/capabilities-for-windows-and-platforms/)
 - [Tauri v2 Inter-Process Communication](https://v2.tauri.app/concept/inter-process-communication/)
-- Documented learnings: [Window dragging](../solutions/ui-bugs/tauri-v2-window-dragging-overlay-titlebar.md), [Traffic light position](../solutions/ui-bugs/tauri-v2-traffic-light-position.md), [Context menu focus](../solutions/ui-bugs/radix-context-menu-focus-stealing.md)
+- Documented learnings: [Window dragging](../learnings/tauri-v2-window-dragging-overlay-titlebar.md), [Traffic light position](../learnings/tauri-v2-traffic-light-position.md), [Context menu focus](../learnings/radix-context-menu-focus-stealing.md)

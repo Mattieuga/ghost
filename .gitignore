@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+dist-web/
 src-tauri/target/
 src-tauri/gen/
 
@@ -56,3 +57,5 @@ ghost-user-documents/
 
 # Runtime viewer fixtures (large local files, not source)
 /example test files/
+*.tsbuildinfo
+supabase/.temp/

@@ -323,9 +323,9 @@ RiskLikelihoodImpactMitigationContent search slow on large workspacesMediumHighC
 
 ## Gotchas from Institutional Learnings
 
-1. **Radix focus theft** (`docs/solutions/ui-bugs/radix-context-menu-focus-stealing.md`): Any Radix-based overlay must use `onCloseAutoFocus={(e) => e.preventDefault()}` to prevent focus being yanked back to the trigger element. Critical for the palette's search input focus.
+1. **Radix focus theft** (`docs/learnings/radix-context-menu-focus-stealing.md`): Any Radix-based overlay must use `onCloseAutoFocus={(e) => e.preventDefault()}` to prevent focus being yanked back to the trigger element. Critical for the palette's search input focus.
 
-2. **Tauri drag region** (`docs/solutions/ui-bugs/tauri-v2-window-dragging-overlay-titlebar.md`): The palette backdrop must not interfere with the title bar drag region. Ensure the backdrop `div` does not cover the drag area, or add `pointer-events: none` on the title bar region when the palette is open.
+2. **Tauri drag region** (`docs/learnings/tauri-v2-window-dragging-overlay-titlebar.md`): The palette backdrop must not interfere with the title bar drag region. Ensure the backdrop `div` does not cover the drag area, or add `pointer-events: none` on the title bar region when the palette is open.
 
 3. **Tauri v2 capabilities**: Any new Rust command needs explicit permission in `src-tauri/capabilities/default.json`. The `search_file_contents` and `get_file_metadata` commands will need entries.
 
@@ -351,6 +351,6 @@ RiskLikelihoodImpactMitigationContent search slow on large workspacesMediumHighC
 
 ### Documented Learnings
 
-- Radix focus theft: `docs/solutions/ui-bugs/radix-context-menu-focus-stealing.md`
-- Tauri drag region: `docs/solutions/ui-bugs/tauri-v2-window-dragging-overlay-titlebar.md`
-- Architecture reference: `docs/solutions/architecture/ghost-architecture-and-learnings.md`
+- Radix focus theft: `docs/learnings/radix-context-menu-focus-stealing.md`
+- Tauri drag region: `docs/learnings/tauri-v2-window-dragging-overlay-titlebar.md`
+- Architecture reference: `docs/learnings/ghost-build-learnings.md`

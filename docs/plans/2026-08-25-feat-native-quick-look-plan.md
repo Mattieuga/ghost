@@ -1,7 +1,7 @@
 # Native Quick Look document preview plan
 
 - Created: 2026-08-25
-- Architecture: [`../architecture/0003-native-quick-look-document-previews.md`](../architecture/0003-native-quick-look-document-previews.md)
+- Architecture: [`../adrs/0003-native-quick-look-document-previews.md`](../adrs/0003-native-quick-look-document-previews.md)
 - Parent roadmap: [`file-viewer-roadmap.md`](file-viewer-roadmap.md)
 - Target release: 0.11
 
@@ -100,7 +100,7 @@ Status: Planned after prototype feedback
   file replacement.
 - Decide whether preview display state should be preserved when navigating away
   and back.
-- Document actual format behavior in `docs/supported-file-formats.md`.
+- Document actual format behavior in `docs/reference/supported-file-formats.md`.
 
 ## Phase 2: Broader Quick Look coverage
 

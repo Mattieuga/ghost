@@ -105,4 +105,4 @@ When using `trafficLightPosition` in Tauri v2:
 - [Tauri issue #14072: traffic_light_position broken with unstable feature](https://github.com/tauri-apps/tauri/issues/14072)
 - [Tauri issue #14477: macOS Traffic Light Inconsistency](https://github.com/tauri-apps/tauri/issues/14477)
 - [tauri-plugin-trafficlights-positioner](https://github.com/ItsEeleeya/tauri-plugin-trafficlights-positioner) (unnecessary since v2.4.0 unless you need runtime repositioning)
-- `docs/solutions/ui-bugs/tauri-v2-window-dragging-overlay-titlebar.md` (companion fix)
+- `docs/learnings/tauri-v2-window-dragging-overlay-titlebar.md` (companion fix)

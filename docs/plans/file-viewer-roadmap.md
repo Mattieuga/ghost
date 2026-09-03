@@ -1,8 +1,8 @@
 # Extensible file-viewer roadmap
 
 - Created: 2026-08-21
-- Architecture: [`../architecture/0001-extensible-file-viewers.md`](../architecture/0001-extensible-file-viewers.md)
-- Large-file architecture: [`../architecture/0002-bounded-large-file-loading.md`](../architecture/0002-bounded-large-file-loading.md)
+- Architecture: [`../adrs/0001-extensible-file-viewers.md`](../adrs/0001-extensible-file-viewers.md)
+- Large-file architecture: [`../adrs/0002-bounded-large-file-loading.md`](../adrs/0002-bounded-large-file-loading.md)
 
 ## Goals
 

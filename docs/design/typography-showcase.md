@@ -108,7 +108,7 @@ Automatic URL styling should remain visible without overwhelming the sentence: <
 
 A deliberately long unbroken value tests overflow behavior: `com.example.ghost.typography.showcase.preferences.continuousReading.maximumComfortableMeasure`.
 
-![Ghost application icon](../src-tauri/icons/128x128.png "Ghost icon at its natural size")
+![Ghost application icon](../../src-tauri/icons/128x128.png "Ghost icon at its natural size")
 
 ---
 

@@ -1,13 +1,31 @@
 # ADR 0004: Cloud-native collaborative Markdown workspaces
 
-- Status: Proposed; retained Mac/web vertical slice implemented, resilience
-  and sharing gates remain
+- Status: Proposed; partially superseded by
+  [ADR 0005](0005-synced-folders.md) on 2026-09-02. The retained Mac/web
+  vertical slice is implemented; resilience and sharing gates remain for the
+  parts still in force
 - Date: 2026-08-25
-- Last updated: 2026-08-28
+- Last updated: 2026-09-02
 - Related plan: [`../plans/cloud-collaboration-roadmap.md`](../plans/cloud-collaboration-roadmap.md)
 - Related decisions:
   - [`0001-extensible-file-viewers.md`](0001-extensible-file-viewers.md)
   - [`0002-bounded-large-file-loading.md`](0002-bounded-large-file-loading.md)
+
+## Superseded by ADR 0005
+
+[ADR 0005](0005-synced-folders.md), dated 2026-09-02, replaces the following
+parts of this decision. Everything else remains in force.
+
+- "Preserve local Ghost and add Cloud as a separate source": Cloud folders
+  are no longer logical containers without a disk presence, and there is no
+  Cloud section above the local tree. Every synced item is also a real
+  folder or file on disk.
+- "Limit cloud items to Markdown documents and logical folders": folders
+  are real, and non-Markdown files sync as blobs in a later phase.
+- "Stage filesystem materialization after the cloud product" in full:
+  mirrored folders exist from the first build, and there is no managed File
+  Provider location.
+- Migration steps 7 to 10.
 
 ## Context
 
@@ -576,7 +594,7 @@ hierarchical items, invitations, share links, and future operational queries.
 - Private Supabase Realtime topics reuse the effective item role: viewers may
   receive and editors may send. Live tests accepted an owner and rejected an
   unrelated permanent account at both Realtime and Postgres boundaries.
-- The Mac app and focused `web.html` client now share one browser-safe
+- The Mac app and focused `app.html` client now share one browser-safe
   collaborative Markdown editor and Ghost-owned adapter. Mac auth persists in
   dedicated Tauri app data; the browser retains its own session and neither
   client contains a service-role key. The Mac store is intentionally not
@@ -631,7 +649,7 @@ hierarchical items, invitations, share links, and future operational queries.
   unrelated permanent account; its disposable accounts and workspaces were
   removed afterward.
 - The joint Mac/web manual pass is documented in
-  [`../spikes/cloud-web-mac-test.md`](../spikes/cloud-web-mac-test.md). This is
+  [`../discovery/cloud-web-mac-test.md`](../discovery/cloud-web-mac-test.md). This is
   evidence toward the gate, not acceptance of the still-unrun fully cold
   offline tree, process-kill, live revocation, disaster-restore, and
   provider-comparison checks.

@@ -14,6 +14,7 @@ import {
   type CloudShareRole,
 } from "@/cloud/cloud-sharing";
 import type { TrackedRoot } from "@/hooks/use-tracked-folders";
+import { SettingRow, SettingSelect, SettingSwitch } from "@/components/settings/setting-row";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -66,13 +67,18 @@ function roleLabel(role: CloudShareRole): string {
   return role === "editor" ? "can edit" : "can view";
 }
 
-type LinkSetting = "off" | CloudShareRole;
+const ROLE_OPTIONS: Array<{ value: CloudShareRole; label: string }> = [
+  { value: "viewer", label: "Can view" },
+  { value: "editor", label: "Can edit" },
+];
 
 /**
- * Sharing for one item that is in Cloud, shaped like a Google Doc: one
- * link that is off, view, or edit, and people invited by email. Every
- * change reloads the summary from the server so the sheet never shows
- * access that was not granted.
+ * Sharing for one item, built from the same rows as Settings and shaped
+ * like a shared document: one link that is off or on at a role, and
+ * people invited by email. The rows are always present so the sheet keeps
+ * its height while the item reaches Cloud and while the summary loads.
+ * Every change reloads the summary from the server so the sheet never
+ * shows access that was not granted.
  */
 export function SharePanel({
   client,
@@ -83,7 +89,8 @@ export function SharePanel({
   copy = copyText,
 }: {
   client: SupabaseClient;
-  itemId: string;
+  /** Null while the item is still on its way to Cloud. */
+  itemId: string | null;
   itemName: string;
   itemKind: "document" | "folder";
   webAppUrl: string;
@@ -97,6 +104,7 @@ export function SharePanel({
   const [inviteRole, setInviteRole] = useState<CloudShareRole>("editor");
 
   const reload = useCallback(async () => {
+    if (!itemId) return;
     try {
       setSharing(await getCloudItemSharing(client, itemId));
       setError(null);
@@ -107,11 +115,13 @@ export function SharePanel({
 
   useEffect(() => { void reload(); }, [reload]);
 
-  const run = async (work: () => Promise<string | null>) => {
+  const ready = itemId !== null && sharing !== null;
+  const run = async (work: (id: string) => Promise<string | null>) => {
+    if (!itemId) return;
     setBusy(true);
     setError(null);
     try {
-      const message = await work();
+      const message = await work(itemId);
       if (message) setNotice(message);
       await reload();
     } catch (reason) {
@@ -121,21 +131,22 @@ export function SharePanel({
     }
   };
 
-  const linkSetting: LinkSetting = sharing?.link?.role ?? "off";
-  const setLink = (setting: LinkSetting) => {
-    if (setting === linkSetting) return;
-    void run(async () => {
-      const link = await setCloudShareLink(client, itemId, setting === "off" ? null : setting);
-      if (!link) return "Link turned off.";
-      if (linkSetting === "off") {
-        await copy(shareLinkUrl(link.token, webAppUrl));
-        return "Link copied.";
-      }
+  const link = sharing?.link ?? null;
+  const toggleLink = (on: boolean) => {
+    void run(async (id) => {
+      const next = await setCloudShareLink(client, id, on ? "viewer" : null);
+      if (!next) return "Link turned off.";
+      await copy(shareLinkUrl(next.token, webAppUrl));
+      return "Link copied.";
+    });
+  };
+  const setLinkRole = (role: CloudShareRole) => {
+    void run(async (id) => {
+      await setCloudShareLink(client, id, role);
       return null;
     });
   };
   const copyLink = () => {
-    const link = sharing?.link;
     if (!link) return;
     void run(async () => {
       await copy(shareLinkUrl(link.token, webAppUrl));
@@ -147,12 +158,12 @@ export function SharePanel({
     event.preventDefault();
     const email = inviteEmail.trim();
     if (!email) return;
-    void run(async () => {
-      const outcome = await shareCloudItem(client, itemId, email, inviteRole);
+    void run(async (id) => {
+      const outcome = await shareCloudItem(client, id, email, inviteRole);
       setInviteEmail("");
       // The email is best effort: access exists either way.
       const mailed = await sendShareInvitation(client, {
-        itemId,
+        itemId: id,
         itemName,
         itemKind,
         email: outcome.email,
@@ -168,120 +179,111 @@ export function SharePanel({
     });
   };
 
-  const settingButton = (setting: LinkSetting, label: string) => (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={linkSetting === setting}
-      disabled={busy || !sharing}
-      onClick={() => setLink(setting)}
-      className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
-        linkSetting === setting
-          ? "bg-foreground text-background"
-          : "text-muted-foreground hover:text-foreground"
-      }`}
-    >
-      {label}
-    </button>
-  );
+  const linkDescription = !itemId
+    ? `Getting ${itemName} into Cloud…`
+    : !sharing
+      ? "Loading…"
+      : link
+        ? `Anyone who has the link ${roleLabel(link.role)}.`
+        : "Only people you invite can open it.";
 
   return (
-    <div className="mt-3 space-y-5 text-sm" data-share-panel>
-      <section className="space-y-2" data-share-link>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Anyone with the link</h3>
-        <div className="flex flex-wrap items-center gap-2">
-          <div role="radiogroup" aria-label="Link access" className="flex gap-1 rounded-md border border-border p-0.5">
-            {settingButton("off", "Off")}
-            {settingButton("viewer", "Can view")}
-            {settingButton("editor", "Can edit")}
-          </div>
-          <Button size="sm" variant="outline" disabled={busy || !sharing?.link} onClick={copyLink}>
+    <div className="mt-2 space-y-5 text-sm" data-share-panel>
+      <div className="space-y-4">
+        <SettingRow label="Anyone with the link" description={linkDescription}>
+          <SettingSwitch
+            label="Anyone with the link"
+            checked={link !== null}
+            disabled={busy || !ready}
+            onChange={toggleLink}
+          />
+        </SettingRow>
+        <SettingRow label="Link" description={link ? "Copy it again any time." : "Turn the link on to get one."}>
+          <SettingSelect
+            label="Link access"
+            value={link?.role ?? "viewer"}
+            options={ROLE_OPTIONS}
+            disabled={busy || !link}
+            onChange={setLinkRole}
+          />
+          <Button size="sm" variant="outline" disabled={busy || !link} onClick={copyLink}>
             Copy link
           </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {linkSetting === "off"
-            ? "Only people you invite below can open it."
-            : `Anyone who has the link ${roleLabel(linkSetting)}. Turn it off to stop that.`}
-        </p>
-      </section>
+        </SettingRow>
+      </div>
 
-      <section className="space-y-2" data-share-people>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">People</h3>
+      <div className="space-y-4">
+        <SettingRow label="People" description="Invite someone by email. They open it after signing in." />
         <form className="flex gap-2" onSubmit={invite}>
           <Input
             type="email"
             placeholder="name@example.com"
             aria-label="Email address"
             value={inviteEmail}
+            disabled={!ready}
             onChange={(event) => setInviteEmail(event.target.value)}
             className="h-8 flex-1"
           />
-          <select
-            aria-label="Access"
-            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+          <SettingSelect
+            label="Access"
             value={inviteRole}
-            onChange={(event) => setInviteRole(event.target.value as CloudShareRole)}
-          >
-            <option value="editor">Can edit</option>
-            <option value="viewer">Can view</option>
-          </select>
-          <Button size="sm" type="submit" disabled={busy || !inviteEmail.trim()}>Invite</Button>
+            options={ROLE_OPTIONS}
+            disabled={!ready}
+            onChange={setInviteRole}
+          />
+          <Button size="sm" type="submit" disabled={busy || !ready || !inviteEmail.trim()}>Invite</Button>
         </form>
-        {sharing && (sharing.members.length > 0 || sharing.invitations.length > 0) ? (
-          <ul className="space-y-1">
-            {sharing.members.map((member) => (
-              <li key={member.user_id} className="flex items-center justify-between gap-3">
-                <span>
-                  {member.display_name ?? member.email ?? "Guest"}
-                  <span className="text-muted-foreground"> · {roleLabel(member.role)}</span>
-                </span>
-                <button
-                  type="button"
-                  className="cursor-pointer text-xs text-muted-foreground hover:text-foreground"
-                  disabled={busy}
-                  onClick={() => void run(async () => {
-                    await revokeCloudAccess(client, itemId, { userId: member.user_id });
-                    return null;
-                  })}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-            {sharing.invitations.map((invitation) => (
-              <li key={invitation.id} className="flex items-center justify-between gap-3">
-                <span>
-                  {invitation.email}
-                  <span className="text-muted-foreground"> · invited, {roleLabel(invitation.role)}</span>
-                </span>
-                <button
-                  type="button"
-                  className="cursor-pointer text-xs text-muted-foreground hover:text-foreground"
-                  disabled={busy}
-                  onClick={() => void run(async () => {
-                    await revokeCloudAccess(client, itemId, { invitationId: invitation.id });
-                    return null;
-                  })}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
+        {sharing?.members.map((member) => (
+          <SettingRow
+            key={member.user_id}
+            label={member.display_name ?? member.email ?? "Guest"}
+            description={roleLabel(member.role)}
+          >
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => void run(async (id) => {
+                await revokeCloudAccess(client, id, { userId: member.user_id });
+                return null;
+              })}
+            >
+              Remove
+            </Button>
+          </SettingRow>
+        ))}
+        {sharing?.invitations.map((invitation) => (
+          <SettingRow
+            key={invitation.id}
+            label={invitation.email}
+            description={`Invited, ${roleLabel(invitation.role)}`}
+          >
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => void run(async (id) => {
+                await revokeCloudAccess(client, id, { invitationId: invitation.id });
+                return null;
+              })}
+            >
+              Remove
+            </Button>
+          </SettingRow>
+        ))}
+      </div>
 
-      {notice ? <p className="text-xs text-muted-foreground" role="status">{notice}</p> : null}
-      {error ? <p className="text-xs text-destructive" role="alert">{error}</p> : null}
+      <p className={`min-h-5 text-xs ${error ? "text-destructive" : "text-muted-foreground"}`} role={error ? "alert" : "status"}>
+        {error ?? notice ?? ""}
+      </p>
     </div>
   );
 }
 
 /**
  * The Share sheet is one of the three places sign-in lives. Signed out, it
- * is the sign-in card. Signed in, it offers to sync the item's folder, waits
- * for the upload, or shows the sharing panel for something that is in Cloud.
+ * is the sign-in card. Signed in, it offers to sync the item's folder, or
+ * shows the sharing panel for something in a synced folder.
  */
 export function ShareSheet({
   open,
@@ -348,24 +350,19 @@ export function ShareSheet({
     footer = <Button variant="outline" onClick={onClose}>Not now</Button>;
   } else if (root && root.kind === "mirrored") {
     title = `Share ${itemName}`;
-    body = cloudItemId ? (
+    body = (
       <>
         <DialogDescription>
-          It is on your phone at {webAppUrl}, signed in as {account.user.email ?? "you"}.
+          On your phone at {webAppUrl}, signed in as {account.user.email ?? "you"}.
         </DialogDescription>
         <SharePanel
           client={client}
-          itemId={cloudItemId}
+          itemId={cloudItemId ?? null}
           itemName={itemName}
           itemKind={target?.kind === "folder" ? "folder" : "document"}
           webAppUrl={webAppUrl}
         />
       </>
-    ) : (
-      <DialogDescription>
-        {folderName ? `${folderName} is on its way to Cloud. ` : ""}
-        Sharing opens as soon as {itemName} is there.
-      </DialogDescription>
     );
     footer = <Button variant="outline" onClick={onClose}>Done</Button>;
   } else {

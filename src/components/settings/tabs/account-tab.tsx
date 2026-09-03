@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { CloudSignIn } from "@/cloud/cloud-sign-in";
 import type { CloudAccountState } from "@/cloud/use-cloud-account";
 import { Button } from "@/components/ui/button";
+import { SettingRow } from "@/components/settings/setting-row";
 import type { SignInSurfaceProps } from "@/mirror/share-sheet";
 
 export interface AccountTabProps {
@@ -13,26 +14,6 @@ export interface AccountTabProps {
   onSignOut: () => Promise<void>;
   /** `~/Ghost`, where Notes and Shared live. */
   ghostFolderPath: string | null;
-}
-
-function SettingRow({
-  label,
-  description,
-  children,
-}: {
-  label: string;
-  description?: string;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-6">
-      <div className="min-w-0">
-        <div className="text-sm font-medium">{label}</div>
-        {description ? <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p> : null}
-      </div>
-      {children ? <div className="shrink-0">{children}</div> : null}
-    </div>
-  );
 }
 
 /** A password is optional. It exists for builds the email link cannot reach. */

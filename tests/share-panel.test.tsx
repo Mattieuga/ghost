@@ -66,34 +66,46 @@ function button(host: HTMLElement, label: string) {
   return Array.from(host.querySelectorAll("button")).find((candidate) => candidate.textContent === label);
 }
 
+function setValue(element: HTMLInputElement | HTMLSelectElement, value: string) {
+  const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(element, value);
+  element.dispatchEvent(new Event(element instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }));
+}
+
 describe("SharePanel", () => {
-  it("turns the one link on, copies it, changes its role in place, and turns it off", async () => {
+  it("turns the one link on and copies it, changes its access in place, and turns it off", async () => {
     const { client, calls } = fakeClient();
     const copied: string[] = [];
     const host = mount(
       <SharePanel client={client} itemId="doc-1" itemName="Plan.md" itemKind="document" webAppUrl="https://ghosteditor.app/app" copy={async (text) => { copied.push(text); }} />,
     );
     await flush();
-    expect(host.textContent).toContain("Only people you invite below can open it.");
+    const toggle = host.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    const access = host.querySelector<HTMLSelectElement>('select[aria-label="Link access"]')!;
+    expect(host.textContent).toContain("Only people you invite can open it.");
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
     expect(button(host, "Copy link")?.disabled).toBe(true);
+    expect(access.disabled).toBe(true);
 
-    await act(async () => { button(host, "Can edit")?.click(); });
+    await act(async () => { toggle.click(); });
     await flush();
-    expect(calls.find((call) => call.name === "cloud_set_share_link")?.args).toEqual({ target_item_id: "doc-1", link_role: "editor" });
+    expect(calls.find((call) => call.name === "cloud_set_share_link")?.args).toEqual({ target_item_id: "doc-1", link_role: "viewer" });
     expect(copied).toEqual(["https://ghosteditor.app/app#share=tok123"]);
-    expect(host.textContent).toContain("Anyone who has the link can edit.");
+    expect(host.textContent).toContain("Anyone who has the link can view.");
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
     expect(button(host, "Copy link")?.disabled).toBe(false);
+
+    await act(async () => { setValue(access, "editor"); });
+    await flush();
+    expect(calls.filter((call) => call.name === "cloud_set_share_link").at(-1)?.args).toEqual({ target_item_id: "doc-1", link_role: "editor" });
+    expect(host.textContent).toContain("Anyone who has the link can edit.");
+    expect(copied).toHaveLength(1);
 
     await act(async () => { button(host, "Copy link")?.click(); });
     await flush();
     expect(copied).toHaveLength(2);
 
-    await act(async () => { button(host, "Can view")?.click(); });
-    await flush();
-    expect(host.textContent).toContain("Anyone who has the link can view.");
-    expect(copied).toHaveLength(2);
-
-    await act(async () => { button(host, "Off")?.click(); });
+    await act(async () => { toggle.click(); });
     await flush();
     expect(calls.filter((call) => call.name === "cloud_set_share_link").at(-1)?.args).toEqual({ target_item_id: "doc-1", link_role: null });
     expect(host.textContent).toContain("Link turned off.");
@@ -103,13 +115,9 @@ describe("SharePanel", () => {
     const { client, calls, invoked } = fakeClient();
     const host = mount(<SharePanel client={client} itemId="doc-1" itemName="Plan.md" itemKind="document" webAppUrl="https://ghosteditor.app/app" copy={async () => undefined} />);
     await flush();
-    const input = host.querySelector<HTMLInputElement>("input[type=email]")!;
-    const select = host.querySelector<HTMLSelectElement>("select")!;
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "friend@example.com");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(select, "viewer");
-      select.dispatchEvent(new Event("change", { bubbles: true }));
+      setValue(host.querySelector<HTMLInputElement>("input[type=email]")!, "friend@example.com");
+      setValue(host.querySelector<HTMLSelectElement>('select[aria-label="Access"]')!, "viewer");
     });
     await act(async () => {
       host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
@@ -123,6 +131,17 @@ describe("SharePanel", () => {
       body: { item_id: "doc-1", item_name: "Plan.md", item_kind: "document", email: "friend@example.com", role: "viewer", web_app_url: "https://ghosteditor.app/app" },
     }]);
     expect(host.textContent).toContain("friend@example.com has an email with a link to sign in.");
+    expect(host.textContent).toContain("wife@example.com");
+  });
+
+  it("keeps its rows while the item is still on its way to Cloud", async () => {
+    const { client, calls } = fakeClient();
+    const host = mount(<SharePanel client={client} itemId={null} itemName="Plan.md" itemKind="document" webAppUrl="x" copy={async () => undefined} />);
+    await flush();
+    expect(host.textContent).toContain("Getting Plan.md into Cloud…");
+    expect(host.querySelector<HTMLButtonElement>('[role="switch"]')?.disabled).toBe(true);
+    expect(host.querySelectorAll("form")).toHaveLength(1);
+    expect(calls).toEqual([]);
   });
 
   it("explains when the server lacks the sharing migration", async () => {
@@ -138,7 +157,7 @@ describe("ShareSheet", () => {
   const root: TrackedRoot = { id: "r", path: "/Users/me/Ghost/Notes", kind: "mirrored", cloudRootId: "r" };
   const account = { kind: "signed-in" as const, user: { id: "u1", email: "me@example.com" } as never };
 
-  it("waits for the item to reach Cloud before showing the panel", async () => {
+  it("shows the panel at once and says the item is on its way to Cloud", async () => {
     const { client } = fakeClient();
     mount(
       <ShareSheet
@@ -155,8 +174,8 @@ describe("ShareSheet", () => {
       />,
     );
     await flush();
-    expect(document.body.textContent).toContain("Sharing opens as soon as Plan.md is there.");
-    expect(document.body.querySelector("[data-share-panel]")).toBeNull();
+    expect(document.body.textContent).toContain("Getting Plan.md into Cloud…");
+    expect(document.body.querySelector("[data-share-panel]")).not.toBeNull();
   });
 
   it("shares a folder in a synced root through the same panel", async () => {

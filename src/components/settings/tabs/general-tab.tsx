@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import type { Settings } from "@/hooks/use-settings";
 import type { UpdateInfo } from "@/hooks/use-updater";
-import { SettingRow } from "@/components/settings/setting-row";
+import { SettingRow, SettingSwitch } from "@/components/settings/setting-row";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Check, AlertCircle } from "lucide-react";
 
@@ -37,43 +37,21 @@ export function GeneralTab({ settings, onUpdateSettings, updater }: GeneralTabPr
           label="Show all files"
           description="Display all file types in the sidebar, not just .md"
         >
-          <button
-            role="switch"
-            aria-checked={settings.showAllFiles}
-            onClick={() =>
-              onUpdateSettings({ showAllFiles: !settings.showAllFiles })
-            }
-            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-              settings.showAllFiles ? "bg-primary" : "bg-input"
-            }`}
-          >
-            <span
-              className={`pointer-events-none inline-block size-4 transform rounded-full bg-background shadow-lg ring-0 transition-transform ${
-                settings.showAllFiles ? "translate-x-4" : "translate-x-0"
-              }`}
-            />
-          </button>
+          <SettingSwitch
+            label="Show all files"
+            checked={settings.showAllFiles}
+            onChange={(checked) => onUpdateSettings({ showAllFiles: checked })}
+          />
         </SettingRow>
         <SettingRow
           label="Show hidden files"
           description="Display dotfiles and hidden folders; dependency, build, and VCS internals remain excluded"
         >
-          <button
-            role="switch"
-            aria-checked={settings.showHiddenFiles}
-            onClick={() =>
-              onUpdateSettings({ showHiddenFiles: !settings.showHiddenFiles })
-            }
-            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-              settings.showHiddenFiles ? "bg-primary" : "bg-input"
-            }`}
-          >
-            <span
-              className={`pointer-events-none inline-block size-4 transform rounded-full bg-background shadow-lg ring-0 transition-transform ${
-                settings.showHiddenFiles ? "translate-x-4" : "translate-x-0"
-              }`}
-            />
-          </button>
+          <SettingSwitch
+            label="Show hidden files"
+            checked={settings.showHiddenFiles}
+            onChange={(checked) => onUpdateSettings({ showHiddenFiles: checked })}
+          />
         </SettingRow>
       </div>
 

@@ -29,7 +29,7 @@ Ghost is a native Mac Markdown editor that grew into a general file editor and i
 | `src/lib/mirror/` | The mirror engine, UI-free and tested with an in-memory filesystem. |
 | `src/hooks/`, `src/lib/`, `src/types/` | Roots, file tree, settings, and shared helpers. |
 | `src-tauri/` | The Rust side: filesystem and search commands, the folder watcher with own-write suppression, security-scoped bookmarks, windows and menus, Quick Look and PDF views. |
-| `supabase/migrations/` | The Cloud schema, applied to the Supabase project by hand through the SQL editor. |
+| `supabase/migrations/` | The Cloud schema, applied to the Supabase project with the CLI's `db query -f` (see the auth runbook). `supabase/functions/` holds the Edge Functions. |
 | `tests/` | Vitest suites for the frontend and engine, plus text checks over the migrations. |
 | `docs/` | This documentation system. |
 | `vite.config.ts`, `vite.web.config.ts`, `vercel.json` | The desktop build, the site build, and the Vercel deployment settings. |

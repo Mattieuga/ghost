@@ -15,7 +15,7 @@ Ghost is a native Mac Markdown editor (Tauri 2, React 19, Tiptap 3) that also op
 - `index.html` → `src/main.tsx`: the desktop entry, Tauri only. `app.html` → `src/app-main.tsx`: the browser client, served at `/app/`.
 - `src/components/` UI; `src/cloud/` Supabase, auth, sharing, the web app, and the collaboration adapter; `src/mirror/` Mac UI for synced roots; `src/lib/mirror/` the mirror engine, UI-free.
 - `src-tauri/` Rust: filesystem, search, watcher with own-write suppression, bookmarks, windows.
-- `supabase/migrations/` the Cloud schema, applied by hand through the SQL editor. `site/` the public site. `tests/` Vitest. `docs/` per "Docs organization".
+- `supabase/migrations/` the Cloud schema, applied with `npx supabase db query --linked --project-ref <ref> -f <file>`; `supabase/functions/` Edge Functions, deployed with `npx supabase functions deploy <name> --project-ref <ref>`. `site/` the public site. `tests/` Vitest. `docs/` per "Docs organization".
 
 ## Architectural invariants
 

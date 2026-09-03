@@ -161,6 +161,29 @@ Routes in the browser client are hash-based, so no rewrites are needed:
 `/app/#/d/<documentId>` opens one document and `/app/#share=<token>`
 redeems a share link.
 
+## Applying migrations and deploying functions from the CLI
+
+The Supabase CLI is logged in on this Mac (`npx supabase login` once). The
+project is not linked, so every command names the project; that avoids
+the database password entirely because SQL goes through the management
+API:
+
+```sh
+# one migration file
+npx supabase db query --linked --project-ref yzefpvzwgkleehavvaia \
+  -f supabase/migrations/<file>.sql
+
+# a quick check
+npx supabase db query --linked --project-ref yzefpvzwgkleehavvaia \
+  "select proname from pg_proc where proname like 'cloud_%' order by 1"
+```
+
+Pass a file with `-f`; a query given inline must not start with `--`, or
+the CLI reads it as a flag. Migrations are idempotent (`create or replace`,
+`if not exists`), so re-running one is safe. `supabase db push` is not used:
+the earlier migrations were applied by hand and are not in the CLI's
+migration table.
+
 ## Invitation email (Edge Function)
 
 Sharing with an address that has no account emails it through the
@@ -168,10 +191,10 @@ Sharing with an address that has no account emails it through the
 once, and again after changes:
 
 ```sh
-npx supabase login
-npx supabase link --project-ref <project-ref>
-npx supabase functions deploy share-invite
+npx supabase functions deploy share-invite --project-ref yzefpvzwgkleehavvaia
 ```
+
+Docker is not needed; the CLI bundles through the API.
 
 The function uses the project's service role key, which Supabase provides
 to it; nothing to configure. It sends Supabase's "Invite user" email, so:

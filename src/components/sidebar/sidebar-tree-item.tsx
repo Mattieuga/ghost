@@ -46,6 +46,7 @@ export interface SidebarTreeActions {
   saveCopy?: () => void;
   /** Give up access to something shared with you. */
   leave?: () => void;
+  share?: () => void;
   toggle?: () => void;
 }
 
@@ -76,6 +77,7 @@ export function SidebarTreeContextMenu({
   );
   const projectItems = (
     <>
+      {actions.share ? <ContextMenuItem onSelect={actions.share}>Share…</ContextMenuItem> : null}
       {actions.closeProject ? <ContextMenuItem onSelect={actions.closeProject}>Close Folder</ContextMenuItem> : null}
       {actions.syncFolder ? (
         <ContextMenuItem onSelect={actions.syncFolder}>Sync to Cloud…</ContextMenuItem>

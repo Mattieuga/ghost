@@ -4,7 +4,7 @@ This file provides guidance to the coding agent working in this repository.
 
 Read this before making changes. Full architecture lives in `docs/reference/ghost-architecture.md` — this file is the compressed rulebook distilled from that living reference.
 
-_Last reconciled with code: 2026-09-03._ When you change an architectural invariant, update this line, this file, and the relevant `docs/reference/` doc in the same change (see "Before you commit").
+_Last reconciled with code: 2026-09-03 (evening)._ When you change an architectural invariant, update this line, this file, and the relevant `docs/reference/` doc in the same change (see "Before you commit").
 
 ## What this is
 
@@ -26,7 +26,7 @@ Ghost is a native Mac Markdown editor (Tauri 2, React 19, Tiptap 3) that also op
 - **Nothing destructive happens silently.** Record lossy edges in the plan and keep a version to return to.
 - **One parser and one serializer** (`parseMarkdownDocument`, `serializeMarkdownDocument`) on the Mac, the web, and in version history.
 - **Sign-in is additive** and lives only in Share, "Open on phone", and Settings → Account. Signing out pauses sync and touches no files.
-- **Cloud data changes only through security-definer RPCs** behind row-level security. Share tokens are stored as hashes and travel in the URL fragment.
+- **Cloud data changes only through security-definer RPCs** behind row-level security. An item has one share link, off, view, or edit; its token is readable by the owner only and travels in the URL fragment.
 
 ## What NOT to do
 

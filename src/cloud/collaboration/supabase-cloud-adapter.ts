@@ -50,6 +50,8 @@ export interface SupabaseCloudAdapterOptions {
  * durable state is an append-only Yjs update log protected independently by
  * Postgres RLS.
  */
+const ROLE_RECHECK_MS = 60_000;
+
 export class SupabaseCloudAdapter implements CloudCollaborationSession {
   readonly document: Y.Doc;
   readonly awareness: Awareness;
@@ -70,7 +72,10 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
   };
   private readonly handleFocus = () => {
     if (!this.serverHydrated) void this.ensureNetworkBootstrap();
+    else void this.reverifyRole();
   };
+  /** Access is re-checked regularly, so a revoked share stops within a minute. */
+  private roleTimer: ReturnType<typeof setInterval> | null = null;
   private readonly handleDocumentUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === REMOTE_ORIGIN || this.role === "viewer" || this.destroyed) return;
     if (!this.serverHydrated) {
@@ -179,6 +184,9 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
     this.document.on("update", this.handleDocumentUpdate);
     window.addEventListener("online", this.handleOnline);
     window.addEventListener("focus", this.handleFocus);
+    this.roleTimer = setInterval(() => {
+      if (this.serverHydrated && navigator.onLine) void this.reverifyRole();
+    }, ROLE_RECHECK_MS);
   }
 
   private notifyRoleVerified(role: CloudDocumentRole): void {
@@ -432,7 +440,7 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
         durability: "read-only",
         role: "viewer",
         pendingUpdates: 0,
-        lastError: "Access to this document was removed.",
+        lastError: null,
       });
       this.notifyRoleVerified("viewer");
       await this.onAccessRevoked?.();
@@ -605,6 +613,7 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
     if (this.flushTimer) clearTimeout(this.flushTimer);
     await this.flush().catch(() => undefined);
     this.destroyed = true;
+    if (this.roleTimer) clearInterval(this.roleTimer);
     this.document.off("update", this.handleDocumentUpdate);
     window.removeEventListener("online", this.handleOnline);
     window.removeEventListener("focus", this.handleFocus);

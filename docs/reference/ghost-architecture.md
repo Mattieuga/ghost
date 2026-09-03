@@ -14,7 +14,7 @@ Ghost is a native Mac Markdown editor that grew into a general file editor and i
 - **Nothing destructive happens silently.** External writes are ingested by rule, conflicts produce a copy rather than a loss, every ingestion is preceded by a local version, and known lossy edges are written down.
 - **One parser and one serializer everywhere.** Markdown enters and leaves through the same frontmatter-aware parser and escape-relaxed serializer on the Mac, on the web, and in version history, so a round trip is stable.
 - **Sign-in is additive.** Nothing requires an account. Signing in adds Cloud on top of folders that already exist and shows sidebar sections; signing out pauses sync and touches no files.
-- **The server never holds a secret it does not need.** Share tokens are stored only as hashes, and the token travels in the URL fragment so it never reaches a request log.
+- **Sharing works like a shared document.** One link per item, off or view or edit, that the owner can copy again any time; the token is readable by the owner alone, is looked up by hash when redeemed, and travels in the URL fragment so it never reaches a request log.
 
 ## Repo layout
 
@@ -61,9 +61,9 @@ Cloud is a Supabase project: Postgres with row-level security, Auth, and Realtim
 - `cloud_memberships`: `owner`, `editor`, or `viewer` on an item, inherited by everything below it; the effective role is the best role found walking up the tree, with the workspace owner always an owner.
 - `cloud_documents` and `cloud_document_updates`: the append-only Yjs update log per document, one row per client sequence number so replays are idempotent, plus a Markdown snapshot.
 - `cloud_document_versions`: named and automatic versions, including ones uploaded from a Mac's local history and ones captured before an external write.
-- `cloud_share_links` and `cloud_invitations`: links stored as SHA-256 hashes with role, expiry, and revocation; invitations by email that attach when that address signs in.
+- `cloud_share_links` and `cloud_invitations`: one live link per item with a role, its token kept for the owner and its hash for lookup; invitations by email that attach when that address signs in.
 
-Clients change data only through security-definer RPCs, all grouped by prefix: `cloud_ensure_workspace`, `cloud_create_item` and `cloud_adopt_items` (client-supplied IDs, idempotent, server-side rename on collision), `cloud_rename_item`, `cloud_move_item`, `cloud_duplicate_item`, `cloud_trash_item`; `cloud_document_role`, `cloud_document_heads`, `cloud_upload_document_versions`; and the sharing family `cloud_share_item`, `cloud_revoke_access`, `cloud_accept_invitations`, `cloud_create_share_link`, `cloud_revoke_share_link`, `cloud_redeem_share_link`, `cloud_leave_item`, `cloud_list_visible_items`, `cloud_item_sharing`, `cloud_set_display_name`. Realtime uses one broadcast topic per document, `ghost-cloud:<documentId>`, with the same role checks on who may listen and who may send.
+Clients change data only through security-definer RPCs, all grouped by prefix: `cloud_ensure_workspace`, `cloud_create_item` and `cloud_adopt_items` (client-supplied IDs, idempotent, server-side rename on collision), `cloud_rename_item`, `cloud_move_item`, `cloud_duplicate_item`, `cloud_trash_item`; `cloud_document_role`, `cloud_document_heads`, `cloud_upload_document_versions`; and the sharing family `cloud_share_item`, `cloud_revoke_access`, `cloud_accept_invitations`, `cloud_set_share_link`, `cloud_redeem_share_link`, `cloud_leave_item`, `cloud_list_visible_items`, `cloud_item_sharing`, `cloud_set_display_name`. One Edge Function, `share-invite`, emails a person invited by address; it uses Supabase's invite email for new accounts and does nothing yet for existing ones. Realtime uses one broadcast topic per document, `ghost-cloud:<documentId>`, with the same role checks on who may listen and who may send.
 
 **Sessions.** The Supabase collaboration adapter loads the durable log, binds the Yjs document, appends local updates, and relays them over Realtime; a viewer's session is read-only. A local IndexedDB store per document sits under it so edits survive restarts and offline periods. On the Mac, a mirrored document opens a Cloud session only when signed in and its root is uploaded; otherwise a local session does the same job without a network.
 
@@ -75,8 +75,8 @@ Clients change data only through security-definer RPCs, all grouped by prefix: `
 - **Opening** a mirrored document adopts it if needed and, when signed in, makes sure it exists in Cloud before the session starts.
 - **Editing** flows live through the session; the writer mirrors it to disk on the Mac.
 - **Disk changes** reach Cloud through ingestion (content) and root reconciliation (structure).
-- **Cloud changes** reach an open document through its session. For closed documents, a **Cloud pull** on sign-in, on focus, and every five minutes asks for each document's latest update ID, applies what is new to the local store, and rewrites the file only when the file is still where Ghost left it; a file that was there and is gone was deleted on purpose and is never written back. Pulls share a queue with reconciliation so they cannot interleave.
-- **Sharing** is owner-only from the Mac Share sheet: view and edit links, and people by email. What is shared with an account is materialized flat into its Shared root on every refresh, with the sharer's name on a name collision; shares that end move the local file to the Trash; a shared file removed by hand comes back, because Leave is the way out.
+- **Cloud changes** reach an open document through its session. For closed documents, a **Cloud pull** on sign-in, on focus, and every five minutes asks for each document's latest update ID, applies what is new to the local store, and rewrites the file only when the file is still where Ghost left it; a file that was there and is gone was deleted on purpose and is never written back. Before the pull, a **Cloud tree sync** moves, renames, trashes, or adds files to match what the web did to the root's structure, leaving open files and pending local renames alone. Both share a queue with reconciliation so they cannot interleave.
+- **Sharing** is owner-only from the Mac Share sheet, reached from the header or a right-click on any note, synced folder, or synced root: one link per item that is off, view, or edit and can be copied again at any time, and people by email. A link opens straight away in the browser as a named guest, no form. Access is re-checked on focus, every minute, and on any refused write, so a revoked share stops within a minute and the web shows that it ended. What is shared with an account is materialized flat into its Shared root on every refresh, with the sharer's name on a name collision; shares that end move the local file to the Trash; a shared file removed by hand comes back, because Leave is the way out.
 
 ## Testing and commands
 
@@ -84,9 +84,9 @@ Clients change data only through security-definer RPCs, all grouped by prefix: `
 
 ## Known risks and open work
 
-- Tree changes between devices arrive on focus and on a timer, not live. A note trashed on the web disappears from the Mac only on the next refresh.
+- Tree changes between devices arrive on focus and on a timer, not live, so a rename or trash on the web reaches the Mac on the next refresh, within five minutes.
 - The Shared root is read-only in structure from the Mac: no creating, renaming, or trashing inside a shared folder there, even with edit rights. The web can.
-- Invitations have no email delivery; the sharer tells the person or sends a link. A guest cannot upgrade to an account in place.
+- Invitation email goes only to addresses without an account, through Supabase's invite email on its default sender, which is rate-limited; custom SMTP is needed before this is relied on. An existing account gets no email. A guest cannot upgrade to an account in place.
 - Images and other blobs do not sync yet, and table widths and image sizes have no home in Markdown; the version captured before ingestion is the recovery path.
 - Ancestry is computed by recursive query on every permission check; a closure table waits until folders are large enough to need it.
 - Initializing Git inside a folder that is already synced is recorded in the plan as needing a pause and a dialog; it is not handled yet.

@@ -218,6 +218,9 @@ export const FileItem = React.memo(function FileItem({
     ? () => sidebarActions.saveCopy?.(entry.path)
     : undefined;
   const leave = canLeave ? () => sidebarActions.leave?.(entry.path) : undefined;
+  const share = sidebarActions.share && !inShared && /\.(md|markdown|mkd|mdown|mkdn|mdwn)$/i.test(entry.name)
+    ? () => sidebarActions.share?.(entry.path, "file")
+    : undefined;
 
   const { isFocused, nodeProps, restoreTreeFocus, focusTreePath } = useFileTreeNode({
     path: entry.path,
@@ -317,6 +320,7 @@ export const FileItem = React.memo(function FileItem({
               copyToNotes,
               saveCopy,
               leave,
+              share,
               reveal: () => { void handleRevealInFinder(); },
               copyPath: () => { void handleCopyPath(); },
               duplicate: inShared ? undefined : () => { void handleDuplicate(); },

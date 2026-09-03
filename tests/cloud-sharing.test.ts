@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  createCloudShareLink,
   fetchCloudDocumentHeads,
   getCloudItemSharing,
   listVisibleCloudItems,
   redeemCloudShareLink,
   revokeCloudAccess,
+  setCloudShareLink,
   shareCloudItem,
   shareLinkUrl,
   shareTokenFromUrl,
@@ -37,12 +37,14 @@ describe("cloud sharing client", () => {
     ]);
   });
 
-  it("returns the raw token once and builds a fragment URL from it", async () => {
-    const { client } = fakeClient({
-      cloud_create_share_link: { id: "link-1", token: "abc_-xyz", role: "viewer", created_at: "t", expires_at: null },
+  it("turns the one link on or off and builds a fragment URL from its token", async () => {
+    const { client, calls } = fakeClient({
+      cloud_set_share_link: { id: "link-1", token: "abc_-xyz", role: "viewer", created_at: "t" },
     });
-    const link = await createCloudShareLink(client, "item-1", "viewer");
-    const url = shareLinkUrl(link.token, "https://ghosteditor.app/app");
+    const link = await setCloudShareLink(client, "item-1", "viewer");
+    expect(calls[0].args).toEqual({ target_item_id: "item-1", link_role: "viewer" });
+    expect(await setCloudShareLink({ rpc: async () => ({ data: null, error: null }) } as never, "item-1", null)).toBeNull();
+    const url = shareLinkUrl(link!.token, "https://ghosteditor.app/app");
     expect(url).toBe("https://ghosteditor.app/app#share=abc_-xyz");
     expect(shareTokenFromUrl(url)).toBe("abc_-xyz");
     expect(shareTokenFromUrl("https://ghosteditor.app/app")).toBeNull();
@@ -72,7 +74,7 @@ describe("cloud sharing client", () => {
     const sharing = await getCloudItemSharing(client, "f");
     expect(sharing.members).toHaveLength(1);
     expect(sharing.invitations).toEqual([]);
-    expect(sharing.links).toEqual([]);
+    expect(sharing.link).toBeNull();
   });
 
   it("batches document heads and returns numbers", async () => {

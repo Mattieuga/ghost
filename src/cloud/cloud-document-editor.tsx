@@ -24,6 +24,7 @@ import { AppNotification } from "@/components/ui/app-notification";
 type BootState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
+  | { kind: "revoked" }
   | {
     kind: "ready";
     session: CloudCollaborationSession;
@@ -50,6 +51,7 @@ export function CloudDocumentEditor({
   title,
   pathSegments = [],
   onRename,
+  onAccessLost,
   showStyleBar = true,
   onToggleStyleBar,
   sidebarCollapsed = false,
@@ -61,6 +63,8 @@ export function CloudDocumentEditor({
   title: string;
   pathSegments?: string[];
   onRename?: (nextName: string) => void | Promise<void>;
+  /** The share ended while the note was open, or it was already gone when opening. */
+  onAccessLost?: () => void;
   showStyleBar?: boolean;
   onToggleStyleBar?: () => void;
   sidebarCollapsed?: boolean;
@@ -92,12 +96,7 @@ export function CloudDocumentEditor({
         onAccessRevoked: async () => {
           await localPersistence?.clear().catch(() => undefined);
           await session?.destroy().catch(() => undefined);
-          if (active) {
-            setBoot({
-              kind: "error",
-              message: "You no longer have access to this Cloud document.",
-            });
-          }
+          if (active) setBoot({ kind: "revoked" });
         },
       };
       try {
@@ -111,7 +110,11 @@ export function CloudDocumentEditor({
           await localPersistence.rememberRole(session.role).catch(() => undefined);
         }
       } catch (reason) {
-        if (reason instanceof CloudAccessError) await localPersistence.clear();
+        if (reason instanceof CloudAccessError) {
+          await localPersistence.clear();
+          if (active) setBoot({ kind: "revoked" });
+          return;
+        }
         throw reason;
       }
       if (!active) {
@@ -147,6 +150,26 @@ export function CloudDocumentEditor({
         sidebarCollapsed={sidebarCollapsed}
       >
         Loading {title}…
+      </CloudEditorNotice>
+    );
+  }
+  if (boot.kind === "revoked") {
+    return (
+      <CloudEditorNotice
+        title={title}
+        pathSegments={pathSegments}
+        sidebarCollapsed={sidebarCollapsed}
+      >
+        <span data-cloud-revoked>This note is no longer shared with you.</span>
+        {onAccessLost ? (
+          <button
+            type="button"
+            className="ml-3 cursor-pointer rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+            onClick={onAccessLost}
+          >
+            Back to your notes
+          </button>
+        ) : null}
       </CloudEditorNotice>
     );
   }

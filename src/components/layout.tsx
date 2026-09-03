@@ -130,6 +130,7 @@ import { mirrorLocalPersistenceKey, openYjsPersistence } from "@/cloud/cloud-loc
 import { isMissingServerFunction, uploadMirroredRoot } from "@/lib/mirror/cloud-upload";
 import type * as Y from "yjs";
 import { pullCloudChanges } from "@/lib/mirror/cloud-pull";
+import { syncCloudTreeToDisk } from "@/lib/mirror/cloud-tree-sync";
 import { refreshSharedRoot, SHARED_FOLDER_NAME } from "@/lib/mirror/shared-root";
 import {
   acceptCloudInvitations,
@@ -137,7 +138,7 @@ import {
   leaveCloudItem,
   listVisibleCloudItems,
 } from "@/cloud/cloud-sharing";
-import { ShareSheet, type SignInSurfaceProps } from "@/mirror/share-sheet";
+import { ShareSheet, type ShareTarget, type SignInSurfaceProps } from "@/mirror/share-sheet";
 import { useCloudAccount } from "@/cloud/use-cloud-account";
 import { completeMacCloudAuthCallback, useMacCloudAuthCallback } from "@/cloud/use-mac-cloud-auth-callback";
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
@@ -212,6 +213,9 @@ export function GhostLayout() {
     Boolean(root?.cloudOwnerId && cloudUserId && root.cloudOwnerId !== cloudUserId)
   ), [cloudUserId]);
   const [shareOpen, setShareOpen] = useState(false);
+  // What the Share sheet is about: the open note by default, or any note or
+  // folder from the sidebar.
+  const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
   // The active note's Cloud ID, resolved from its root's index while the
   // Share sheet is open. Null until the note is in Cloud.
   const [shareItemId, setShareItemId] = useState<string | null>(null);
@@ -1066,21 +1070,37 @@ export function GhostLayout() {
   const mirroredActive = activeRoot?.kind === "mirrored" && fileDescriptor?.kind === "markdown";
   mirroredActiveRef.current = mirroredActive;
 
+  const shareRoot = useMemo(() => (shareTarget ? rootForPath(roots, shareTarget.path) : null), [roots, shareTarget]);
+  const openShare = useCallback((path: string, kind: ShareTarget["kind"]) => {
+    setShareTarget({ path, kind });
+    setShareOpen(true);
+  }, []);
   useEffect(() => {
-    if (!shareOpen || !activeFile || !activeRoot || activeRoot.kind !== "mirrored") {
+    if (!shareOpen || !shareTarget || !shareRoot || shareRoot.kind !== "mirrored") {
       setShareItemId(null);
       return;
     }
     let cancelled = false;
-    const relativePath = relativeToRoot(activeRoot.path, activeFile);
-    void readGhostFolder(tauriMirrorFs, activeRoot.path).then(({ metadata, index }) => {
+    const root = shareRoot;
+    const target = shareTarget;
+    void readGhostFolder(tauriMirrorFs, root.path).then(({ metadata, index }) => {
       if (cancelled) return;
+      const uploaded = root.cloudRootId ?? metadata?.cloudRootId ?? null;
+      if (target.kind === "folder") {
+        if (target.path === root.path) {
+          setShareItemId(uploaded);
+          return;
+        }
+        const relativeDir = relativeToRoot(root.path, target.path);
+        setShareItemId(relativeDir ? index.folders[relativeDir] ?? null : null);
+        return;
+      }
+      const relativePath = relativeToRoot(root.path, target.path);
       const entry = relativePath ? index.documents[relativePath] : undefined;
-      const uploaded = activeRoot.cloudRootId ?? metadata?.cloudRootId ?? null;
       setShareItemId(entry ? (entry.cloudDocumentId ?? (uploaded ? entry.documentId : null)) : null);
     }).catch(() => { if (!cancelled) setShareItemId(null); });
     return () => { cancelled = true; };
-  }, [activeFile, activeRoot, shareOpen]);
+  }, [shareOpen, shareRoot, shareTarget]);
 
   const folderNameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1) || path;
 
@@ -1197,6 +1217,7 @@ export function GhostLayout() {
     rootKindOf: (path) => roots.find((root) => root.path === path)?.kind ?? null,
     isSharedRoot: (path) => roots.some((root) => root.shared && root.path === path),
     leave: (path) => setPendingLeave(path),
+    share: openShare,
     syncFolder: (path) => setSyncDialogPath(path),
     stopSyncing: (rootPath) => {
       const root = roots.find((candidate) => candidate.path === rootPath);
@@ -1426,6 +1447,9 @@ export function GhostLayout() {
           if (uploadingRoots.current.has(root.id)) continue;
           const resolution = rootResolutionsRef.current[root.id];
           if (resolution && resolution.kind !== "ok") continue;
+          // Structure first (renames, moves, trash, new notes from the web), then content.
+          const synced = await syncCloudTreeToDisk({ fs: tauriMirrorFs, client, openPersistence, isOpen }, root, visible);
+          if (synced.moved.length || synced.removed.length || synced.added.length) changed = true;
           const pulled = await pullCloudChanges({ fs: tauriMirrorFs, client, openPersistence, isOpen }, root);
           if (pulled.written.length > 0) changed = true;
         }
@@ -2239,7 +2263,7 @@ export function GhostLayout() {
                     data-share-button
                     className="cursor-pointer text-[11px] text-ring transition-colors hover:text-sidebar-foreground"
                     title="Share this note"
-                    onClick={() => setShareOpen(true)}
+                    onClick={() => { if (activeFile) openShare(activeFile, "file"); }}
                   >
                     Share
                   </button>
@@ -2382,8 +2406,8 @@ export function GhostLayout() {
         onClose={() => setShareOpen(false)}
         client={cloudClient}
         account={cloudAccount}
-        filePath={activeFile}
-        root={activeRoot}
+        target={shareTarget}
+        root={shareRoot}
         cloudItemId={shareItemId}
         signIn={signInSurface}
         onSyncFolder={(path) => setSyncDialogPath(path)}

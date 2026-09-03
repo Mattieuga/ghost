@@ -514,8 +514,23 @@ commit order, redeeming records the caller's profile, the sharer's address
 is never shown, one shared root per item, invitations attach only to
 confirmed addresses, version timestamps are clamped.
 
+Sharing polish after the first shared-link test (2026-09-03, branch
+`feat/sharing-polish`): one link per item, off or view or edit, kept
+server-side for the owner so it can be copied again (migration
+`20260903020000_cloud_one_share_link.sql`); Share… on the right-click menu
+of notes, synced folders, and synced roots; a link opens in the browser at
+once as "Guest NNNN" with no form; a revoked share ends the web session
+with a clear panel and re-checks run on focus, every minute, and on any
+refused write; renames, moves, trash, and new notes made on the web reach
+the Mac's files through `cloud-tree-sync.ts`; and an invitation by email
+sends Supabase's invite email through the `share-invite` Edge Function for
+addresses without an account.
+
 Deferred from this phase, recorded rather than dropped:
 
+- Email for people who already have an account, and a better sender: the
+  invite email goes out on Supabase's default sender until custom SMTP is
+  set up, and the template still says "You have been invited".
 - Switching accounts on one Mac. A root uploaded by account A stays local
   for account B rather than being re-uploaded, because its document IDs
   already exist in A's Cloud. Re-uploading under fresh IDs needs the index

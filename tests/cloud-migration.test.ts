@@ -29,6 +29,10 @@ const hardeningMigration = readFileSync(
   new URL("../supabase/migrations/20260903010000_cloud_review_hardening.sql", import.meta.url),
   "utf8",
 );
+const oneLinkMigration = readFileSync(
+  new URL("../supabase/migrations/20260903020000_cloud_one_share_link.sql", import.meta.url),
+  "utf8",
+);
 
 describe("Cloud foundation migration", () => {
   it("keeps retained Cloud tables separate from the disposable spike", () => {
@@ -276,5 +280,24 @@ describe("Review hardening migration", () => {
     ]) {
       expect(hardeningMigration).toContain(`revoke all on function ${helper} from public, anon, authenticated`);
     }
+  });
+});
+
+describe("One share link migration", () => {
+  it("allows one live link per item and retires the older hashed-only ones", () => {
+    expect(oneLinkMigration).toContain("create unique index if not exists cloud_share_links_one_active");
+    expect(oneLinkMigration).toContain("where token is null and revoked_at is null");
+    expect(oneLinkMigration).toContain("drop function if exists public.cloud_create_share_link(uuid, text, integer)");
+    expect(oneLinkMigration).toContain("drop function if exists public.cloud_revoke_share_link(uuid)");
+  });
+
+  it("changes the role in place and returns the same token to the owner only", () => {
+    expect(oneLinkMigration).toContain("private.cloud_require_owner(target_item_id)");
+    expect(oneLinkMigration).toContain("set role = link_role");
+    expect(oneLinkMigration).toContain("'token', link.token");
+    expect(oneLinkMigration).toContain("encode(extensions.digest(raw_token, 'sha256'), 'hex')");
+    expect(oneLinkMigration.match(/security definer\nset search_path = ''/g)).toHaveLength(2);
+    expect(oneLinkMigration).toContain("revoke all on function public.cloud_set_share_link(uuid, text) from public, anon");
+    expect(oneLinkMigration).toContain("grant execute on function public.cloud_set_share_link(uuid, text) to authenticated");
   });
 });

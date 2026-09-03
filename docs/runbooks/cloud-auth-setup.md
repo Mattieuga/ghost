@@ -129,9 +129,23 @@ this repository needs only:
   `VITE_SUPABASE_PUBLISHABLE_KEY`, the same two values as `.env.local`.
   `VITE_GHOST_WEB_URL` overrides the address baked into share links, which
   defaults to `https://ghosteditor.app/app`.
-- The domain `ghosteditor.app` (and `www` if wanted), with DNS pointed at
-  Vercel. GitHub Pages is then switched off for the repository; the site
-  no longer lives under `docs/`.
+- The domain `ghosteditor.app`, connected to Production, with
+  `www.ghosteditor.app` set to a 308 redirect to it. The apex must be the
+  one that serves: the Mac app's universal links and the share links from
+  the Share sheet name `ghosteditor.app`, and Apple wants the association
+  file at that host without a redirect. Vercel proposes the opposite
+  arrangement when both are added, so check the Domains page.
+- DNS at Cloudflare: delete the GitHub Pages A records and the `www` CNAME
+  to `github.io`, then add the two CNAMEs Vercel shows (`@` and `www`, both
+  to the `*.vercel-dns-*.com` host), proxy off ("DNS only"). Cloudflare
+  flattens the apex CNAME itself. GitHub Pages is then switched off for the
+  repository; the site no longer lives under `docs/`.
+- Vercel serves the extensionless association file as
+  `application/octet-stream` despite the header rule in `vercel.json`,
+  which it does not apply to that path. Apple's CDN normalizes it to JSON,
+  as it did from GitHub Pages; verify at
+  `https://app-site-association.cdn-apple.com/a/v1/ghosteditor.app` after
+  any change to the file.
 
 Supabase needs the deployed address in Authentication → URL Configuration
 → Redirect URLs: `https://ghosteditor.app/app/` and, for preview
@@ -146,3 +160,31 @@ re-fetches it on its own schedule.
 Routes in the browser client are hash-based, so no rewrites are needed:
 `/app/#/d/<documentId>` opens one document and `/app/#share=<token>`
 redeems a share link.
+
+## Invitation email (Edge Function)
+
+Sharing with an address that has no account emails it through the
+`share-invite` function in `supabase/functions/share-invite/`. Deploy it
+once, and again after changes:
+
+```sh
+npx supabase login
+npx supabase link --project-ref <project-ref>
+npx supabase functions deploy share-invite
+```
+
+The function uses the project's service role key, which Supabase provides
+to it; nothing to configure. It sends Supabase's "Invite user" email, so:
+
+- Customize that template under Authentication → Email Templates so it says
+  who shared what; the function passes `invited_by`, `shared_item`, and
+  `shared_role` as user metadata, available to the template as
+  `{{ .Data.invited_by }}` and so on.
+- The default sender is rate-limited to a handful of emails per hour and is
+  meant for development. Set custom SMTP under Project Settings → Auth
+  before relying on it.
+- The invite link must be allowed to return to the app: keep
+  `https://ghosteditor.app/app/` in the Redirect URLs list.
+
+Addresses that already have an account get no email yet; the share shows up
+under Shared on their next visit.

@@ -53,6 +53,8 @@ export interface SidebarActions {
   isSharedRoot?: (rootPath: string) => boolean;
   /** Give up access to something shared with you, by its path in the Shared root. */
   leave?: (path: string) => void;
+  /** Open the Share sheet for a note or a folder. */
+  share?: (path: string, kind: "file" | "folder") => void;
 }
 
 const SidebarActionsContext = createContext<SidebarActions>({});

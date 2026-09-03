@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { getBrowserCloudClient } from "@/cloud/browser-cloud-client";
 import { CloudSignIn } from "@/cloud/cloud-sign-in";
 import { CloudTree } from "@/cloud/cloud-tree";
@@ -14,8 +13,6 @@ import {
   type VisibleCloudItem,
 } from "@/cloud/cloud-sharing";
 import { AppNotification } from "@/components/ui/app-notification";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 /**
  * The web client is one page with hash routes, so it works from any static
@@ -71,6 +68,13 @@ function isGuestUser(user: { is_anonymous?: boolean } | null): boolean {
   return Boolean(user?.is_anonymous);
 }
 
+/** A guest gets a name without being asked, the way a shared document just opens. */
+function guestName(): string {
+  const digits = new Uint32Array(1);
+  crypto.getRandomValues(digits);
+  return `Guest ${1000 + (digits[0] % 9000)}`;
+}
+
 export function CloudWebApp() {
   const client = useMemo(() => getBrowserCloudClient(), []);
   // Magic links and OAuth come back to this page, whatever it is called on
@@ -87,6 +91,28 @@ export function CloudWebApp() {
   const [notice, setNotice] = useState<string | null>(null);
   const [showStyleBar, setShowStyleBar] = useState(true);
   const missingRouteNoticed = useRef<string | null>(null);
+  const [guestState, setGuestState] = useState<"idle" | "opening" | "failed">("idle");
+  const guestAttempted = useRef(false);
+
+  // A share link opens straight away: a guest session under a generated
+  // name, no form. If guest access is off, the sign-in card takes over.
+  useEffect(() => {
+    if (!client || account.kind !== "signed-out" || !shareToken || guestAttempted.current) return;
+    guestAttempted.current = true;
+    setGuestState("opening");
+    const name = guestName();
+    void client.auth.signInAnonymously({ options: { data: { display_name: name } } })
+      .then(async ({ error }) => {
+        if (error) throw new Error(error.message);
+        await setCloudDisplayName(client, name).catch(() => undefined);
+      })
+      .catch((reason: unknown) => {
+        setGuestState("failed");
+        setNotice(/anonymous/i.test(messageOf(reason))
+          ? "Sign in to open this note."
+          : messageOf(reason));
+      });
+  }, [account.kind, client, shareToken]);
   const activeDocumentPath = activeDocument
     ? cloudItemPath(tree.items, activeDocument).slice(0, -1).map((item) => item.name)
     : [];
@@ -173,6 +199,9 @@ export function CloudWebApp() {
     );
   }
   if (account.kind === "loading") return <FullPageNotice>Loading your account…</FullPageNotice>;
+  if (account.kind === "signed-out" && shareToken && guestState !== "failed") {
+    return <FullPageNotice>Opening the shared note…</FullPageNotice>;
+  }
   if (account.kind === "signed-out") {
     return (
       <main className="flex min-h-svh items-center justify-center overflow-auto bg-background px-6 py-12 text-foreground">
@@ -183,7 +212,6 @@ export function CloudWebApp() {
               {shareToken || route.kind === "document" ? "Someone shared a note with you." : "Your notes, on the web."}
             </h1>
           </div>
-          {shareToken ? <GuestGate client={client} onError={setNotice} /> : null}
           <CloudSignIn client={client} emailRedirectTo={emailRedirectTo} />
           <AppNotification message={notice} onDismiss={() => setNotice(null)} />
         </div>
@@ -217,6 +245,11 @@ export function CloudWebApp() {
             title={activeDocument.name}
             pathSegments={activeDocumentPath}
             onRename={activeDocument.access_role === "viewer" ? undefined : renameActiveDocument}
+            onAccessLost={() => {
+              closeDocument();
+              setNotice("That note is no longer shared with you.");
+              void tree.reload();
+            }}
             showStyleBar={showStyleBar}
             onToggleStyleBar={() => setShowStyleBar((visible) => !visible)}
           />
@@ -235,58 +268,6 @@ export function CloudWebApp() {
       </section>
       <AppNotification message={notice} onDismiss={() => setNotice(null)} />
     </main>
-  );
-}
-
-/**
- * A share link without an account: continue as a guest under a name, or
- * sign in below and keep the note for good. Guest sessions are anonymous
- * Supabase users; the note's owner sees the name in presence and the sheet.
- */
-function GuestGate({ client, onError }: { client: SupabaseClient; onError: (message: string) => void }) {
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const continueAsGuest = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    try {
-      const displayName = name.trim() || "Guest";
-      const { error } = await client.auth.signInAnonymously({
-        options: { data: { display_name: displayName } },
-      });
-      if (error) throw new Error(error.message);
-      // The owner's Share sheet lists members from profiles, not metadata.
-      await setCloudDisplayName(client, displayName).catch(() => undefined);
-    } catch (reason) {
-      onError(/anonymous/i.test(messageOf(reason))
-        ? "Guest access is off for this Cloud. Sign in below instead."
-        : messageOf(reason));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form
-      data-guest-gate
-      className="mx-auto mb-6 w-full max-w-sm rounded-xl border border-border bg-card px-5 py-4"
-      onSubmit={(event) => { void continueAsGuest(event); }}
-    >
-      <p className="text-sm font-medium">Open it as a guest</p>
-      <p className="mt-1 text-xs text-muted-foreground">Your name shows next to your edits. No account needed.</p>
-      <div className="mt-3 flex gap-2">
-        <Input
-          aria-label="Your name"
-          placeholder="Your name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          className="h-9 flex-1"
-        />
-        <Button type="submit" disabled={busy}>Continue</Button>
-      </div>
-      <p className="mt-3 text-center text-xs text-muted-foreground">or sign in to keep it</p>
-    </form>
   );
 }
 

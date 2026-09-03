@@ -3,11 +3,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CloudAccountState } from "@/cloud/use-cloud-account";
 import { CloudSignIn } from "@/cloud/cloud-sign-in";
 import {
-  createCloudShareLink,
   getCloudItemSharing,
   isMissingSharingFunction,
   revokeCloudAccess,
-  revokeCloudShareLink,
+  sendShareInvitation,
+  setCloudShareLink,
   shareCloudItem,
   shareLinkUrl,
   type CloudItemSharing,
@@ -38,6 +38,12 @@ export interface SignInSurfaceProps {
 export const GHOST_WEB_URL: string = (import.meta.env.VITE_GHOST_WEB_URL as string | undefined)?.trim()
   || "https://ghosteditor.app/app";
 
+/** What the Share sheet is about: a note or a folder, by path. */
+export interface ShareTarget {
+  path: string;
+  kind: "file" | "folder";
+}
+
 function nameOf(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1) || path;
 }
@@ -60,19 +66,26 @@ function roleLabel(role: CloudShareRole): string {
   return role === "editor" ? "can edit" : "can view";
 }
 
+type LinkSetting = "off" | CloudShareRole;
+
 /**
- * Sharing for one note that is in Cloud: links anyone can open, and people
- * invited by email. Every change reloads the summary from the server so the
- * sheet never shows access that was not granted.
+ * Sharing for one item that is in Cloud, shaped like a Google Doc: one
+ * link that is off, view, or edit, and people invited by email. Every
+ * change reloads the summary from the server so the sheet never shows
+ * access that was not granted.
  */
 export function SharePanel({
   client,
   itemId,
+  itemName,
+  itemKind,
   webAppUrl,
   copy = copyText,
 }: {
   client: SupabaseClient;
   itemId: string;
+  itemName: string;
+  itemKind: "document" | "folder";
   webAppUrl: string;
   copy?: (text: string) => Promise<void>;
 }) {
@@ -108,11 +121,27 @@ export function SharePanel({
     }
   };
 
-  const copyLink = (role: CloudShareRole) => run(async () => {
-    const link = await createCloudShareLink(client, itemId, role);
-    await copy(shareLinkUrl(link.token, webAppUrl));
-    return role === "editor" ? "Edit link copied." : "View link copied.";
-  });
+  const linkSetting: LinkSetting = sharing?.link?.role ?? "off";
+  const setLink = (setting: LinkSetting) => {
+    if (setting === linkSetting) return;
+    void run(async () => {
+      const link = await setCloudShareLink(client, itemId, setting === "off" ? null : setting);
+      if (!link) return "Link turned off.";
+      if (linkSetting === "off") {
+        await copy(shareLinkUrl(link.token, webAppUrl));
+        return "Link copied.";
+      }
+      return null;
+    });
+  };
+  const copyLink = () => {
+    const link = sharing?.link;
+    if (!link) return;
+    void run(async () => {
+      await copy(shareLinkUrl(link.token, webAppUrl));
+      return "Link copied.";
+    });
+  };
 
   const invite = (event: React.FormEvent) => {
     event.preventDefault();
@@ -121,44 +150,60 @@ export function SharePanel({
     void run(async () => {
       const outcome = await shareCloudItem(client, itemId, email, inviteRole);
       setInviteEmail("");
-      return outcome.kind === "member"
-        ? `${outcome.email} ${roleLabel(outcome.role)} now.`
+      // The email is best effort: access exists either way.
+      const mailed = await sendShareInvitation(client, {
+        itemId,
+        itemName,
+        itemKind,
+        email: outcome.email,
+        role: outcome.role,
+        webAppUrl,
+      }).catch(() => false);
+      if (outcome.kind === "member") {
+        return `${outcome.email} ${roleLabel(outcome.role)} now.${mailed ? " They have an email." : ""}`;
+      }
+      return mailed
+        ? `${outcome.email} has an email with a link to sign in.`
         : `${outcome.email} gets access when they sign in.`;
     });
   };
 
+  const settingButton = (setting: LinkSetting, label: string) => (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={linkSetting === setting}
+      disabled={busy || !sharing}
+      onClick={() => setLink(setting)}
+      className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+        linkSetting === setting
+          ? "bg-foreground text-background"
+          : "text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div className="mt-3 space-y-5 text-sm" data-share-panel>
-      <section className="space-y-2" data-share-links>
+      <section className="space-y-2" data-share-link>
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Anyone with the link</h3>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => void copyLink("viewer")}>
-            Copy view link
-          </Button>
-          <Button size="sm" disabled={busy} onClick={() => void copyLink("editor")}>
-            Copy edit link
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="radiogroup" aria-label="Link access" className="flex gap-1 rounded-md border border-border p-0.5">
+            {settingButton("off", "Off")}
+            {settingButton("viewer", "Can view")}
+            {settingButton("editor", "Can edit")}
+          </div>
+          <Button size="sm" variant="outline" disabled={busy || !sharing?.link} onClick={copyLink}>
+            Copy link
           </Button>
         </div>
-        {sharing?.links.length ? (
-          <ul className="space-y-1">
-            {sharing.links.map((link) => (
-              <li key={link.id} className="flex items-center justify-between gap-3 text-muted-foreground">
-                <span>
-                  {link.role === "editor" ? "Edit" : "View"} link
-                  {link.expires_at ? ` · expires ${new Date(link.expires_at).toLocaleDateString()}` : ""}
-                </span>
-                <button
-                  type="button"
-                  className="cursor-pointer text-xs hover:text-foreground"
-                  disabled={busy}
-                  onClick={() => void run(async () => { await revokeCloudShareLink(client, link.id); return "Link revoked."; })}
-                >
-                  Revoke
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        <p className="text-xs text-muted-foreground">
+          {linkSetting === "off"
+            ? "Only people you invite below can open it."
+            : `Anyone who has the link ${roleLabel(linkSetting)}. Turn it off to stop that.`}
+        </p>
       </section>
 
       <section className="space-y-2" data-share-people>
@@ -235,15 +280,15 @@ export function SharePanel({
 
 /**
  * The Share sheet is one of the three places sign-in lives. Signed out, it
- * is the sign-in card. Signed in, it offers to sync the file's folder, waits
- * for the upload, or shows the sharing panel for a note that is in Cloud.
+ * is the sign-in card. Signed in, it offers to sync the item's folder, waits
+ * for the upload, or shows the sharing panel for something that is in Cloud.
  */
 export function ShareSheet({
   open,
   onClose,
   client,
   account,
-  filePath,
+  target,
   root,
   cloudItemId,
   webAppUrl = GHOST_WEB_URL,
@@ -255,9 +300,9 @@ export function ShareSheet({
   onClose: () => void;
   client: SupabaseClient | null;
   account: CloudAccountState;
-  filePath: string | null;
+  target: ShareTarget | null;
   root: TrackedRoot | null;
-  /** The note's Cloud ID once it is in Cloud; null while it is resolving or not uploaded. */
+  /** The item's Cloud ID once it is in Cloud; null while it is resolving or not uploaded. */
   cloudItemId?: string | null;
   webAppUrl?: string;
   signIn: SignInSurfaceProps;
@@ -265,7 +310,7 @@ export function ShareSheet({
   onCopyToNotes: (filePath: string) => void;
 }) {
   if (!open) return null;
-  const fileName = filePath ? nameOf(filePath) : "this note";
+  const itemName = target ? nameOf(target.path) : "this note";
   const folderName = root ? nameOf(root.path) : null;
 
   let title: string;
@@ -302,39 +347,51 @@ export function ShareSheet({
     );
     footer = <Button variant="outline" onClick={onClose}>Not now</Button>;
   } else if (root && root.kind === "mirrored") {
-    title = `Share ${fileName}`;
+    title = `Share ${itemName}`;
     body = cloudItemId ? (
       <>
         <DialogDescription>
           It is on your phone at {webAppUrl}, signed in as {account.user.email ?? "you"}.
         </DialogDescription>
-        <SharePanel client={client} itemId={cloudItemId} webAppUrl={webAppUrl} />
+        <SharePanel
+          client={client}
+          itemId={cloudItemId}
+          itemName={itemName}
+          itemKind={target?.kind === "folder" ? "folder" : "document"}
+          webAppUrl={webAppUrl}
+        />
       </>
     ) : (
       <DialogDescription>
         {folderName ? `${folderName} is on its way to Cloud. ` : ""}
-        Sharing opens as soon as {fileName} is there.
+        Sharing opens as soon as {itemName} is there.
       </DialogDescription>
     );
     footer = <Button variant="outline" onClick={onClose}>Done</Button>;
   } else {
-    title = `Share ${fileName}`;
+    title = `Share ${itemName}`;
     body = (
       <DialogDescription>
-        {folderName
-          ? `To share ${fileName}, sync ${folderName} to Cloud. The folder stays where it is. Or copy the note into Notes and share it from there.`
-          : `Copy ${fileName} into Notes to share it from there.`}
+        {target?.kind === "folder"
+          ? `To share ${itemName}, sync it to Cloud. The folder stays where it is.`
+          : folderName
+            ? `To share ${itemName}, sync ${folderName} to Cloud. The folder stays where it is. Or copy the note into Notes and share it from there.`
+            : `Copy ${itemName} into Notes to share it from there.`}
       </DialogDescription>
     );
     footer = (
       <>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
-        {filePath ? (
-          <Button variant="outline" onClick={() => { onClose(); onCopyToNotes(filePath); }}>
+        {target?.kind === "file" ? (
+          <Button variant="outline" onClick={() => { onClose(); onCopyToNotes(target.path); }}>
             Copy to Notes
           </Button>
         ) : null}
-        {root && folderName ? (
+        {target?.kind === "folder" ? (
+          <Button onClick={() => { onClose(); onSyncFolder(target.path); }}>
+            Sync {itemName}
+          </Button>
+        ) : root && folderName ? (
           <Button onClick={() => { onClose(); onSyncFolder(root.path); }}>
             Sync {folderName}
           </Button>

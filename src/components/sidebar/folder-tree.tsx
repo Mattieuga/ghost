@@ -333,6 +333,10 @@ function DroppableFolder({
   const isMirroredRoot = isRoot && ownKind === "mirrored" && !inShared;
   const canLeave = inShared && !isRoot && id.substring(0, id.lastIndexOf("/")) === projectPath && !!sidebarActions.leave;
   const leave = canLeave ? () => sidebarActions.leave?.(id) : undefined;
+  // A synced root, or a folder inside one, can be shared as a whole.
+  const share = sidebarActions.share && !inShared && (isRoot ? ownKind === "mirrored" : parentKind === "mirrored")
+    ? () => sidebarActions.share?.(id, "folder")
+    : undefined;
 
   const dotColor = isRoot && hasActiveFile ? "var(--ghost-amber)" : "var(--muted-foreground)";
   // This is intentionally separate from data-folder-active. A collapsed root
@@ -472,6 +476,7 @@ function DroppableFolder({
         stopSyncing: isMirroredRoot ? () => sidebarActions.stopSyncing?.(id) : undefined,
         linkIntoProject: isMirroredRoot ? () => sidebarActions.linkIntoProject?.(id) : undefined,
         leave,
+        share,
         openNewProject: onAddProject,
         newFile: inShared ? undefined : () => { setOpen(true); onCreateFile(id); },
         newFolder: inShared ? undefined : () => { setOpen(true); onCreateFolder(id); },

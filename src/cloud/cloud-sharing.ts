@@ -18,22 +18,19 @@ export interface VisibleCloudItem extends CloudItem {
   shared_out: boolean;
 }
 
+/** The item's one link. Off means no link; on carries the role anyone with it gets. */
 export interface CloudShareLink {
   id: string;
   role: CloudShareRole;
-  created_at: string;
-  expires_at: string | null;
-}
-
-export interface CreatedCloudShareLink extends CloudShareLink {
-  /** Returned once; the server keeps only a hash. */
+  /** The owner can read it back any time; redeeming looks up its hash. */
   token: string;
+  created_at: string;
 }
 
 export interface CloudItemSharing {
   members: Array<{ user_id: string; email: string | null; display_name: string | null; role: CloudShareRole; created_at: string }>;
   invitations: Array<{ id: string; email: string; role: CloudShareRole; created_at: string }>;
-  links: CloudShareLink[];
+  link: CloudShareLink | null;
 }
 
 export type ShareOutcome =
@@ -92,25 +89,18 @@ export async function revokeCloudAccess(
   fail("Could not remove access", error);
 }
 
-export async function createCloudShareLink(
+/** Turn the item's link off (null) or on at a role; the link itself is stable while on. */
+export async function setCloudShareLink(
   client: SupabaseClient,
   itemId: string,
-  role: CloudShareRole,
-  expiresInHours: number | null = null,
-): Promise<CreatedCloudShareLink> {
-  const { data, error } = await client.rpc("cloud_create_share_link", {
+  role: CloudShareRole | null,
+): Promise<CloudShareLink | null> {
+  const { data, error } = await client.rpc("cloud_set_share_link", {
     target_item_id: itemId,
     link_role: role,
-    expires_in_hours: expiresInHours,
   });
-  fail("Could not create the link", error);
-  if (!data) throw new Error("Supabase did not return the share link");
-  return data as CreatedCloudShareLink;
-}
-
-export async function revokeCloudShareLink(client: SupabaseClient, linkId: string): Promise<void> {
-  const { error } = await client.rpc("cloud_revoke_share_link", { link_id: linkId });
-  fail("Could not revoke the link", error);
+  fail("Could not change the link", error);
+  return (data ?? null) as CloudShareLink | null;
 }
 
 export async function redeemCloudShareLink(
@@ -136,7 +126,7 @@ export async function getCloudItemSharing(client: SupabaseClient, itemId: string
   return {
     members: sharing.members ?? [],
     invitations: sharing.invitations ?? [],
-    links: sharing.links ?? [],
+    link: sharing.link ?? null,
   };
 }
 
@@ -155,6 +145,35 @@ export async function fetchCloudDocumentHeads(
     }
   }
   return heads;
+}
+
+/**
+ * Ask the `share-invite` function to email the person. Returns false when
+ * the function is not deployed or declined; access was granted regardless.
+ */
+export async function sendShareInvitation(
+  client: SupabaseClient,
+  invitation: {
+    itemId: string;
+    itemName: string;
+    itemKind: "document" | "folder";
+    email: string;
+    role: CloudShareRole;
+    webAppUrl: string;
+  },
+): Promise<boolean> {
+  const { data, error } = await client.functions.invoke("share-invite", {
+    body: {
+      item_id: invitation.itemId,
+      item_name: invitation.itemName,
+      item_kind: invitation.itemKind,
+      email: invitation.email,
+      role: invitation.role,
+      web_app_url: invitation.webAppUrl,
+    },
+  });
+  if (error) return false;
+  return Boolean((data as { sent?: boolean } | null)?.sent);
 }
 
 export async function setCloudDisplayName(client: SupabaseClient, name: string): Promise<void> {

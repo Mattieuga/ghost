@@ -81,34 +81,32 @@ describe("SharePanel", () => {
     );
     await flush();
     const toggle = host.querySelector<HTMLButtonElement>('[role="switch"]')!;
-    const access = host.querySelector<HTMLSelectElement>('select[aria-label="Link access"]')!;
-    expect(host.textContent).toContain("Only people you invite can open it.");
     expect(toggle.getAttribute("aria-checked")).toBe("false");
-    expect(button(host, "Copy link")?.disabled).toBe(true);
-    expect(access.disabled).toBe(true);
+    expect(host.querySelector("[data-share-link]")).toBeNull();
 
     await act(async () => { toggle.click(); });
     await flush();
     expect(calls.find((call) => call.name === "cloud_set_share_link")?.args).toEqual({ target_item_id: "doc-1", link_role: "viewer" });
     expect(copied).toEqual(["https://ghosteditor.app/app#share=tok123"]);
-    expect(host.textContent).toContain("Anyone who has the link can view.");
     expect(toggle.getAttribute("aria-checked")).toBe("true");
-    expect(button(host, "Copy link")?.disabled).toBe(false);
+    expect(host.querySelector("[data-share-link]")?.textContent).toContain("https://ghosteditor.app/app#share=tok123");
+    expect(button(host, "Copied")).toBeDefined();
 
+    const access = host.querySelector<HTMLSelectElement>('select[aria-label="Link access"]')!;
     await act(async () => { setValue(access, "editor"); });
     await flush();
     expect(calls.filter((call) => call.name === "cloud_set_share_link").at(-1)?.args).toEqual({ target_item_id: "doc-1", link_role: "editor" });
-    expect(host.textContent).toContain("Anyone who has the link can edit.");
+    expect(access.value).toBe("editor");
     expect(copied).toHaveLength(1);
 
-    await act(async () => { button(host, "Copy link")?.click(); });
+    await act(async () => { (button(host, "Copied") ?? button(host, "Copy"))?.click(); });
     await flush();
     expect(copied).toHaveLength(2);
 
     await act(async () => { toggle.click(); });
     await flush();
     expect(calls.filter((call) => call.name === "cloud_set_share_link").at(-1)?.args).toEqual({ target_item_id: "doc-1", link_role: null });
-    expect(host.textContent).toContain("Link turned off.");
+    expect(host.querySelector("[data-share-link]")).toBeNull();
   });
 
   it("invites by email and asks the function to send the email", async () => {
@@ -130,7 +128,6 @@ describe("SharePanel", () => {
       name: "share-invite",
       body: { item_id: "doc-1", item_name: "Plan.md", item_kind: "document", email: "friend@example.com", role: "viewer", web_app_url: "https://ghosteditor.app/app" },
     }]);
-    expect(host.textContent).toContain("friend@example.com has an email with a link to sign in.");
     expect(host.textContent).toContain("wife@example.com");
   });
 

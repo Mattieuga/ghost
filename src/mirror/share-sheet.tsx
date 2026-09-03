@@ -60,6 +60,15 @@ function roleLabel(role: CloudShareRole): string {
   return role === "editor" ? "can edit" : "can view";
 }
 
+/** The item's name, set off from the rest of the title. */
+function ItemPill({ name }: { name: string }) {
+  return (
+    <span className="ml-1 inline-block max-w-[18rem] truncate rounded-md bg-accent px-2 py-0.5 align-baseline font-mono text-[13px] font-normal text-accent-foreground">
+      {name}
+    </span>
+  );
+}
+
 const ROLE_OPTIONS: Array<{ value: CloudShareRole; label: string }> = [
   { value: "viewer", label: "Can view" },
   { value: "editor", label: "Can edit" },
@@ -91,7 +100,7 @@ export function SharePanel({
 }) {
   const [sharing, setSharing] = useState<CloudItemSharing | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<CloudShareRole>("editor");
@@ -109,13 +118,12 @@ export function SharePanel({
   useEffect(() => { void reload(); }, [reload]);
 
   const ready = itemId !== null && sharing !== null;
-  const run = async (work: (id: string) => Promise<string | null>) => {
+  const run = async (work: (id: string) => Promise<void>) => {
     if (!itemId) return;
     setBusy(true);
     setError(null);
     try {
-      const message = await work(itemId);
-      if (message) setNotice(message);
+      await work(itemId);
       await reload();
     } catch (reason) {
       setError(messageOf(reason));
@@ -124,27 +132,26 @@ export function SharePanel({
     }
   };
 
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
   const link = sharing?.link ?? null;
+  const linkUrl = link ? shareLinkUrl(link.token, webAppUrl) : null;
+  const copyUrl = async (url: string) => {
+    await copy(url);
+    setCopied(true);
+  };
   const toggleLink = (on: boolean) => {
     void run(async (id) => {
       const next = await setCloudShareLink(client, id, on ? "viewer" : null);
-      if (!next) return "Link turned off.";
-      await copy(shareLinkUrl(next.token, webAppUrl));
-      return "Link copied.";
+      if (next) await copyUrl(shareLinkUrl(next.token, webAppUrl));
     });
   };
   const setLinkRole = (role: CloudShareRole) => {
-    void run(async (id) => {
-      await setCloudShareLink(client, id, role);
-      return null;
-    });
-  };
-  const copyLink = () => {
-    if (!link) return;
-    void run(async () => {
-      await copy(shareLinkUrl(link.token, webAppUrl));
-      return "Link copied.";
-    });
+    void run(async (id) => { await setCloudShareLink(client, id, role); });
   };
 
   const invite = (event: React.FormEvent) => {
@@ -155,7 +162,7 @@ export function SharePanel({
       const outcome = await shareCloudItem(client, id, email, inviteRole);
       setInviteEmail("");
       // The email is best effort: access exists either way.
-      const mailed = await sendShareInvitation(client, {
+      await sendShareInvitation(client, {
         itemId: id,
         itemName,
         itemKind,
@@ -163,27 +170,13 @@ export function SharePanel({
         role: outcome.role,
         webAppUrl,
       }).catch(() => false);
-      if (outcome.kind === "member") {
-        return `${outcome.email} ${roleLabel(outcome.role)} now.${mailed ? " They have an email." : ""}`;
-      }
-      return mailed
-        ? `${outcome.email} has an email with a link to sign in.`
-        : `${outcome.email} gets access when they sign in.`;
     });
   };
-
-  const linkDescription = !itemId
-    ? `Getting ${itemName} into Cloud…`
-    : !sharing
-      ? "Loading…"
-      : link
-        ? `Anyone who has the link ${roleLabel(link.role)}.`
-        : "Only people you invite can open it.";
 
   return (
     <div className="space-y-4 text-sm" data-share-panel>
       <div className="rounded-xl border bg-card p-6 space-y-4">
-        <SettingRow label="Anyone with the link" description={linkDescription}>
+        <SettingRow label="Anyone with the link" description={itemId ? undefined : `Getting ${itemName} into Cloud…`}>
           <SettingSwitch
             label="Anyone with the link"
             checked={link !== null}
@@ -191,22 +184,32 @@ export function SharePanel({
             onChange={toggleLink}
           />
         </SettingRow>
-        <SettingRow label="Link" description={link ? "Copy it again any time." : "Turn the link on to get one."}>
-          <SettingSelect
-            label="Link access"
-            value={link?.role ?? "viewer"}
-            options={ROLE_OPTIONS}
-            disabled={busy || !link}
-            onChange={setLinkRole}
-          />
-          <Button size="sm" variant="outline" disabled={busy || !link} onClick={copyLink}>
-            Copy link
-          </Button>
-        </SettingRow>
+        {linkUrl ? (
+          <div className="flex items-center gap-2" data-share-link>
+            <div className="flex h-8 min-w-0 flex-1 items-center rounded-md border border-input bg-background pl-2.5">
+              <span className="truncate font-mono text-xs text-muted-foreground" title={linkUrl}>{linkUrl}</span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void copyUrl(linkUrl).catch((reason: unknown) => setError(messageOf(reason)))}
+                className="ml-auto h-full shrink-0 cursor-pointer border-l border-input px-2.5 text-xs font-medium hover:bg-accent disabled:opacity-50"
+              >
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <SettingSelect
+              label="Link access"
+              value={link?.role ?? "viewer"}
+              options={ROLE_OPTIONS}
+              disabled={busy}
+              onChange={setLinkRole}
+            />
+          </div>
+        ) : null}
       </div>
 
       <div className="rounded-xl border bg-card p-6 space-y-4">
-        <SettingRow label="People" description="Invite someone by email. They open it after signing in." />
+        <SettingRow label="People" />
         <form className="flex gap-2" onSubmit={invite}>
           <Input
             type="email"
@@ -238,7 +241,6 @@ export function SharePanel({
               disabled={busy}
               onClick={() => void run(async (id) => {
                 await revokeCloudAccess(client, id, { userId: member.user_id });
-                return null;
               })}
             >
               Remove
@@ -257,7 +259,6 @@ export function SharePanel({
               disabled={busy}
               onClick={() => void run(async (id) => {
                 await revokeCloudAccess(client, id, { invitationId: invitation.id });
-                return null;
               })}
             >
               Remove
@@ -266,9 +267,7 @@ export function SharePanel({
         ))}
       </div>
 
-      <p className={`min-h-5 px-1 text-xs ${error ? "text-destructive" : "text-muted-foreground"}`} role={error ? "alert" : "status"}>
-        {error ?? notice ?? ""}
-      </p>
+      {error ? <p className="px-1 text-xs text-destructive" role="alert">{error}</p> : null}
     </div>
   );
 }
@@ -308,16 +307,17 @@ export function ShareSheet({
   const itemName = target ? nameOf(target.path) : "this note";
   const folderName = root ? nameOf(root.path) : null;
 
-  let title: string;
+  let title: React.ReactNode;
+  let ariaLabel: string;
   let description: React.ReactNode = null;
   let body: React.ReactNode = null;
   let footer: React.ReactNode = null;
 
   if (!client) {
-    title = "Sharing isn't available";
+    title = ariaLabel = "Sharing isn't available";
     description = "This build of Ghost has no Cloud configured, so notes stay on this Mac.";
   } else if (account.kind === "signed-out" || account.kind === "loading" || account.kind === "error") {
-    title = "Sign in to share";
+    title = ariaLabel = "Sign in to share";
     description = "Sharing and your phone need an account. Your notes stay where they are; signing in only adds Cloud on top.";
     body = (
       <div className="rounded-xl border bg-card p-6 [&>div]:max-w-none [&>div]:border-0 [&>div]:bg-transparent [&>div]:p-0 [&>div]:shadow-none" data-share-sign-in>
@@ -332,8 +332,8 @@ export function ShareSheet({
       </div>
     );
   } else if (root && root.kind === "mirrored") {
-    title = `Share ${itemName}`;
-    description = `On your phone at ${webAppUrl}, signed in as ${account.user.email ?? "you"}.`;
+    title = <>Share <ItemPill name={itemName} /></>;
+    ariaLabel = `Share ${itemName}`;
     body = (
       <SharePanel
         client={client}
@@ -344,7 +344,8 @@ export function ShareSheet({
       />
     );
   } else {
-    title = `Share ${itemName}`;
+    title = <>Share <ItemPill name={itemName} /></>;
+    ariaLabel = `Share ${itemName}`;
     description = target?.kind === "folder"
       ? `To share ${itemName}, sync it to Cloud. The folder stays where it is.`
       : folderName
@@ -373,7 +374,7 @@ export function ShareSheet({
 
   // The same panel as Settings, with the same cards inside.
   return (
-    <FloatingPanel title={title} description={description} onClose={onClose} footer={footer} width={560} data-share-sheet>
+    <FloatingPanel title={title} ariaLabel={ariaLabel} description={description} onClose={onClose} footer={footer} width={560} data-share-sheet>
       {body ?? <div className="text-xs text-muted-foreground">Nothing to share here.</div>}
     </FloatingPanel>
   );

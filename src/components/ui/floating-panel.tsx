@@ -12,6 +12,7 @@ import { useCompactMode } from "@/hooks/use-compact-mode";
  */
 export function FloatingPanel({
   title,
+  ariaLabel,
   description,
   onClose,
   headerExtra,
@@ -20,7 +21,9 @@ export function FloatingPanel({
   children,
   ...rest
 }: {
-  title: string;
+  title: ReactNode;
+  /** Required when the title is not plain text. */
+  ariaLabel?: string;
   description?: ReactNode;
   onClose: () => void;
   /** Rendered below the title inside the header, for a tab bar. */
@@ -56,7 +59,7 @@ export function FloatingPanel({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label={title}
+          aria-label={ariaLabel ?? (typeof title === "string" ? title : undefined)}
           className="rounded-xl border border-border bg-popover shadow-2xl overflow-hidden flex flex-col"
           style={{ maxHeight: "min(72vh, calc(100vh - 2rem))" }}
           {...rest}

@@ -132,6 +132,7 @@ pub fn show_pdf_view(
     path: String,
     view_id: String,
     generation: u64,
+    hidden: bool,
     x: f64,
     y: f64,
     width: f64,
@@ -182,6 +183,7 @@ pub fn show_pdf_view(
             pdf_view.setDocument(Some(&document));
             pdf_view.setAutoScales(true);
         }
+        pdf_view.setHidden(hidden);
         webview.addSubview(&pdf_view);
         let native_state = state_for_view(&pdf_view)?;
         let pointer = Retained::into_raw(pdf_view) as usize;
@@ -286,6 +288,13 @@ pub fn pdf_view_action(
                 "zoom-in" => view.zoomIn(None),
                 "zoom-out" => view.zoomOut(None),
                 "fit" => view.setAutoScales(true),
+                "suspend" => {
+                    view.setHidden(true);
+                    if let Some(native_window) = webview.window() {
+                        native_window.makeFirstResponder(Some(webview));
+                    }
+                }
+                "resume" => view.setHidden(false),
                 "page" => {
                     let document = view
                         .document()

@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Maximize2, Minus, Plus, Search, X } from "lucide-react";
 import { OpenExternalButton } from "@/components/viewer/open-external-button";
 import type { FileVersionToken } from "@/lib/source-document";
+import { useNativeViewOverlay } from "@/hooks/use-native-view-overlay";
 
 let nextPdfViewId = 0;
 
@@ -31,6 +32,9 @@ export function PdfViewer({ filePath }: PdfViewerProps) {
   const activeViewIdRef = useRef<string | null>(null);
   const searchRequestRef = useRef(0);
   const [revision, setRevision] = useState(0);
+  const overlayActive = useNativeViewOverlay();
+  const overlayActiveRef = useRef(overlayActive);
+  overlayActiveRef.current = overlayActive;
 
   const frame = useCallback(() => {
     const surface = surfaceRef.current;
@@ -59,6 +63,7 @@ export function PdfViewer({ filePath }: PdfViewerProps) {
           path: filePath,
           viewId,
           generation,
+          hidden: overlayActiveRef.current,
           ...bounds,
         });
         mounted = true;
@@ -186,6 +191,11 @@ export function PdfViewer({ filePath }: PdfViewerProps) {
       console.error("PDFKit action failed", reason);
     }
   }, []);
+
+  useEffect(() => {
+    if (!nativeState) return;
+    void action(overlayActive ? "suspend" : "resume");
+  }, [Boolean(nativeState), overlayActive, action]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const search = useCallback(async (requestedIndex = 0) => {
     if (!query) return;

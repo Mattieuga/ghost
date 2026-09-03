@@ -23,6 +23,10 @@ const EXTREME_SOURCE_BYTES: u64 = 128 * 1024 * 1024;
 /// Per-folder Ghost metadata. Never listed, even when hidden files are shown.
 pub const GHOST_METADATA_DIR: &str = ".ghost";
 
+const WORKSPACE_FILE_INDEX_LIMIT: usize = 100_000;
+const WORKSPACE_FILE_INDEX_HARD_LIMIT: usize = 200_000;
+const WORKSPACE_FILE_INDEX_MAX_DEPTH: usize = 64;
+
 #[cfg(unix)]
 fn copy_extended_attributes(source: &Path, destination: &Path) -> Result<(), std::io::Error> {
     for name in xattr::list(source)? {
@@ -138,6 +142,12 @@ pub struct FileEntry {
     pub children: Option<Vec<FileEntry>>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct WorkspaceFileIndex {
+    pub files: Vec<String>,
+    pub truncated: bool,
+}
+
 #[tauri::command]
 pub async fn read_directory(
     path: String,
@@ -167,6 +177,136 @@ pub async fn read_directory(
         show_hidden.unwrap_or(false),
     )
     .map_err(|e| e.to_string())
+}
+
+fn is_skipped_workspace_directory(name: &str) -> bool {
+    name == GHOST_METADATA_DIR || matches!(
+        name,
+        "node_modules"
+            | ".git"
+            | ".svn"
+            | ".hg"
+            | "build"
+            | "dist"
+            | "out"
+            | ".next"
+            | ".nuxt"
+            | "__pycache__"
+            | ".cache"
+            | ".parcel-cache"
+            | "target"
+            | ".build"
+            | "Pods"
+            | ".turbo"
+            | ".vercel"
+            | ".output"
+    )
+}
+
+fn matches_workspace_extension(path: &Path, extensions: &[String]) -> bool {
+    if extensions.is_empty() {
+        return true;
+    }
+    let extension = path.extension().and_then(|value| value.to_str()).unwrap_or("");
+    extensions
+        .iter()
+        .any(|candidate| candidate.eq_ignore_ascii_case(extension))
+}
+
+fn build_workspace_file_index(
+    directories: &[String],
+    extensions: &[String],
+    show_hidden: bool,
+    limit: usize,
+) -> WorkspaceFileIndex {
+    let mut files = Vec::new();
+    let mut seen = HashSet::new();
+    let mut stack: Vec<(PathBuf, usize)> = directories
+        .iter()
+        .rev()
+        .map(|directory| (PathBuf::from(directory), 0))
+        .collect();
+    let mut truncated = false;
+
+    while let Some((directory, depth)) = stack.pop() {
+        if depth >= WORKSPACE_FILE_INDEX_MAX_DEPTH {
+            continue;
+        }
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !show_hidden && name.starts_with('.') {
+                continue;
+            }
+
+            let path = entry.path();
+            let file_type = match entry.file_type() {
+                Ok(file_type) => file_type,
+                Err(_) => continue,
+            };
+            if file_type.is_symlink() {
+                continue;
+            }
+            let is_package = file_type.is_dir() && is_file_package(&path);
+            if file_type.is_dir() && !is_package {
+                if !is_skipped_workspace_directory(&name) {
+                    stack.push((path, depth + 1));
+                }
+                continue;
+            }
+            if !file_type.is_file() && !is_package {
+                continue;
+            }
+            if !matches_workspace_extension(&path, extensions) {
+                continue;
+            }
+
+            let path = path.to_string_lossy().to_string();
+            if seen.insert(path.clone()) {
+                files.push(path);
+                if files.len() >= limit {
+                    truncated = true;
+                    break;
+                }
+            }
+        }
+        if truncated {
+            break;
+        }
+    }
+
+    files.sort_unstable();
+    WorkspaceFileIndex { files, truncated }
+}
+
+/// Build the complete file-name index used by Quick Open without expanding
+/// the visible sidebar tree. The walk is bounded and skips generated folders,
+/// so tracking a large home directory cannot recreate the old recursive-tree
+/// memory spike.
+#[tauri::command]
+pub async fn list_workspace_files(
+    directories: Vec<String>,
+    extensions: Vec<String>,
+    show_hidden: Option<bool>,
+    max_results: Option<usize>,
+) -> Result<WorkspaceFileIndex, String> {
+    let limit = max_results
+        .unwrap_or(WORKSPACE_FILE_INDEX_LIMIT)
+        .clamp(1, WORKSPACE_FILE_INDEX_HARD_LIMIT);
+    tauri::async_runtime::spawn_blocking(move || {
+        build_workspace_file_index(
+            &directories,
+            &extensions,
+            show_hidden.unwrap_or(false),
+            limit,
+        )
+    })
+    .await
+    .map_err(|error| format!("Failed to build the workspace file index: {error}"))
 }
 
 #[cfg(target_os = "macos")]
@@ -2842,6 +2982,44 @@ mod tests {
         ))
         .expect_err("complete read should be rejected");
         assert!(error.contains("Complete text reads are limited"));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn workspace_file_index_is_recursive_filtered_and_bounded() {
+        let directory = test_directory("workspace-file-index");
+        fs::create_dir_all(directory.join("notes/nested"))
+            .expect("nested fixture should be created");
+        fs::create_dir_all(directory.join("node_modules/package"))
+            .expect("generated fixture should be created");
+        fs::write(directory.join("root.md"), "root").expect("fixture should be written");
+        fs::write(directory.join("notes/nested/deep.md"), "deep")
+            .expect("fixture should be written");
+        fs::write(directory.join("notes/nested/ignored.txt"), "ignored")
+            .expect("fixture should be written");
+        fs::write(directory.join("node_modules/package/generated.md"), "generated")
+            .expect("fixture should be written");
+
+        let root = directory.to_string_lossy().into_owned();
+        let index = super::build_workspace_file_index(
+            std::slice::from_ref(&root),
+            &["md".to_string()],
+            false,
+            10,
+        );
+        assert!(!index.truncated);
+        assert_eq!(index.files.len(), 2);
+        assert!(index.files.iter().any(|path| path.ends_with("/root.md")));
+        assert!(index.files.iter().any(|path| path.ends_with("/notes/nested/deep.md")));
+
+        let bounded = super::build_workspace_file_index(
+            &[root],
+            &["md".to_string()],
+            false,
+            1,
+        );
+        assert!(bounded.truncated);
+        assert_eq!(bounded.files.len(), 1);
         let _ = fs::remove_dir_all(directory);
     }
 

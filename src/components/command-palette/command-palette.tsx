@@ -20,6 +20,11 @@ interface SearchResults {
   files_searched: number;
 }
 
+interface WorkspaceFileIndex {
+  files: string[];
+  truncated: boolean;
+}
+
 interface TextPreview {
   text: string;
   truncated: boolean;
@@ -68,6 +73,7 @@ interface CommandPaletteProps {
   onFileSelect: (path: string) => boolean | void | Promise<boolean | void>;
   folders: string[];
   extensions: string[];
+  showHiddenFiles?: boolean;
   commands?: PaletteCommand[];
 }
 
@@ -86,6 +92,28 @@ function getContentQuery(query: string, initialMode: CommandPaletteMode): string
   return query.startsWith("# ") ? query.slice(2) : "";
 }
 
+function entryFromPath(path: string, folders: string[]): FlatFileEntry {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  const parent = path.slice(0, path.lastIndexOf("/"));
+  const root = [...folders]
+    .filter((folder) => path === folder || path.startsWith(`${folder}/`))
+    .sort((left, right) => right.length - left.length)[0];
+  if (!root) {
+    return {
+      name,
+      path,
+      folderDisplay: parent.slice(parent.lastIndexOf("/") + 1),
+    };
+  }
+  const rootName = root.slice(root.lastIndexOf("/") + 1);
+  const relativeParent = parent.slice(root.length);
+  return {
+    name,
+    path,
+    folderDisplay: relativeParent ? `${rootName}${relativeParent}` : rootName,
+  };
+}
+
 export function CommandPalette({
   open,
   initialMode = "files",
@@ -95,6 +123,7 @@ export function CommandPalette({
   onFileSelect,
   folders,
   extensions,
+  showHiddenFiles = false,
   commands = [],
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
@@ -103,6 +132,9 @@ export function CommandPalette({
   const [contentTotal, setContentTotal] = useState(0);
   const [contentLoading, setContentLoading] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [indexedFiles, setIndexedFiles] = useState<FlatFileEntry[]>(allFiles);
+  const [fileIndexLoading, setFileIndexLoading] = useState(false);
+  const [fileIndexTruncated, setFileIndexTruncated] = useState(false);
   const compact = useCompactMode();
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewMeta, setPreviewMeta] = useState<{
@@ -117,6 +149,40 @@ export function CommandPalette({
 
   const mode = getMode(query, initialMode);
 
+  // Quick Open has its own bounded native index. The sidebar intentionally
+  // retains only expanded directories, so using its flattened rows here would
+  // make collapsed files impossible to find. Build the index only while the
+  // palette is open; this keeps the sidebar lazy and avoids its former
+  // recursive-tree memory cost.
+  useEffect(() => {
+    if (!open || initialMode !== "files") return;
+    let cancelled = false;
+    setIndexedFiles(allFiles);
+    setFileIndexLoading(true);
+    setFileIndexTruncated(false);
+
+    void invoke<WorkspaceFileIndex>("list_workspace_files", {
+      directories: folders,
+      extensions,
+      showHidden: showHiddenFiles,
+      maxResults: 100_000,
+    }).then((result) => {
+      if (cancelled) return;
+      const byPath = new Map(allFiles.map((entry) => [entry.path, entry]));
+      for (const path of result.files) {
+        if (!byPath.has(path)) byPath.set(path, entryFromPath(path, folders));
+      }
+      setIndexedFiles([...byPath.values()]);
+      setFileIndexTruncated(result.truncated);
+    }).catch((error) => {
+      if (!cancelled) console.warn("Could not build the Quick Open file index", error);
+    }).finally(() => {
+      if (!cancelled) setFileIndexLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [open, initialMode, folders, extensions, showHiddenFiles]);
+
   // Focus input when opening
   useEffect(() => {
     if (open) {
@@ -127,8 +193,8 @@ export function CommandPalette({
   // File name search results
   const fileResults = useMemo(() => {
     if (mode !== "files" || !query) return [];
-    return fuzzySearch(allFiles, query, (f) => f.name, 20);
-  }, [query, allFiles, mode]);
+    return fuzzySearch(indexedFiles, query, (f) => f.name, 20);
+  }, [query, indexedFiles, mode]);
 
   const commandResults = useMemo(() => {
     if (mode !== "commands") return [];
@@ -143,17 +209,16 @@ export function CommandPalette({
 
   // Shared file lookup map
   const fileMap = useMemo(
-    () => new Map(allFiles.map((f) => [f.path, f])),
-    [allFiles]
+    () => new Map(indexedFiles.map((f) => [f.path, f])),
+    [indexedFiles]
   );
 
   // Recent files as FlatFileEntry items
   const recentEntries = useMemo(() => {
     if (mode !== "recent") return [];
     return recentFiles
-      .map((path) => fileMap.get(path))
-      .filter((f): f is FlatFileEntry => f !== undefined);
-  }, [recentFiles, fileMap, mode]);
+      .map((path) => fileMap.get(path) ?? entryFromPath(path, folders));
+  }, [recentFiles, fileMap, folders, mode]);
 
   // Build flat items list for navigation
   const items = useMemo(() => {
@@ -426,6 +491,7 @@ export function CommandPalette({
     <>
       {/* Backdrop */}
       <div
+        data-native-view-overlay
         className="fixed inset-0 z-50 bg-black/60 animate-in fade-in-0 duration-150"
         onClick={() => handleClose()}
       />
@@ -485,9 +551,15 @@ export function CommandPalette({
               style={{ maxHeight: "calc(70vh - 56px - 40px)" }}
             >
               {/* Empty state: no results */}
-              {items.length === 0 && !contentLoading && query && (
+              {items.length === 0 && !contentLoading && !fileIndexLoading && query && (
                 <div className="px-4 py-8 text-center text-[13px] text-ring">
                   No results found
+                </div>
+              )}
+
+              {mode === "files" && fileIndexLoading && fileResults.length === 0 && (
+                <div className="px-4 py-8 text-center text-[13px] text-ring">
+                  Indexing files…
                 </div>
               )}
 
@@ -558,6 +630,12 @@ export function CommandPalette({
                   <span className="text-[10px] font-medium uppercase text-ghost-amber tracking-wider">
                     Files
                   </span>
+                  {fileIndexLoading && (
+                    <span className="ml-2 text-[10px] text-ring">indexing…</span>
+                  )}
+                  {fileIndexTruncated && !fileIndexLoading && (
+                    <span className="ml-2 text-[10px] text-ring">first 100,000 files</span>
+                  )}
                 </div>
               )}
 

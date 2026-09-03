@@ -141,6 +141,7 @@ pub fn show_quick_look_view(
     path: String,
     view_id: String,
     generation: u64,
+    hidden: bool,
     x: f64,
     y: f64,
     width: f64,
@@ -192,6 +193,7 @@ pub fn show_quick_look_view(
             preview_view.setAutostarts(false);
             preview_view.setPreviewItem(Some(preview_item));
         }
+        preview_view.setHidden(hidden);
         webview.addSubview(&preview_view);
 
         let mounted = MountedQuickLookView {
@@ -289,6 +291,13 @@ pub fn quick_look_view_action(
         let view = unsafe { view_from_pointer(pointer) };
         match action.as_str() {
             "refresh" => unsafe { view.refreshPreviewItem() },
+            "suspend" => {
+                view.setHidden(true);
+                if let Some(native_window) = webview.window() {
+                    native_window.makeFirstResponder(Some(webview));
+                }
+            }
+            "resume" => view.setHidden(false),
             "focus" => {
                 if let Some(native_window) = webview.window() {
                     if let Some(target) = deepest_focusable_descendant(view) {

@@ -10,20 +10,21 @@ type EmailStep = "address" | "sent";
 
 export function CloudSignIn({
   client,
-  compact = false,
   emailRedirectTo,
   oauthRedirectTo = emailRedirectTo,
   openOAuthUrl = (url) => { window.location.assign(url); },
   externalError = null,
   capabilities: capabilitiesOverride,
+  onCallbackUrl,
 }: {
   client: SupabaseClient;
-  compact?: boolean;
   emailRedirectTo?: string;
   oauthRedirectTo?: string;
   openOAuthUrl?: (url: string) => void | Promise<void>;
   externalError?: string | null;
   capabilities?: CloudAuthCapabilities;
+  /** Finish sign-in from a pasted callback link, for builds the link cannot open. */
+  onCallbackUrl?: (url: string) => Promise<string | null>;
 }) {
   const [capabilities, setCapabilities] = useState<CloudAuthCapabilities | null>(
     capabilitiesOverride ?? null,
@@ -31,7 +32,10 @@ export function CloudSignIn({
   const [email, setEmail] = useState("");
   const [sentEmail, setSentEmail] = useState("");
   const [step, setStep] = useState<EmailStep>("address");
-  const [submitting, setSubmitting] = useState<"apple" | "email" | null>(null);
+  const [mode, setMode] = useState<"link" | "password">("link");
+  const [password, setPassword] = useState("");
+  const [callbackUrl, setCallbackUrl] = useState("");
+  const [submitting, setSubmitting] = useState<"apple" | "email" | "password" | "callback" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -96,20 +100,45 @@ export function CloudSignIn({
     setMessage(null);
   };
 
+  const signInWithPassword = async (event: FormEvent) => {
+    event.preventDefault();
+    setSubmitting("password");
+    setMessage(null);
+    try {
+      const { error } = await client.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) setMessage(error.message);
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const finishFromCallback = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!onCallbackUrl) return;
+    setSubmitting("callback");
+    setMessage(null);
+    try {
+      const failure = await onCallbackUrl(callbackUrl);
+      if (failure) setMessage(failure);
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
   const appleAvailable = capabilities?.apple === true;
   const emailAvailable = capabilities?.email !== false;
   const visibleMessage = message ?? externalError;
 
   return (
-    <div className={compact ? "px-3 py-3" : "w-full max-w-md rounded-2xl border border-border bg-card p-7 shadow-2xl shadow-black/20"}>
-      <h2 className={compact ? "text-sm font-semibold" : "text-xl font-semibold"}>
+    <div className="w-full max-w-md rounded-2xl border border-border bg-card p-7 shadow-2xl shadow-black/20">
+      <h2 className="text-xl font-semibold">
         Ghost Cloud
       </h2>
-      {!compact ? (
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Local Ghost stays account-free. Continue only when you want Cloud or sharing.
-        </p>
-      ) : null}
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+        Local Ghost stays account-free. Continue only when you want Cloud or sharing.
+      </p>
 
       <button
         type="button"
@@ -134,7 +163,46 @@ export function CloudSignIn({
         <span className="h-px flex-1 bg-border" />
       </div>
 
-      {step === "address" ? (
+      {step === "address" && mode === "password" ? (
+        <form className="space-y-2.5" onSubmit={(event) => void signInWithPassword(event)} data-password-sign-in>
+          <input
+            aria-label="Email"
+            type="email"
+            autoComplete="email"
+            required
+            disabled={submitting !== null}
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs outline-none focus:border-ring disabled:opacity-50"
+            placeholder="you@example.com"
+          />
+          <input
+            aria-label="Password"
+            type="password"
+            autoComplete="current-password"
+            required
+            disabled={submitting !== null}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs outline-none focus:border-ring disabled:opacity-50"
+            placeholder="Password"
+          />
+          <button
+            type="submit"
+            disabled={submitting !== null}
+            className="h-9 w-full rounded-md border border-border bg-secondary px-3 text-xs font-semibold text-secondary-foreground hover:bg-accent disabled:opacity-50"
+          >
+            {submitting === "password" ? "Signing in…" : "Sign in"}
+          </button>
+          <button
+            type="button"
+            className="w-full text-center text-[11px] text-muted-foreground hover:text-foreground"
+            onClick={() => { setMode("link"); setMessage(null); }}
+          >
+            Use an email link instead
+          </button>
+        </form>
+      ) : step === "address" ? (
         <form className="space-y-2.5" onSubmit={(event) => void sendLink(event)}>
           <input
             aria-label="Email"
@@ -154,6 +222,13 @@ export function CloudSignIn({
           >
             {submitting === "email" ? "Sending…" : "Continue with email"}
           </button>
+          <button
+            type="button"
+            className="w-full text-center text-[11px] text-muted-foreground hover:text-foreground"
+            onClick={() => { setMode("password"); setMessage(null); }}
+          >
+            Use a password instead
+          </button>
         </form>
       ) : (
         <div className="space-y-2.5">
@@ -167,6 +242,30 @@ export function CloudSignIn({
           >
             Use a different email
           </button>
+          {onCallbackUrl ? (
+            <form className="space-y-1.5 border-t border-border pt-2.5" onSubmit={(event) => void finishFromCallback(event)} data-callback-fallback>
+              <p className="text-[11px] leading-4 text-muted-foreground">
+                If the link opens in your browser instead of Ghost, copy the address the browser lands on and paste it here.
+              </p>
+              <input
+                aria-label="Sign-in link"
+                type="url"
+                required
+                disabled={submitting !== null}
+                value={callbackUrl}
+                onChange={(event) => setCallbackUrl(event.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs outline-none focus:border-ring disabled:opacity-50"
+                placeholder="https://ghosteditor.app/auth/native/callback/?code=…"
+              />
+              <button
+                type="submit"
+                disabled={submitting !== null}
+                className="h-8 w-full rounded-md border border-border px-3 text-xs text-secondary-foreground hover:bg-accent disabled:opacity-50"
+              >
+                {submitting === "callback" ? "Finishing…" : "Finish sign-in"}
+              </button>
+            </form>
+          ) : null}
         </div>
       )}
 

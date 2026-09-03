@@ -14,6 +14,9 @@ import {
   type CloudDocumentVersion,
   type CloudDocumentVersionReason,
 } from "@/cloud/cloud-version-history";
+import { parseMarkdownDocument } from "@/components/editor/frontmatter";
+import { serializeMarkdownDocument } from "@/components/editor/markdown-source";
+import { applyDocumentAsBlockDiff } from "@/lib/mirror/block-diff";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -102,7 +105,7 @@ export function CloudVersionHistory({
     setError(null);
     const promise = (async () => {
       await session.flush();
-      const markdownSnapshot = editor.getMarkdown();
+      const markdownSnapshot = serializeMarkdownDocument(editor);
       const version = await createCloudDocumentVersion(client, {
         documentId,
         markdownSnapshot,
@@ -156,7 +159,7 @@ export function CloudVersionHistory({
     void refreshVersions().then((loaded) => {
       if (!active || session.role !== "editor") return;
       const latest = loaded[0];
-      if (!latest || latest.markdown_snapshot !== editor.getMarkdown()) {
+      if (!latest || latest.markdown_snapshot !== serializeMarkdownDocument(editor)) {
         void captureVersion("automatic").then(() => {
           if (dirtyRef.current) scheduleAutomaticVersion();
         });
@@ -198,7 +201,10 @@ export function CloudVersionHistory({
     try {
       const backup = await captureVersion("restore_backup");
       if (!backup) return;
-      editor.commands.setContent(selected.markdown_snapshot, { contentType: "markdown" });
+      // The shared parser keeps frontmatter and table widths, which Tiptap's
+      // raw Markdown content type drops. Applying as a block diff keeps other
+      // collaborators' cursors outside the changed blocks.
+      applyDocumentAsBlockDiff(editor, parseMarkdownDocument(editor, selected.markdown_snapshot));
       await session.flush();
       const restored = await captureVersion("restore", selected.id);
       if (!restored) return;

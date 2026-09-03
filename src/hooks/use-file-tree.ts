@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { FileEntry, FlatFileEntry } from "@/types";
 
 const SKIP_DIRS = new Set([
+  ".ghost",
   "node_modules", ".git", ".svn", ".hg",
   "build", "dist", "out", ".next", ".nuxt",
   "__pycache__", ".cache", ".parcel-cache",

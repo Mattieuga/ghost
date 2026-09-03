@@ -39,6 +39,32 @@ export function parseMacCloudAuthCallback(rawUrl: string): MacCloudAuthCallback 
   };
 }
 
+/**
+ * Finish sign-in from a callback URL the user pasted, for builds that cannot
+ * receive the universal link, such as a loose development binary. Returns an
+ * error message, or null on success.
+ */
+export async function completeMacCloudAuthCallback(
+  client: SupabaseClient | null,
+  rawUrl: string,
+): Promise<string | null> {
+  if (!client) return "Ghost Cloud is not configured.";
+  const trimmed = rawUrl.trim();
+  const callback = parseMacCloudAuthCallback(trimmed);
+  if (!callback) {
+    return /supabase\.co\/auth\/v1\/verify/.test(trimmed)
+      ? "That is the email link itself. Open it in your browser, then paste the address the browser lands on."
+      : "That is not a Ghost sign-in link.";
+  }
+  if (callback.kind === "error") return callback.message;
+  try {
+    const { error } = await client.auth.exchangeCodeForSession(callback.code);
+    return error?.message ?? null;
+  } catch (reason) {
+    return reason instanceof Error ? reason.message : String(reason);
+  }
+}
+
 export function useMacCloudAuthCallback(client: SupabaseClient | null): string | null {
   const [error, setError] = useState<string | null>(null);
 

@@ -43,9 +43,26 @@ function unavailableHandle(message: string): CloudLocalPersistenceHandle {
  * local updates first lets the adapter calculate and upload any edits that
  * survived a process or browser restart.
  */
-export async function openCloudLocalPersistence(
+export function openCloudLocalPersistence(
   userId: string,
   documentId: string,
+  document: Y.Doc,
+): Promise<CloudLocalPersistenceHandle> {
+  return openYjsPersistence(cloudLocalPersistenceKey(userId, documentId), document);
+}
+
+/** Store key for a mirrored root's document. Scoped by root, not account. */
+export function mirrorLocalPersistenceKey(rootId: string, documentId: string): string {
+  return `ghost-mirror:v${LOCAL_PERSISTENCE_VERSION}:${rootId}:${documentId}`;
+}
+
+/**
+ * Open one named Yjs store and wait until its updates are applied. Failure
+ * degrades to an unavailable handle so an otherwise healthy document still
+ * opens.
+ */
+export async function openYjsPersistence(
+  key: string,
   document: Y.Doc,
 ): Promise<CloudLocalPersistenceHandle> {
   if (typeof indexedDB === "undefined") {
@@ -54,10 +71,7 @@ export async function openCloudLocalPersistence(
 
   let persistence: IndexeddbPersistence;
   try {
-    persistence = new IndexeddbPersistence(
-      cloudLocalPersistenceKey(userId, documentId),
-      document,
-    );
+    persistence = new IndexeddbPersistence(key, document);
   } catch (reason) {
     return unavailableHandle(
       reason instanceof Error ? reason.message : "Local document storage is unavailable.",

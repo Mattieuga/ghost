@@ -26,7 +26,6 @@ import { FolderTree } from "@/components/sidebar/folder-tree";
 import { EmptyState } from "@/components/sidebar/empty-state";
 import { HeadingMinimap } from "@/components/editor/heading-minimap";
 import { DocumentHeader } from "@/components/editor/document-header";
-import { tauriMarkdownEditorActions } from "@/components/editor/tauri-markdown-editor";
 import { fontFamilyValue } from "@/lib/fonts";
 import { FileViewer } from "@/components/editor/file-viewer";
 import { TextStats } from "@/components/editor/text-stats";
@@ -43,7 +42,12 @@ import {
 import { localDocumentRef } from "@/lib/document-ref";
 import { tauriLocalDocumentSource } from "@/lib/local-document-source";
 import { OpenExternalButton } from "@/components/viewer/open-external-button";
-import { ActiveFileStore, ActiveFileProvider } from "@/components/sidebar/sidebar-context";
+import {
+  ActiveFileStore,
+  ActiveFileProvider,
+  SidebarActionsProvider,
+  type SidebarActions,
+} from "@/components/sidebar/sidebar-context";
 import { applyContentInPlace, focusViewerTarget } from "@/lib/editor-utils";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { useTrackedFolders } from "@/hooks/use-tracked-folders";
@@ -54,10 +58,19 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { Search, SlidersHorizontal } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Plus, Search, SlidersHorizontal } from "lucide-react";
 import { SearchBar } from "@/components/editor/search-bar";
 import {
   CommandPalette,
@@ -85,32 +98,136 @@ import {
   type SourceProfile,
 } from "@/lib/resource-policy";
 import type { FileOpenPerformanceTrace } from "@/lib/open-performance";
+import { ensureNotesFolder, ghostFolder } from "@/lib/ghost-folder";
+import { tauriMarkdownEditorActions } from "@/components/editor/tauri-markdown-editor";
+import { AppNotification } from "@/components/ui/app-notification";
+import { MirroredDocumentEditor } from "@/mirror/mirrored-document-editor";
+import { MirrorSaveStatus } from "@/mirror/mirror-save-status";
+import { MirroredRootNotice } from "@/mirror/mirrored-root-notice";
+import { StopSyncingDialog, SyncFolderDialog } from "@/mirror/sync-folder-dialog";
+import { readGhostFolder } from "@/lib/mirror/adoption";
+import { relativeToRoot } from "@/lib/mirror/ghost-index";
+import { tauriMirrorFs, type FsEvent } from "@/lib/mirror/mirror-fs";
+import { reconcileMirroredRoot, relocateDocument } from "@/lib/mirror/root-sync";
+import { trashCloudItem } from "@/cloud/cloud-data";
+import type { MirrorWriteStatus } from "@/lib/mirror/mirror-writer";
 import {
-  getMacCloudClient,
-  MAC_CLOUD_AUTH_REDIRECT_URL,
-  openMacCloudOAuthUrl,
-} from "@/cloud/mac-cloud-client";
+  resolveMirroredRoot,
+  type RootResolution,
+  type RootResolutionFs,
+} from "@/lib/mirror/root-resolution";
+import {
+  describeSyncOutcome,
+  linkIntoRepository,
+  performSync,
+  stopSyncing,
+} from "@/lib/mirror/sync-folder";
+import { SidebarMutedRow, SidebarSectionHeader } from "@/components/sidebar/sidebar-section-header";
+import { SidebarTrashDialog } from "@/components/sidebar/sidebar-trash-dialog";
+import type { TrackedRoot } from "@/hooks/use-tracked-folders";
+import { getMacCloudClient, MAC_CLOUD_AUTH_REDIRECT_URL, openMacCloudOAuthUrl } from "@/cloud/mac-cloud-client";
+import { mirrorLocalPersistenceKey, openYjsPersistence } from "@/cloud/cloud-local-persistence";
+import { isMissingServerFunction, uploadMirroredRoot } from "@/lib/mirror/cloud-upload";
+import type * as Y from "yjs";
+import { pullCloudChanges } from "@/lib/mirror/cloud-pull";
+import { refreshSharedRoot, SHARED_FOLDER_NAME } from "@/lib/mirror/shared-root";
+import {
+  acceptCloudInvitations,
+  isMissingSharingFunction,
+  leaveCloudItem,
+  listVisibleCloudItems,
+} from "@/cloud/cloud-sharing";
+import { ShareSheet, type SignInSurfaceProps } from "@/mirror/share-sheet";
 import { useCloudAccount } from "@/cloud/use-cloud-account";
-import { useMacCloudAuthCallback } from "@/cloud/use-mac-cloud-auth-callback";
-import { useCloudTree } from "@/cloud/use-cloud-tree";
-import { CloudSignIn } from "@/cloud/cloud-sign-in";
-import { CloudTree } from "@/cloud/cloud-tree";
-import { CloudDocumentEditor } from "@/cloud/cloud-document-editor";
-import { cloudItemPath, type CloudItem } from "@/cloud/cloud-data";
+import { completeMacCloudAuthCallback, useMacCloudAuthCallback } from "@/cloud/use-mac-cloud-auth-callback";
+import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
+
+/** Cloud refresh cadence: at most every 20 s on focus, and every 5 min regardless. */
+const CLOUD_REFRESH_MIN_MS = 20_000;
+const CLOUD_REFRESH_INTERVAL_MS = 5 * 60_000;
+
+/** The root that contains a path: the deepest one, so a synced subfolder of a plain root wins. */
+function rootForPath(roots: TrackedRoot[], path: string): TrackedRoot | null {
+  let best: TrackedRoot | null = null;
+  for (const root of roots) {
+    if (path === root.path || path.startsWith(`${root.path}/`)) {
+      if (!best || root.path.length > best.path.length) best = root;
+    }
+  }
+  return best;
+}
+
+function insideRoot(root: TrackedRoot | null, path: string | null | undefined): boolean {
+  return Boolean(root && path && (path === root.path || path.startsWith(`${root.path}/`)));
+}
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"]);
 
 export function GhostLayout() {
-  const { folders, loading, addFolder, addFolderByPath, removeFolder, renameFolder, reorderFolders, setFolderOpen, isFolderOpen } = useTrackedFolders();
+  const {
+    roots,
+    folders,
+    loading,
+    firstRun,
+    addFolder,
+    addFolderByPath,
+    ensureSharedRoot,
+    removeFolder,
+    renameFolder,
+    setRootOrder,
+    setRootKind,
+    updateRoot,
+    updateRootPath,
+    setFolderOpen,
+    isFolderOpen,
+  } = useTrackedFolders();
   const { settings, updateSettings, saveTheme, deleteTheme } = useSettings();
   const updater = useUpdater();
+  const [activeFileStore] = useState(() => new ActiveFileStore());
+  const [mirrorStatus, setMirrorStatus] = useState<{ status: MirrorWriteStatus; error: string | null }>({
+    status: "saved",
+    error: null,
+  });
+  const [mirrorNotification, setMirrorNotification] = useState<string | null>(null);
+  const mirrorFlushRef = useRef<(() => Promise<void>) | null>(null);
+  const mirroredActiveRef = useRef(false);
+  const [syncDialogPath, setSyncDialogPath] = useState<string | null>(null);
+  const [stopSyncingRoot, setStopSyncingRoot] = useState<TrackedRoot | null>(null);
+  const [rootResolutions, setRootResolutions] = useState<Record<string, RootResolution>>({});
+  const rootResolutionsRef = useRef(rootResolutions);
+  rootResolutionsRef.current = rootResolutions;
+  // Roots with an upload in flight, and roots whose upload failed this
+  // session (retried at the next sign-in). Both keep other loops off them.
+  const uploadingRoots = useRef(new Set<string>());
+  const failedUploads = useRef(new Set<string>());
+  const [pendingLeave, setPendingLeave] = useState<string | null>(null);
   const cloudClient = useMemo(() => getMacCloudClient(), []);
   const cloudAuthCallbackError = useMacCloudAuthCallback(cloudClient);
   const cloudAccount = useCloudAccount(cloudClient);
-  const cloudUser = cloudAccount.kind === "signed-in" ? cloudAccount.user : null;
-  const cloudTree = useCloudTree(cloudClient, cloudUser?.id ?? null);
-  const [activeCloudDocument, setActiveCloudDocument] = useState<CloudItem | null>(null);
-  const [activeFileStore] = useState(() => new ActiveFileStore());
+  const signedIn = cloudAccount.kind === "signed-in";
+  // A root uploaded by another account is edited locally only; syncing into
+  // that account's Cloud copy would corrupt it.
+  const cloudUserId = cloudAccount.kind === "signed-in" ? cloudAccount.user.id : null;
+  const cloudMismatch = useCallback((root: TrackedRoot | null) => (
+    Boolean(root?.cloudOwnerId && cloudUserId && root.cloudOwnerId !== cloudUserId)
+  ), [cloudUserId]);
+  const [shareOpen, setShareOpen] = useState(false);
+  // The active note's Cloud ID, resolved from its root's index while the
+  // Share sheet is open. Null until the note is in Cloud.
+  const [shareItemId, setShareItemId] = useState<string | null>(null);
+  const leaveRef = useRef<((path: string) => Promise<void>) | null>(null);
+  // undefined while resolving; null when the home folder cannot be found.
+  const [ghostFolderPath, setGhostFolderPath] = useState<string | null | undefined>(undefined);
+  const signInSurface = useMemo<SignInSurfaceProps>(() => ({
+    emailRedirectTo: MAC_CLOUD_AUTH_REDIRECT_URL,
+    oauthRedirectTo: MAC_CLOUD_AUTH_REDIRECT_URL,
+    openOAuthUrl: openMacCloudOAuthUrl,
+    externalError: cloudAuthCallbackError,
+    completeCallback: (url) => completeMacCloudAuthCallback(cloudClient, url),
+  }), [cloudAuthCallbackError, cloudClient]);
+  useEffect(() => {
+    void ghostFolder().then(setGhostFolderPath).catch(() => setGhostFolderPath(null));
+  }, []);
   const [activeFile, _setActiveFile] = useState<string | null>(null);
   const activeFileRef = useRef<string | null>(null);
   const backHistoryRef = useRef<string[]>([]);
@@ -184,11 +301,41 @@ export function GhostLayout() {
     removeRecentFiles,
   } = useRecentFiles();
 
-  const focusEditor = useCallback((placement: "preserve" | "start" = "preserve") => {
+  const documentSave = useDocumentSave({
+    knownDiskContent: fileContentRef,
+    knownDiskVersion: fileVersionRef,
+    lastSaveTimestamp,
+  });
+
+  // Every document switch flushes through this one function. A later phase
+  // extends it to the Yjs session of a mirrored document.
+  const flushActiveDocument = useCallback(async () => {
+    await mirrorFlushRef.current?.();
+    await window.__ghostFlushEditorSave?.();
+    await documentSave.flush();
+  }, [documentSave.flush]);
+
+  // Folders Ghost creates are Yjs-backed from birth; any other folder gets
+  // there through Sync to Cloud. Both paths end here.
+  const makeRootMirrored = useCallback(async (root: TrackedRoot): Promise<string> => {
+    const outcome = await performSync(tauriMirrorFs, root);
+    setRootKind(root.path, "mirrored", outcome.bookmark);
+    return describeSyncOutcome(root, outcome);
+  }, [setRootKind]);
+
+  // Signing out pauses sync and touches no files.
+  const handleSignOut = useCallback(async () => {
+    if (!cloudClient) return;
+    await flushActiveDocument().catch(() => undefined);
+    const { error } = await cloudClient.auth.signOut();
+    if (error) throw error;
+  }, [cloudClient, flushActiveDocument]);
+
+  const focusEditor = useCallback((placement: "preserve" | "start" | "end" = "preserve") => {
     requestAnimationFrame(() => {
       const tiptap = editorInstanceRef.current;
       if (tiptap && !tiptap.isDestroyed) {
-        tiptap.commands.focus(placement === "start" ? "start" : null);
+        tiptap.commands.focus(placement === "preserve" ? null : placement);
         return;
       }
       const codeMirror = cmViewRef.current;
@@ -277,7 +424,7 @@ export function GhostLayout() {
     const previousPath = activeFileRef.current;
     if (activeFileRef.current && activeFileRef.current !== path) {
       try {
-        await window.__ghostFlushSave?.();
+        await flushActiveDocument();
       } catch {
         // Keep the current editor open; its save status explains the failure.
         return false;
@@ -319,7 +466,6 @@ export function GhostLayout() {
       setSourceLineSeparator(model.lineSeparator);
       setOpenPerformance(model.openPerformance);
       setActiveFile(path);
-      setActiveCloudDocument(null);
       setFileContent(model.content);
       setLiveText(model.content);
       setForceStaticTextStats(false);
@@ -332,7 +478,7 @@ export function GhostLayout() {
     } finally {
       if (openAbortRef.current === abortController) openAbortRef.current = null;
     }
-  }, [closeSearch, addRecentFile, setActiveFile]);
+  }, [closeSearch, addRecentFile, setActiveFile, flushActiveDocument]);
 
   const handleFileSelect = useCallback(
     (path: string) => openFile(path, true),
@@ -393,41 +539,13 @@ export function GhostLayout() {
   }, [openSearch]);
 
 
-  const documentSave = useDocumentSave({
-    knownDiskContent: fileContentRef,
-    knownDiskVersion: fileVersionRef,
-    lastSaveTimestamp,
-  });
-
-  const handleCloudDocumentSelect = useCallback(async (item: CloudItem) => {
-    try {
-      await window.__ghostFlushSave?.();
-      await window.__ghostFlushCloudSave?.();
-    } catch {
-      return;
-    }
-    closeSearch();
-    setShowSettings(false);
-    setActiveFile(null);
-    setEditorInstance(null);
-    setCmView(null);
-    setActiveCloudDocument(item);
-  }, [closeSearch, setActiveFile]);
-
+  // Accessory windows and Rust menu handlers reach the same flush.
   useEffect(() => {
-    if (cloudAccount.kind !== "signed-in") setActiveCloudDocument(null);
-  }, [cloudAccount.kind]);
-
-  useEffect(() => {
-    const flushAllSaves = async () => {
-      await window.__ghostFlushEditorSave?.();
-      await documentSave.flush();
-    };
-    window.__ghostFlushSave = flushAllSaves;
+    window.__ghostFlushSave = flushActiveDocument;
     return () => {
-      if (window.__ghostFlushSave === flushAllSaves) delete window.__ghostFlushSave;
+      if (window.__ghostFlushSave === flushActiveDocument) delete window.__ghostFlushSave;
     };
-  }, [documentSave.flush]);
+  }, [flushActiveDocument]);
 
   const handleContentChange = useCallback(
     async (markdown: string) => {
@@ -470,6 +588,24 @@ export function GhostLayout() {
 
   useFileWatcher(folders, refreshTreePath);
 
+  // A fresh install opens with the cursor in a real note rather than a
+  // folder picker. An emptied sidebar is left empty on purpose.
+  const seededFirstRun = useRef(false);
+  useEffect(() => {
+    if (loading || !firstRun || folders.length > 0 || seededFirstRun.current) return;
+    seededFirstRun.current = true;
+    void (async () => {
+      try {
+        const notes = await ensureNotesFolder();
+        const root = addFolderByPath(notes.path);
+        await makeRootMirrored(root).catch((error) => console.error("Failed to mirror Notes:", error));
+        if (notes.welcome_path && await openFile(notes.welcome_path, false)) focusEditor("end");
+      } catch (error) {
+        console.error("Failed to prepare the Notes folder:", error);
+      }
+    })();
+  }, [addFolderByPath, firstRun, focusEditor, folders.length, loading, makeRootMirrored, openFile]);
+
   const applyContentRef = useRef<((content: string) => boolean) | null>(null);
   applyContentRef.current = (content) =>
     applyContentInPlace(editorInstanceRef, cmViewRef, mainElRef, content);
@@ -478,6 +614,8 @@ export function GhostLayout() {
   // from accessory windows). Applies external changes in place, no remount.
   useReloadOnFocus({
     getDocument: () => {
+      // A mirrored document ingests external writes itself.
+      if (mirroredActiveRef.current) return null;
       const path = activeFileRef.current;
       return isTextBackedFile(fileDescriptorRef.current) && path
         ? localDocumentRef(path)
@@ -605,15 +743,34 @@ export function GhostLayout() {
     return retarget;
   }, [activeFileStore, retargetNavigationHistory, setActiveFile]);
 
+  // A synced note Ghost renamed or moved keeps its document: the index entry
+  // follows before the editor remounts, so nothing is adopted twice or
+  // trashed in Cloud. Queued with reconciliation.
+  const relocateMirrored = useCallback(async (oldPath: string, newPath: string) => {
+    const root = rootForPath(rootsForResolution.current, oldPath);
+    if (!root || root.kind !== "mirrored" || root.shared || !insideRoot(root, newPath) || newPath === root.path) return;
+    const from = relativeToRoot(root.path, oldPath);
+    const to = relativeToRoot(root.path, newPath);
+    if (!from || !to) return;
+    const run = rootSyncChain.current.then(() => relocateDocument({
+      fs: tauriMirrorFs,
+      client: signedIn && cloudClient && !cloudMismatch(root) ? cloudClient : null,
+      openPersistence: (id, documentId, document) => openYjsPersistence(mirrorLocalPersistenceKey(id, documentId), document),
+    }, root, from, to));
+    rootSyncChain.current = run.catch(() => undefined);
+    await run.catch((error: unknown) => console.error("Failed to move a synced note's document:", error));
+  }, [cloudClient, cloudMismatch, signedIn]);
+
   const handleFileRenamed = useCallback(
     async (oldPath: string, newPath: string) => {
       renameTreeEntry(oldPath, newPath);
       refreshTreePath(newPath);
+      await relocateMirrored(oldPath, newPath);
       await retargetActiveFile(oldPath, newPath);
       // Notify accessory windows
       invoke("emit_file_renamed", { oldPath, newPath }).catch(() => {});
     },
-    [renameTreeEntry, refreshTreePath, retargetActiveFile]
+    [relocateMirrored, renameTreeEntry, refreshTreePath, retargetActiveFile]
   );
 
   const handleRootRenamed = useCallback(
@@ -673,8 +830,9 @@ export function GhostLayout() {
       if (folderPath === parentDir) return;
 
       try {
-        await window.__ghostFlushSave?.();
+        await flushActiveDocument();
         const newPath = await invoke<string>("move_file", { filePath, targetDir: folderPath });
+        await relocateMirrored(filePath, newPath);
         await retargetActiveFile(filePath, newPath);
         handleFsChange();
       } catch (err) {
@@ -685,21 +843,44 @@ export function GhostLayout() {
         }
       }
     },
-    [retargetActiveFile, handleFsChange]
+    [relocateMirrored, retargetActiveFile, handleFsChange, flushActiveDocument]
   );
 
-  // Expose functions for Rust menu events
-  const createNewFile = useCallback(async (targetDirectory?: string) => {
-    if (folders.length === 0) { addFolder(); return; }
-    const currentFile = activeFileRef.current;
+  // With nothing to aim at, new items go to Notes, creating it on demand.
+  const ensureNotesRoot = useCallback(async (): Promise<string> => {
+    const notes = await ensureNotesFolder();
+    const root = addFolderByPath(notes.path);
+    if (root.kind !== "mirrored") {
+      await makeRootMirrored(root).catch((error) => console.error("Failed to mirror Notes:", error));
+    }
+    return notes.path;
+  }, [addFolderByPath, makeRootMirrored]);
+
+  const resolveTargetDirectory = useCallback(async (targetDirectory?: string): Promise<string> => {
+    // Nothing is created inside Shared: it mirrors other people's notes, and
+    // a stray file there would be swept away on the next refresh.
+    const shared = rootsForResolution.current.find((root) => root.shared) ?? null;
+    const usable = (dir: string | null | undefined): dir is string => Boolean(dir) && !insideRoot(shared, dir);
+    if (usable(targetDirectory)) return targetDirectory;
     const keyboardTarget = treeKeyboardRef.current?.hasFocus()
       ? treeKeyboardRef.current.getTargetDirectory()
       : null;
-    const targetDir = targetDirectory
-      ?? keyboardTarget
-      ?? (currentFile
-        ? currentFile.substring(0, currentFile.lastIndexOf("/"))
-        : folders[0]);
+    if (usable(keyboardTarget)) return keyboardTarget;
+    const currentFile = activeFileRef.current;
+    const currentDir = currentFile ? currentFile.substring(0, currentFile.lastIndexOf("/")) : null;
+    if (usable(currentDir)) return currentDir;
+    return ensureNotesRoot();
+  }, [ensureNotesRoot]);
+
+  // Expose functions for Rust menu events
+  const createNewFile = useCallback(async (targetDirectory?: string) => {
+    let targetDir: string;
+    try {
+      targetDir = await resolveTargetDirectory(targetDirectory);
+    } catch (error) {
+      console.error("Failed to choose a folder for the new file:", error);
+      return;
+    }
     let name = "Untitled.md";
     let counter = 1;
     while (true) {
@@ -716,19 +897,16 @@ export function GhostLayout() {
         if (counter > 100) break;
       }
     }
-  }, [folders, addFolder, handleFileSelect, insertTreeEntry, refreshTreePath]);
+  }, [resolveTargetDirectory, handleFileSelect, insertTreeEntry, refreshTreePath]);
 
   const createNewFolder = useCallback(async (targetDirectory?: string) => {
-    if (folders.length === 0) { addFolder(); return; }
-    const currentFile = activeFileRef.current;
-    const keyboardTarget = treeKeyboardRef.current?.hasFocus()
-      ? treeKeyboardRef.current.getTargetDirectory()
-      : null;
-    const targetDir = targetDirectory
-      ?? keyboardTarget
-      ?? (currentFile
-        ? currentFile.substring(0, currentFile.lastIndexOf("/"))
-        : folders[0]);
+    let targetDir: string;
+    try {
+      targetDir = await resolveTargetDirectory(targetDirectory);
+    } catch (error) {
+      console.error("Failed to choose a folder for the new folder:", error);
+      return;
+    }
 
     let name = "New Folder";
     let counter = 1;
@@ -747,7 +925,7 @@ export function GhostLayout() {
         name = `New Folder ${counter}`;
       }
     }
-  }, [folders, addFolder, insertTreeEntry, refreshTreePath]);
+  }, [resolveTargetDirectory, insertTreeEntry, refreshTreePath]);
 
   useEffect(() => {
     window.__ghostAddFolder = addFolder;
@@ -870,14 +1048,448 @@ export function GhostLayout() {
     return { folderName, fileName };
   }, [activeFile]);
 
-  const activeCloudPath = useMemo(() => activeCloudDocument
-    ? cloudItemPath(cloudTree.items, activeCloudDocument).slice(0, -1).map((item) => item.name)
-    : [], [activeCloudDocument, cloudTree.items]);
+  const activeRoot = useMemo(() => (activeFile ? rootForPath(roots, activeFile) : null), [activeFile, roots]);
+  const mirroredActive = activeRoot?.kind === "mirrored" && fileDescriptor?.kind === "markdown";
+  mirroredActiveRef.current = mirroredActive;
 
-  const handleActiveCloudRename = useCallback(async (nextName: string) => {
-    if (!activeCloudDocument) return;
-    setActiveCloudDocument(await cloudTree.rename(activeCloudDocument.id, nextName));
-  }, [activeCloudDocument, cloudTree]);
+  useEffect(() => {
+    if (!shareOpen || !activeFile || !activeRoot || activeRoot.kind !== "mirrored") {
+      setShareItemId(null);
+      return;
+    }
+    let cancelled = false;
+    const relativePath = relativeToRoot(activeRoot.path, activeFile);
+    void readGhostFolder(tauriMirrorFs, activeRoot.path).then(({ metadata, index }) => {
+      if (cancelled) return;
+      const entry = relativePath ? index.documents[relativePath] : undefined;
+      const uploaded = activeRoot.cloudRootId ?? metadata?.cloudRootId ?? null;
+      setShareItemId(entry ? (entry.cloudDocumentId ?? (uploaded ? entry.documentId : null)) : null);
+    }).catch(() => { if (!cancelled) setShareItemId(null); });
+    return () => { cancelled = true; };
+  }, [activeFile, activeRoot, shareOpen]);
+
+  const folderNameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1) || path;
+
+  // Sidebar sections appear once an account makes "Cloud" true.
+  const sections = useMemo(() => {
+    if (!signedIn) return [{ id: "all", label: null as string | null, roots }];
+    return [
+      { id: "cloud", label: "Cloud" as string | null, roots: roots.filter((root) => root.kind === "mirrored") },
+      { id: "mac", label: "On This Mac" as string | null, roots: roots.filter((root) => root.kind === "plain") },
+    ];
+  }, [roots, signedIn]);
+  const displayOrder = useMemo(() => sections.flatMap((section) => section.roots), [sections]);
+  const reorderDisplayed = useCallback((from: number, to: number) => {
+    const next = [...displayOrder];
+    const [moved] = next.splice(from, 1);
+    if (!moved) return;
+    next.splice(to, 0, moved);
+    if (signedIn) {
+      // A drag never crosses sections.
+      const firstPlain = next.findIndex((root) => root.kind === "plain");
+      if (firstPlain !== -1 && next.slice(firstPlain).some((root) => root.kind === "mirrored")) return;
+    }
+    setRootOrder(next.map((root) => root.id));
+  }, [displayOrder, setRootOrder, signedIn]);
+
+  const handleSyncConfirm = useCallback(async (path: string) => {
+    try {
+      await flushActiveDocument();
+      const root = roots.find((candidate) => candidate.path === path) ?? addFolderByPath(path);
+      setMirrorNotification(await makeRootMirrored(root));
+    } catch (error) {
+      setMirrorNotification(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSyncDialogPath(null);
+    }
+  }, [addFolderByPath, flushActiveDocument, makeRootMirrored, roots]);
+
+  const handleStopSyncingConfirm = useCallback(async (root: TrackedRoot) => {
+    try {
+      await flushActiveDocument().catch(() => undefined);
+      // The open note's model belongs to the mirror; a plain editor would
+      // show what was loaded at open time. Close it and let it reopen.
+      if (insideRoot(root, activeFileRef.current)) {
+        setActiveFile(null);
+        setFileDescriptor(null);
+        setFileContent("");
+      }
+      if (root.cloudRootId && signedIn && cloudClient && !cloudMismatch(root)) {
+        await trashCloudItem(cloudClient, root.cloudRootId).catch((error: unknown) => {
+          console.warn("The Cloud copy was not moved to Trash:", error);
+        });
+      }
+      await stopSyncing(tauriMirrorFs, root);
+      uploadingRoots.current.delete(root.id);
+      failedUploads.current.delete(root.id);
+      setRootKind(root.path, "plain");
+      updateRoot(root.id, { cloudRootId: undefined, cloudOwnerId: undefined });
+      setRootResolutions((current) => {
+        if (!current[root.id]) return current;
+        const next = { ...current };
+        delete next[root.id];
+        return next;
+      });
+      setMirrorNotification(`${folderNameOf(root.path)} stays on this Mac as plain Markdown.`);
+    } catch (error) {
+      setMirrorNotification(error instanceof Error ? error.message : String(error));
+    } finally {
+      setStopSyncingRoot(null);
+    }
+  }, [cloudClient, cloudMismatch, flushActiveDocument, setActiveFile, setRootKind, signedIn, updateRoot]);
+
+  const handleLinkIntoProject = useCallback(async (rootPath: string) => {
+    const root = roots.find((candidate) => candidate.path === rootPath);
+    if (!root) return;
+    const repository = await openFolderDialog({ directory: true, multiple: false, title: "Choose a repository" });
+    if (!repository || typeof repository !== "string") return;
+    try {
+      const link = await linkIntoRepository(tauriMirrorFs, root, repository);
+      setMirrorNotification(link.linkCreated
+        ? `Linked ${folderNameOf(root.path)} as notes inside ${folderNameOf(repository)}. Git ignores it through .git/info/exclude.`
+        : `${folderNameOf(repository)} already links to ${folderNameOf(root.path)}.`);
+    } catch (error) {
+      setMirrorNotification(error instanceof Error ? error.message : String(error));
+    }
+  }, [roots]);
+
+  const handleCopyToNotes = useCallback(async (filePath: string) => {
+    try {
+      await flushActiveDocument();
+      const notes = await ensureNotesRoot();
+      const copied = await tauriMirrorFs.copyFileInto(filePath, notes);
+      insertTreeEntry(copied, false);
+      refreshTreePath(copied);
+      setMirrorNotification(`Copied ${folderNameOf(filePath)} to Notes.`);
+    } catch (error) {
+      setMirrorNotification(error instanceof Error ? error.message : String(error));
+    }
+  }, [ensureNotesRoot, flushActiveDocument, insertTreeEntry, refreshTreePath]);
+
+  const handleSaveCopy = useCallback(async (filePath: string) => {
+    const target = await openFolderDialog({ directory: true, multiple: false, title: "Save a copy in…" });
+    if (!target || typeof target !== "string") return;
+    try {
+      await flushActiveDocument();
+      const copied = await tauriMirrorFs.copyFileInto(filePath, target);
+      refreshTreePath(copied);
+      setMirrorNotification(`Saved a copy of ${folderNameOf(filePath)} in ${folderNameOf(target)}.`);
+    } catch (error) {
+      setMirrorNotification(error instanceof Error ? error.message : String(error));
+    }
+  }, [flushActiveDocument, refreshTreePath]);
+
+  const sidebarActions = useMemo<SidebarActions>(() => ({
+    rootKindOf: (path) => roots.find((root) => root.path === path)?.kind ?? null,
+    isSharedRoot: (path) => roots.some((root) => root.shared && root.path === path),
+    leave: (path) => setPendingLeave(path),
+    syncFolder: (path) => setSyncDialogPath(path),
+    stopSyncing: (rootPath) => {
+      const root = roots.find((candidate) => candidate.path === rootPath);
+      if (root) setStopSyncingRoot(root);
+    },
+    linkIntoProject: (rootPath) => { void handleLinkIntoProject(rootPath); },
+    copyToNotes: (filePath) => { void handleCopyToNotes(filePath); },
+    saveCopy: (filePath) => { void handleSaveCopy(filePath); },
+  }), [handleCopyToNotes, handleLinkIntoProject, handleSaveCopy, roots]);
+
+  // Folders under ~/Ghost are Ghost's. Adopt any that predate the mirror
+  // engine, so an upgrade needs nothing from the user.
+  const migratedGhostRoots = useRef(false);
+  useEffect(() => {
+    if (loading || migratedGhostRoots.current) return;
+    migratedGhostRoots.current = true;
+    void (async () => {
+      const ghost = await ghostFolder().catch(() => null);
+      if (!ghost) return;
+      for (const root of roots) {
+        if (root.kind !== "plain" || !root.path.startsWith(`${ghost}/`)) continue;
+        try {
+          await makeRootMirrored(root);
+        } catch (error) {
+          console.error("Failed to mirror a Ghost folder:", error);
+        }
+      }
+    })();
+  }, [loading, makeRootMirrored, roots]);
+
+  // Resolve every mirrored root's bookmark on launch and on focus. A moved
+  // folder is followed silently; anything else becomes a notice row, and a
+  // missing folder never deletes anything.
+  const resolutionFs = useMemo<RootResolutionFs>(() => ({
+    resolveBookmark: (bookmark) => tauriMirrorFs.resolveBookmark(bookmark),
+    isDirectory: (path) => tauriMirrorFs.isDirectory(path),
+    inspect: async (path) => {
+      const facts = await tauriMirrorFs.inspectSyncCandidate(path, { deep: false });
+      return { ancestorVcs: facts.ancestorVcs, ancestorManaged: facts.ancestorManaged, syncService: facts.syncService };
+    },
+    mountedVolumes: () => tauriMirrorFs.mountedVolumes(),
+  }), []);
+  const rootsForResolution = useRef(roots);
+  rootsForResolution.current = roots;
+  const lastResolveAt = useRef(0);
+  const resolveRoots = useCallback(async (force = false) => {
+    if (!force && Date.now() - lastResolveAt.current < 5_000) return;
+    lastResolveAt.current = Date.now();
+    for (const root of rootsForResolution.current) {
+      if (root.kind !== "mirrored") continue;
+      try {
+        const resolution = await resolveMirroredRoot(root, resolutionFs);
+        if (resolution.kind === "ok") {
+          if (resolution.moved || resolution.bookmarkStale) {
+            const bookmark = await tauriMirrorFs.createBookmark(resolution.path).catch(() => undefined);
+            if (resolution.moved) retargetNavigationHistory(root.path, resolution.path);
+            updateRootPath(root.id, resolution.path, bookmark);
+          }
+          setRootResolutions((current) => {
+            if (!current[root.id]) return current;
+            const next = { ...current };
+            delete next[root.id];
+            return next;
+          });
+        } else {
+          setRootResolutions((current) => ({ ...current, [root.id]: resolution }));
+        }
+      } catch (error) {
+        console.error("Failed to resolve a synced folder:", error);
+      }
+    }
+  }, [resolutionFs, retargetNavigationHistory, updateRootPath]);
+  useEffect(() => {
+    if (loading) return;
+    void resolveRoots(true);
+    const onFocus = () => { void resolveRoots(); };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [loading, resolveRoots]);
+
+  // Keep each mirrored root's index and Cloud tree in step with the files on
+  // disk: deletions, renames, moves, and new files, from any app. Runs on
+  // launch, after every watcher event below a root, and after an upload.
+  const rootSyncTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const rootSyncChain = useRef<Promise<unknown>>(Promise.resolve());
+  const reconcileRoot = useCallback((rootId: string) => {
+    const timers = rootSyncTimers.current;
+    const pending = timers.get(rootId);
+    if (pending) clearTimeout(pending);
+    timers.set(rootId, setTimeout(() => {
+      timers.delete(rootId);
+      rootSyncChain.current = rootSyncChain.current.then(async () => {
+        const root = rootsForResolution.current.find((candidate) => candidate.id === rootId);
+        if (!root || root.kind !== "mirrored" || root.shared) return;
+        if (uploadingRoots.current.has(rootId)) return;
+        const resolution = rootResolutionsRef.current[rootId];
+        if (resolution && resolution.kind !== "ok") return;
+        const result = await reconcileMirroredRoot({
+          fs: tauriMirrorFs,
+          client: signedIn && cloudClient && !cloudMismatch(root) ? cloudClient : null,
+          openPersistence: (id, documentId, document) => (
+            openYjsPersistence(mirrorLocalPersistenceKey(id, documentId), document)
+          ),
+          isOpen: (path) => activeFileRef.current === path,
+        }, root);
+        if (result.added.length || result.removed.length || result.renamed.length) handleFsChange();
+      }).catch((error: unknown) => {
+        console.error("Failed to reconcile a synced folder:", error);
+      });
+    }, 700));
+  }, [cloudClient, cloudMismatch, handleFsChange, signedIn]);
+  // Ids and paths: a root that moved is reconciled again at its new place.
+  const mirroredRootKey = JSON.stringify(
+    roots.filter((root) => root.kind === "mirrored" && !root.shared).map((root) => [root.id, root.path]),
+  );
+  useEffect(() => {
+    if (loading) return;
+    for (const [id] of JSON.parse(mirroredRootKey) as Array<[string, string]>) reconcileRoot(id);
+    const unlisten = listen<FsEvent>("fs-event", (event) => {
+      const { path, from } = event.payload;
+      for (const root of rootsForResolution.current) {
+        if (root.kind !== "mirrored" || root.shared) continue;
+        const inside = (candidate: string | null) => candidate !== null
+          && candidate.startsWith(`${root.path}/`)
+          && !candidate.includes("/.ghost/");
+        if (inside(path) || inside(from)) reconcileRoot(root.id);
+      }
+    });
+    return () => { void unlisten.then((stop) => stop()); };
+  }, [loading, mirroredRootKey, reconcileRoot]);
+
+  // Signing in uploads every mirrored root that has never been sent. Each
+  // root remembers its Cloud ID, so running again sends nothing twice.
+  useEffect(() => {
+    failedUploads.current.clear();
+  }, [cloudUserId]);
+  useEffect(() => {
+    if (!signedIn || !cloudClient || !cloudUserId || loading || ghostFolderPath === undefined) return;
+    const client = cloudClient;
+    const ghost = ghostFolderPath;
+    const userId = cloudUserId;
+    const openPersistence = (rootId: string, documentId: string, document: Y.Doc) => (
+      openYjsPersistence(mirrorLocalPersistenceKey(rootId, documentId), document)
+    );
+    // Same queue as reconciliation and pulls, so nothing else rewrites the
+    // index while the upload records folder and document IDs.
+    const run = rootSyncChain.current.then(async () => {
+      for (const root of rootsForResolution.current) {
+        if (root.kind !== "mirrored" || root.shared) continue;
+        if (uploadingRoots.current.has(root.id) || failedUploads.current.has(root.id)) continue;
+        if (root.cloudRootId) {
+          if (!root.cloudOwnerId) {
+            // Uploaded before the owner was recorded: it was this account.
+            updateRoot(root.id, { cloudOwnerId: userId });
+          } else if (root.cloudOwnerId !== userId) {
+            failedUploads.current.add(root.id);
+            setMirrorNotification(
+              `${folderNameOf(root.path)} is in Cloud under another account. It stays local until you sign in as that account, or stop and restart syncing.`,
+            );
+          }
+          continue;
+        }
+        uploadingRoots.current.add(root.id);
+        try {
+          const result = await uploadMirroredRoot({ client, fs: tauriMirrorFs, ghostFolder: ghost, openPersistence }, root);
+          updateRoot(root.id, { cloudRootId: result.cloudRootId, cloudOwnerId: userId });
+          if (!result.alreadyUploaded) setMirrorNotification(`${folderNameOf(root.path)} is in Cloud.`);
+        } catch (error) {
+          failedUploads.current.add(root.id);
+          setMirrorNotification(isMissingServerFunction(error)
+            ? "Cloud needs a server update before folders can upload."
+            : `Could not upload ${folderNameOf(root.path)}: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+          uploadingRoots.current.delete(root.id);
+        }
+        reconcileRoot(root.id);
+      }
+    });
+    rootSyncChain.current = run.catch(() => undefined);
+  }, [cloudClient, cloudUserId, ghostFolderPath, loading, reconcileRoot, roots, signedIn, updateRoot]);
+
+  // Cloud to this Mac. What other people shared lands in ~/Ghost/Shared, and
+  // closed documents in every uploaded root pick up changes made elsewhere.
+  // Runs at sign-in, on focus, and every few minutes; an open document has
+  // its own live session and is left alone.
+  const refreshingCloud = useRef<Promise<void> | null>(null);
+  const lastCloudRefresh = useRef(0);
+  const refreshCloud = useCallback((force = false): Promise<void> => {
+    if (!signedIn || !cloudClient || loading || ghostFolderPath === undefined) return Promise.resolve();
+    if (refreshingCloud.current) return refreshingCloud.current;
+    if (!force && Date.now() - lastCloudRefresh.current < CLOUD_REFRESH_MIN_MS) return Promise.resolve();
+    const client = cloudClient;
+    const ghost = ghostFolderPath;
+    const isOpen = (path: string) => activeFileRef.current === path;
+    const openPersistence = (rootId: string, documentId: string, document: Y.Doc) => (
+      openYjsPersistence(mirrorLocalPersistenceKey(rootId, documentId), document)
+    );
+    // Same queue as root reconciliation, so a pull never races a delete.
+    const run = rootSyncChain.current.then(async () => {
+      let changed = false;
+      try {
+        await acceptCloudInvitations(client).catch((error) => {
+          if (!isMissingSharingFunction(error)) throw error;
+        });
+        let visible;
+        try {
+          visible = await listVisibleCloudItems(client);
+        } catch (error) {
+          if (isMissingSharingFunction(error)) return;
+          throw error;
+        }
+        const existingShared = rootsForResolution.current.find((root) => root.shared) ?? null;
+        const anyShared = visible.some((item) => item.shared_root_id !== null);
+        if (ghost && (anyShared || existingShared)) {
+          const sharedPath = `${ghost}/${SHARED_FOLDER_NAME}`;
+          await tauriMirrorFs.ensureDir(sharedPath);
+          const sharedRoot = existingShared ?? ensureSharedRoot(sharedPath);
+          const result = await refreshSharedRoot({ fs: tauriMirrorFs, client, openPersistence, isOpen }, sharedRoot, visible);
+          if (result.added.length || result.removed.length || result.moved.length || result.pull.written.length) changed = true;
+          if (result.added.length === 1) setMirrorNotification(`${folderNameOf(result.added[0])} was shared with you.`);
+          else if (result.added.length > 1) setMirrorNotification(`${result.added.length} notes were shared with you.`);
+          // The root goes when nothing is shared, unless a note in it is still open.
+          if (result.empty && existingShared && !insideRoot(sharedRoot, activeFileRef.current)) removeFolder(sharedRoot.path);
+        }
+        for (const root of rootsForResolution.current) {
+          if (root.kind !== "mirrored" || root.shared || !root.cloudRootId || cloudMismatch(root)) continue;
+          if (uploadingRoots.current.has(root.id)) continue;
+          const resolution = rootResolutionsRef.current[root.id];
+          if (resolution && resolution.kind !== "ok") continue;
+          const pulled = await pullCloudChanges({ fs: tauriMirrorFs, client, openPersistence, isOpen }, root);
+          if (pulled.written.length > 0) changed = true;
+        }
+      } catch (error) {
+        console.warn("Cloud refresh failed:", error);
+      } finally {
+        lastCloudRefresh.current = Date.now();
+        refreshingCloud.current = null;
+        if (changed) handleFsChange();
+      }
+    });
+    rootSyncChain.current = run.catch(() => undefined);
+    refreshingCloud.current = run;
+    return run;
+  }, [cloudClient, cloudMismatch, ensureSharedRoot, ghostFolderPath, handleFsChange, loading, removeFolder, signedIn]);
+
+  useEffect(() => {
+    if (!signedIn) return;
+    void refreshCloud(true);
+    const onFocus = () => { void refreshCloud(); };
+    window.addEventListener("focus", onFocus);
+    const timer = setInterval(() => { void refreshCloud(true); }, CLOUD_REFRESH_INTERVAL_MS);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      clearInterval(timer);
+    };
+  }, [refreshCloud, signedIn]);
+
+  // Leave something shared with you: the Cloud membership goes, and the
+  // next refresh moves the local file to the Trash.
+  const handleLeave = useCallback(async (path: string) => {
+    const client = cloudClient;
+    const sharedRoot = rootsForResolution.current.find((root) => root.shared) ?? null;
+    if (!client || !sharedRoot) return;
+    const relativePath = relativeToRoot(sharedRoot.path, path);
+    if (!relativePath) return;
+    try {
+      const { index } = await readGhostFolder(tauriMirrorFs, sharedRoot.path);
+      const itemId = index.documents[relativePath]?.documentId ?? index.folders[relativePath];
+      if (!itemId) throw new Error("This item is not shared with you.");
+      const active = activeFileRef.current;
+      if (active && (active === path || active.startsWith(`${path}/`))) {
+        await flushActiveDocument().catch(() => undefined);
+        setActiveFile(null);
+      }
+      await leaveCloudItem(client, itemId);
+      setMirrorNotification(`You left ${folderNameOf(path)}.`);
+      await refreshCloud(true);
+    } catch (error) {
+      setMirrorNotification(error instanceof Error ? error.message : String(error));
+    }
+  }, [cloudClient, flushActiveDocument, refreshCloud]);
+  leaveRef.current = handleLeave;
+
+  const handleLocateRoot = useCallback(async (root: TrackedRoot) => {
+    const chosen = await openFolderDialog({
+      directory: true,
+      multiple: false,
+      title: `Locate ${folderNameOf(root.path)}`,
+    });
+    if (!chosen || typeof chosen !== "string") return;
+    const { metadata } = await readGhostFolder(tauriMirrorFs, chosen);
+    if (metadata?.rootId !== root.id) {
+      setMirrorNotification(
+        `That folder isn't ${folderNameOf(root.path)}. Ghost looks for the folder's own .ghost metadata.`,
+      );
+      return;
+    }
+    const bookmark = await tauriMirrorFs.createBookmark(chosen).catch(() => undefined);
+    retargetNavigationHistory(root.path, chosen);
+    updateRootPath(root.id, chosen, bookmark);
+    setRootResolutions((current) => {
+      const next = { ...current };
+      delete next[root.id];
+      return next;
+    });
+    handleFsChange();
+  }, [handleFsChange, retargetNavigationHistory, updateRootPath]);
 
   // Sidebar hover handlers for collapsed mode
   const handleSidebarMouseEnter = useCallback(() => {
@@ -1135,29 +1747,30 @@ export function GhostLayout() {
   const confirmForceMove = useCallback(async () => {
     if (!pendingMove) return;
     try {
-      await window.__ghostFlushSave?.();
+      await flushActiveDocument();
       const newPath = await invoke<string>("move_file", {
         filePath: pendingMove.filePath,
         targetDir: pendingMove.targetDir,
         force: true,
       });
+      await relocateMirrored(pendingMove.filePath, newPath);
       await retargetActiveFile(pendingMove.filePath, newPath);
       handleFsChange();
       setPendingMove(null);
     } catch (err) {
       console.error("Failed to override:", err);
     }
-  }, [pendingMove, retargetActiveFile, handleFsChange]);
+  }, [pendingMove, relocateMirrored, retargetActiveFile, handleFsChange, flushActiveDocument]);
 
   const handleHeaderRename = useCallback(async (nextName: string) => {
     if (!activeFile || nextName === breadcrumb?.fileName) return;
-    await window.__ghostFlushSave?.();
+    await flushActiveDocument();
     const newPath = await invoke<string>("rename_file", {
       oldPath: activeFile,
       newName: nextName,
     });
     await handleFileRenamed(activeFile, newPath);
-  }, [activeFile, breadcrumb?.fileName, handleFileRenamed]);
+  }, [activeFile, breadcrumb?.fileName, handleFileRenamed, flushActiveDocument]);
 
   const focusedTreeNode = treeKeyboardRef.current?.getFocusedNode() ?? null;
   const focusedTreeDetail = focusedTreeNode
@@ -1274,8 +1887,8 @@ export function GhostLayout() {
       run: () => treeKeyboardRef.current?.runFocusedAction("trash"),
     },
     {
-      id: "workspace.addProject",
-      title: "Open New Project…",
+      id: "workspace.openFolder",
+      title: "Open Folder…",
       shortcut: "⌘O",
       run: addFolder,
     },
@@ -1337,6 +1950,33 @@ export function GhostLayout() {
               {__GHOST_DEV_LABEL__}
             </span>
           )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                data-sidebar-chrome
+                className="text-ring hover:text-sidebar-foreground transition-colors cursor-pointer"
+                title="New…"
+                aria-label="New file, folder, or open a folder"
+              >
+                <Plus className="size-[15px]" strokeWidth={2.25} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem onSelect={() => { void createNewFile(); }}>
+                New File
+                <DropdownMenuShortcut>⌘N</DropdownMenuShortcut>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => { void createNewFolder(); }}>
+                New Folder
+                <DropdownMenuShortcut>⇧⌘N</DropdownMenuShortcut>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => { void addFolder(); }}>
+                Open Folder…
+                <DropdownMenuShortcut>⌘O</DropdownMenuShortcut>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <button
             data-sidebar-chrome
             onClick={() => openCommandPalette("files")}
@@ -1355,41 +1995,6 @@ export function GhostLayout() {
           </button>
         </div>
 
-        <div data-cloud-section className="shrink-0 border-b border-sidebar-border">
-          {cloudAccount.kind === "loading" ? (
-            <p className="px-3 py-3 text-xs text-ring">Loading Cloud account…</p>
-          ) : cloudAccount.kind === "error" || !cloudClient ? (
-            <div className="px-3 py-3">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ring">Cloud</div>
-              <p className="mt-2 text-xs leading-5 text-destructive">
-                {cloudAccount.kind === "error" ? cloudAccount.message : "Ghost Cloud is not configured."}
-              </p>
-            </div>
-          ) : cloudAccount.kind === "signed-out" ? (
-            <CloudSignIn
-              client={cloudClient}
-              compact
-              emailRedirectTo={MAC_CLOUD_AUTH_REDIRECT_URL}
-              oauthRedirectTo={MAC_CLOUD_AUTH_REDIRECT_URL}
-              openOAuthUrl={openMacCloudOAuthUrl}
-              externalError={cloudAuthCallbackError}
-            />
-          ) : (
-            <CloudTree
-              tree={cloudTree}
-              selectedId={activeCloudDocument?.id ?? null}
-              onSelectDocument={(item) => { void handleCloudDocumentSelect(item); }}
-              onItemsDeleted={(itemIds) => {
-                if (activeCloudDocument && itemIds.includes(activeCloudDocument.id)) {
-                  setActiveCloudDocument(null);
-                }
-              }}
-              onFocusEditor={() => focusEditor()}
-              compact
-            />
-          )}
-        </div>
-
         {/* Folder tree — ALWAYS rendered, same component, same DOM */}
         <ContextMenu>
         <ContextMenuTrigger asChild>
@@ -1402,48 +2007,62 @@ export function GhostLayout() {
           className="h-full overscroll-contain px-1 pb-12 overflow-y-auto outline-none"
         >
           <ActiveFileProvider value={activeFileStore}>
+          <SidebarActionsProvider value={sidebarActions}>
           <DndContext
             sensors={sensors}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
           >
-            {loading ? null : folders.length === 0 ? (
-              <EmptyState onAddFolder={addFolder} />
+            {loading || (folders.length === 0 && firstRun) ? null : folders.length === 0 ? (
+              <EmptyState
+                onNewFile={() => { void createNewFile(); }}
+                onOpenFolder={() => { void addFolder(); }}
+              />
             ) : (
-              <div>
-                <div data-sidebar-chrome className="flex items-center justify-between px-4 pb-2 pt-1">
-                  <span className="text-[10px] font-medium uppercase text-ring" style={{ letterSpacing: "1.2px" }}>
-                    Workspace
-                  </span>
-                  <button
-                    onClick={addFolder}
-                    className="text-ring hover:text-sidebar-foreground transition-colors cursor-pointer text-[16px] leading-none"
-                    title="Add folder (⌘O)"
-                  >
-                    +
-                  </button>
-                </div>
-                {folders.map((folder, folderIndex) => (
+              <div className="pt-1">
+                {sections.map((section) => (
+                  <div key={section.id} data-sidebar-section={section.id}>
+                    {section.label ? <SidebarSectionHeader label={section.label} /> : null}
+                    {section.roots.length === 0 ? (
+                      section.id === "cloud" ? (
+                        <SidebarMutedRow>Nothing in Cloud yet. Sync a folder, or press ⌘N.</SidebarMutedRow>
+                      ) : (
+                        <SidebarMutedRow onClick={() => { void addFolder(); }} title="Open a folder (⌘O)">
+                          Open a folder…
+                        </SidebarMutedRow>
+                      )
+                    ) : null}
+                    {section.roots.map((root) => (root.kind === "mirrored"
+                      && rootResolutions[root.id]
+                      && rootResolutions[root.id].kind !== "ok" ? (
+                      <div key={root.id} data-root-folder={root.path}>
+                        <MirroredRootNotice
+                          resolution={rootResolutions[root.id] as Exclude<RootResolution, { kind: "ok" }>}
+                          onLocate={() => { void handleLocateRoot(root); }}
+                          onStopSyncing={() => setStopSyncingRoot(root)}
+                        />
+                      </div>
+                    ) : (
                   <FolderTree
-                    key={folder}
-                    path={folder}
-                    folderIndex={folderIndex}
-                    folderCount={folders.length}
-                    onReorderProject={reorderFolders}
-                    entries={getEntries(folder)}
-                    error={getError(folder)}
+                    key={root.path}
+                    path={root.path}
+                    folderIndex={displayOrder.indexOf(root)}
+                    folderCount={displayOrder.length}
+                    onReorderProject={reorderDisplayed}
+                    entries={getEntries(root.path)}
+                    error={getError(root.path)}
                     onRefreshFolder={handleFsChange}
                     onFileSelect={handleFileSelect}
                     onRemoveFolder={async (path) => {
                       try {
-                        await window.__ghostFlushSave?.();
+                        await flushActiveDocument();
                       } catch {
                         return;
                       }
                       removeFromNavigationHistory(path);
                       removeFolder(path);
-                      if (activeFile?.startsWith(path)) {
+                      if (activeFile === path || activeFile?.startsWith(`${path}/`)) {
                         setActiveFile(null);
                         setFileDescriptor(null);
                         setFileContent("");
@@ -1468,11 +2087,13 @@ export function GhostLayout() {
                     onNewFolderRenamed={() => setNewlyCreatedFolder(null)}
                     activeDropFolder={activeDropFolder}
                     onAddProject={addFolder}
-                    defaultOpen={isFolderOpen(folder)}
+                    defaultOpen={isFolderOpen(root.path)}
                     onRootOpenChange={setFolderOpen}
                     onExpandFolder={expandFolder}
                     isSkippedDir={isSkippedDir}
                   />
+                    )))}
+                  </div>
                 ))}
               </div>
             )}
@@ -1484,14 +2105,24 @@ export function GhostLayout() {
               ) : null}
             </DragOverlay>
           </DndContext>
+          </SidebarActionsProvider>
           </ActiveFileProvider>
         </FileTreeKeyboard>
         <SidebarGuide treeAreaRef={treeAreaRef} />
         </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
-          <ContextMenuItem onSelect={addFolder}>
-            Open New Project
+          <ContextMenuItem onSelect={() => { void createNewFile(); }}>
+            New File
+            <ContextMenuShortcut>⌘N</ContextMenuShortcut>
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => { void createNewFolder(); }}>
+            New Folder
+            <ContextMenuShortcut>⇧⌘N</ContextMenuShortcut>
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => { void addFolder(); }}>
+            Open Folder…
             <ContextMenuShortcut>⌘O</ContextMenuShortcut>
           </ContextMenuItem>
         </ContextMenuContent>
@@ -1560,7 +2191,7 @@ export function GhostLayout() {
         } as React.CSSProperties}
       >
         {/* Floating header overlay — semi-transparent, content scrolls behind */}
-        {!activeCloudDocument ? (
+        {(
           <DocumentHeader
             pathSegments={breadcrumb?.folderName ? [breadcrumb.folderName] : []}
             fileName={breadcrumb?.fileName ?? null}
@@ -1587,7 +2218,21 @@ export function GhostLayout() {
             </div>
             ) : undefined}
             right={activeFile ? (
-              fileDescriptor?.editable ? (
+              <>
+                {fileDescriptor?.kind === "markdown" ? (
+                  <button
+                    type="button"
+                    data-share-button
+                    className="cursor-pointer text-[11px] text-ring transition-colors hover:text-sidebar-foreground"
+                    title="Share this note"
+                    onClick={() => setShareOpen(true)}
+                  >
+                    Share
+                  </button>
+                ) : null}
+                {mirroredActive ? (
+                <MirrorSaveStatus status={mirrorStatus.status} error={mirrorStatus.error} />
+              ) : fileDescriptor?.editable ? (
                 <>
                   <SaveStatus
                     status={documentSave.status}
@@ -1606,36 +2251,37 @@ export function GhostLayout() {
                 </>
               ) : fileDescriptor?.canOpenExternally ? (
                 <OpenExternalButton filePath={activeFile} />
-              ) : null
+              ) : null}
+              </>
             ) : null}
           />
-        ) : null}
+        )}
 
         {/* Editor — scrolls behind the floating header */}
         <main
           ref={setMainEl}
-          data-editor-scroll-container={activeCloudDocument ? undefined : true}
+          data-editor-scroll-container={true}
           tabIndex={-1}
           onFocus={(event) => {
             if (event.target === event.currentTarget) focusViewerTarget(event.currentTarget);
           }}
-          className={`h-full overscroll-contain relative outline-none ${
-            activeCloudDocument ? "overflow-hidden" : "overflow-auto"
-          }`}
+          className="h-full overscroll-contain relative outline-none overflow-auto"
         >
-          {activeCloudDocument && cloudClient && cloudUser ? (
-            <CloudDocumentEditor
-              key={activeCloudDocument.id}
-              client={cloudClient}
-              user={cloudUser}
-              documentId={activeCloudDocument.id}
-              title={activeCloudDocument.name}
-              pathSegments={activeCloudPath}
-              onRename={handleActiveCloudRename}
+          {mirroredActive && activeFile && activeRoot ? (
+            <MirroredDocumentEditor
+              key={activeFile}
+              path={activeFile}
+              root={activeRoot}
               showStyleBar={settings.showStyleBar}
               onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
-              sidebarCollapsed={sidebarCollapsed}
+              onEditorReady={setEditorInstance}
               platformActions={tauriMarkdownEditorActions}
+              onStatusChange={(status, error) => setMirrorStatus({ status, error })}
+              onNotify={setMirrorNotification}
+              registerFlush={(flush) => { mirrorFlushRef.current = flush; }}
+              cloud={cloudClient && cloudAccount.kind === "signed-in" && !cloudMismatch(activeRoot)
+                ? { client: cloudClient, user: cloudAccount.user }
+                : null}
             />
           ) : activeFile && fileDescriptor ? (
             <FileViewer
@@ -1660,13 +2306,14 @@ export function GhostLayout() {
           ) : (
             <div className="flex h-full items-center justify-center">
               <p className="text-muted-foreground/40 text-sm">
-                Select a local or Cloud document to start editing
+                Select a note or file to start editing
               </p>
             </div>
           )}
         </main>
+        <AppNotification message={mirrorNotification} onDismiss={() => setMirrorNotification(null)} />
         {/* Heading minimap — right edge overlay (markdown only) */}
-        {!activeCloudDocument && editorInstance && mainEl && fileDescriptor?.kind === "markdown" && (
+        {editorInstance && mainEl && fileDescriptor?.kind === "markdown" && (
           <HeadingMinimap editor={editorInstance} scrollContainer={mainEl} />
         )}
       </div>
@@ -1691,6 +2338,44 @@ export function GhostLayout() {
         </DialogContent>
       </Dialog>
 
+      <SyncFolderDialog
+        path={syncDialogPath}
+        roots={roots}
+        onClose={() => setSyncDialogPath(null)}
+        onConfirm={handleSyncConfirm}
+      />
+      <StopSyncingDialog
+        root={stopSyncingRoot}
+        onClose={() => setStopSyncingRoot(null)}
+        onConfirm={handleStopSyncingConfirm}
+      />
+      <SidebarTrashDialog
+        open={pendingLeave !== null}
+        kind="file"
+        name={pendingLeave ? folderNameOf(pendingLeave) : ""}
+        title={pendingLeave ? `Leave “${folderNameOf(pendingLeave)}”?` : ""}
+        description="You will no longer see it here or on your phone. The owner keeps it and can share it again."
+        confirmLabel="Leave"
+        onOpenChange={(open) => { if (!open) setPendingLeave(null); }}
+        onConfirm={() => {
+          const path = pendingLeave;
+          setPendingLeave(null);
+          if (path) void leaveRef.current?.(path);
+        }}
+      />
+      <ShareSheet
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        client={cloudClient}
+        account={cloudAccount}
+        filePath={activeFile}
+        root={activeRoot}
+        cloudItemId={shareItemId}
+        signIn={signInSurface}
+        onSyncFolder={(path) => setSyncDialogPath(path)}
+        onCopyToNotes={(filePath) => { void handleCopyToNotes(filePath); }}
+      />
+
       {showSettings && (
         <SettingsPage
           settings={settings}
@@ -1700,6 +2385,13 @@ export function GhostLayout() {
           onSaveTheme={saveTheme}
           onDeleteTheme={deleteTheme}
           updater={updater}
+          account={{
+            client: cloudClient,
+            account: cloudAccount,
+            signIn: signInSurface,
+            onSignOut: handleSignOut,
+            ghostFolderPath: ghostFolderPath ?? null,
+          }}
         />
       )}
 

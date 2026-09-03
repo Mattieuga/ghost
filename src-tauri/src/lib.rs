@@ -1,5 +1,7 @@
+mod bookmarks;
 mod commands;
 mod menu;
+mod own_writes;
 mod watcher;
 mod windows;
 #[cfg(target_os = "macos")]
@@ -28,6 +30,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(watcher::WatcherState::new())
+        .manage(own_writes::OwnWriteRegistry::new())
         .manage(commands::fs::FileWriteState::new())
         .manage(commands::fs::SourceSaveState::new())
         .manage(commands::fs::LargeTextSearchState::new())
@@ -42,6 +45,20 @@ pub fn run() {
             commands::archive_preview::materialize_archive_entry,
             commands::archive_preview::cancel_archive_preview,
             commands::archive_preview::release_archive_preview,
+            commands::ghost_folder::ghost_folder,
+            commands::ghost_folder::ensure_notes_folder,
+            commands::fs::write_conflict_copy,
+            commands::fs::hash_file,
+            commands::fs::hash_text_content,
+            commands::fs::ensure_directory,
+            commands::fs::remove_ghost_metadata_file,
+            commands::sync_candidate::inspect_sync_candidate,
+            commands::sync_links::link_folder_into_repository,
+            commands::sync_links::mounted_volumes,
+            commands::sync_links::remove_ghost_metadata_dir,
+            commands::fs::copy_file_into,
+            bookmarks::create_folder_bookmark,
+            bookmarks::resolve_folder_bookmark,
             commands::fs::is_directory,
             commands::fs::read_directory,
             commands::fs::read_file,

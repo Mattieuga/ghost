@@ -53,15 +53,40 @@ export async function createCloudItem(
   kind: CloudItemKind,
   name: string,
   parentId: string | null,
+  options: { itemId?: string; rootKind?: "notes" | "folder" } = {},
 ): Promise<CloudItem> {
+  // The optional arguments exist only after the synced-folders migration, so
+  // they are sent only when a caller asks for them.
   const { data, error } = await client.rpc("cloud_create_item", {
     item_kind: kind,
     item_name: name,
     target_parent_id: parentId,
+    ...(options.itemId ? { target_item_id: options.itemId } : {}),
+    ...(options.rootKind ? { target_root_kind: options.rootKind } : {}),
   });
   throwDataError(`Could not create the Cloud ${kind}`, error);
   if (!data) throw new Error(`Supabase did not return the created Cloud ${kind}`);
   return data as CloudItem;
+}
+
+export interface CloudAdoptItem {
+  id: string;
+  parent_id: string | null;
+  kind: CloudItemKind;
+  name: string;
+  root_kind?: "notes" | "folder";
+}
+
+/**
+ * Create items under client IDs, parents first. Known IDs return their
+ * existing row and a name collision is renamed server-side, so this is the
+ * safe way to put a document that already has an ID into Cloud.
+ */
+export async function adoptCloudItems(client: SupabaseClient, items: CloudAdoptItem[]): Promise<void> {
+  for (let start = 0; start < items.length; start += 500) {
+    const { error } = await client.rpc("cloud_adopt_items", { items: items.slice(start, start + 500) });
+    throwDataError("Could not add to Cloud", error);
+  }
 }
 
 export async function renameCloudItem(
@@ -98,6 +123,20 @@ export async function trashCloudItem(
     target_item_id: itemId,
   });
   throwDataError("Could not move the Cloud item to Trash", error);
+}
+
+export async function moveCloudItem(
+  client: SupabaseClient,
+  itemId: string,
+  parentId: string | null,
+): Promise<CloudItem> {
+  const { data, error } = await client.rpc("cloud_move_item", {
+    target_item_id: itemId,
+    target_parent_id: parentId,
+  });
+  throwDataError("Could not move the Cloud item", error);
+  if (!data) throw new Error("Supabase did not return the moved Cloud item");
+  return data as CloudItem;
 }
 
 export function cloudItemPath(items: CloudItem[], item: CloudItem): CloudItem[] {

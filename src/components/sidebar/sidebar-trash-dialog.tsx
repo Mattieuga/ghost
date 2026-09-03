@@ -13,6 +13,8 @@ export function SidebarTrashDialog({
   kind,
   name,
   description,
+  title,
+  confirmLabel = "Move to Trash",
   onOpenChange,
   onConfirm,
 }: {
@@ -20,6 +22,9 @@ export function SidebarTrashDialog({
   kind: "file" | "folder";
   name: string;
   description?: string;
+  /** Replaces the default "Move … to Trash?" title. */
+  title?: string;
+  confirmLabel?: string;
   onOpenChange(open: boolean): void;
   onConfirm(): void;
 }) {
@@ -27,14 +32,14 @@ export function SidebarTrashDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent onKeyDown={(event) => { if (event.key === "Enter") onConfirm(); }}>
         <DialogHeader>
-          <DialogTitle>Move {kind} to Trash?</DialogTitle>
+          <DialogTitle>{title ?? `Move ${kind} to Trash?`}</DialogTitle>
           <DialogDescription>
             {description ?? `“${name}” can be recovered from the macOS Trash.`}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="destructive" onClick={onConfirm}>Move to Trash</Button>
+          <Button variant="destructive" onClick={onConfirm}>{confirmLabel}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

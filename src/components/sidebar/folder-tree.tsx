@@ -3,7 +3,7 @@ import type { FileEntry } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
 import { useDroppable } from "@dnd-kit/core";
 import React, { useMemo, useState, useCallback, useRef, useEffect, useSyncExternalStore } from "react";
-import { useActiveFileStore } from "./sidebar-context";
+import { useActiveFileStore, useSidebarActions } from "./sidebar-context";
 import { useFileTreeNode } from "./file-tree-keyboard";
 import { SidebarTrashDialog } from "./sidebar-trash-dialog";
 import {
@@ -320,6 +320,19 @@ function DroppableFolder({
     id: `folder:${JSON.stringify([projectPath, id])}`,
     data: { folderPath: id },
   });
+  const sidebarActions = useSidebarActions();
+  // A plain root, or a folder inside one, can be synced and becomes its own
+  // root. A mirrored root can stop or be linked into a repository.
+  const ownKind = sidebarActions.rootKindOf?.(id) ?? null;
+  const parentKind = sidebarActions.rootKindOf?.(projectPath) ?? null;
+  const canSync = !!sidebarActions.syncFolder
+    && (ownKind === "plain" || (!isRoot && ownKind === null && parentKind === "plain"));
+  // The Shared root mirrors other people's trees: no structure changes here,
+  // and it comes and goes with what is shared rather than being closed.
+  const inShared = sidebarActions.isSharedRoot?.(isRoot ? id : projectPath) ?? false;
+  const isMirroredRoot = isRoot && ownKind === "mirrored" && !inShared;
+  const canLeave = inShared && !isRoot && id.substring(0, id.lastIndexOf("/")) === projectPath && !!sidebarActions.leave;
+  const leave = canLeave ? () => sidebarActions.leave?.(id) : undefined;
 
   const dotColor = isRoot && hasActiveFile ? "var(--ghost-amber)" : "var(--muted-foreground)";
   // This is intentionally separate from data-folder-active. A collapsed root
@@ -433,14 +446,14 @@ function DroppableFolder({
     collapse: () => setExpanded(false),
     actions: {
       activate: () => setExpanded(!open),
-      rename: startRename,
-      duplicate: handleDuplicate,
-      trash: isRoot ? undefined : () => setShowDeleteDialog(true),
+      rename: inShared ? undefined : startRename,
+      duplicate: inShared ? undefined : handleDuplicate,
+      trash: inShared ? leave : isRoot ? undefined : () => setShowDeleteDialog(true),
       copyPath: handleCopyPath,
       reveal: handleRevealInFinder,
-      newFile: () => { setExpanded(true); onCreateFile(id); },
-      newFolder: () => { setExpanded(true); onCreateFolder(id); },
-      closeProject: isRoot ? () => onRemoveFolder?.(id) : undefined,
+      newFile: inShared ? undefined : () => { setExpanded(true); onCreateFile(id); },
+      newFolder: inShared ? undefined : () => { setExpanded(true); onCreateFolder(id); },
+      closeProject: isRoot && !inShared ? () => onRemoveFolder?.(id) : undefined,
     },
   });
 
@@ -454,16 +467,20 @@ function DroppableFolder({
           setOpen(next);
           onOpenChange?.(next);
         },
-        closeProject: isRoot ? () => onRemoveFolder?.(id) : undefined,
+        closeProject: isRoot && !inShared ? () => onRemoveFolder?.(id) : undefined,
+        syncFolder: canSync ? () => sidebarActions.syncFolder?.(id) : undefined,
+        stopSyncing: isMirroredRoot ? () => sidebarActions.stopSyncing?.(id) : undefined,
+        linkIntoProject: isMirroredRoot ? () => sidebarActions.linkIntoProject?.(id) : undefined,
+        leave,
         openNewProject: onAddProject,
-        newFile: () => { setOpen(true); onCreateFile(id); },
-        newFolder: () => { setOpen(true); onCreateFolder(id); },
+        newFile: inShared ? undefined : () => { setOpen(true); onCreateFile(id); },
+        newFolder: inShared ? undefined : () => { setOpen(true); onCreateFolder(id); },
         copy: isRoot ? undefined : () => { void handleCopyPath(); },
         reveal: () => { void handleRevealInFinder(); },
         copyPath: () => { void handleCopyPath(); },
-        duplicate: () => { void handleDuplicate(); },
-        rename: startRename,
-        trash: isRoot ? undefined : () => setShowDeleteDialog(true),
+        duplicate: inShared ? undefined : () => { void handleDuplicate(); },
+        rename: inShared ? undefined : startRename,
+        trash: inShared || isRoot ? undefined : () => setShowDeleteDialog(true),
       }}
     />
   );

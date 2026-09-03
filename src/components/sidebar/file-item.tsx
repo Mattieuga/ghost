@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { FileEntry } from "@/types";
-import { useIsActiveFile } from "./sidebar-context";
+import { useIsActiveFile, useSidebarActions } from "./sidebar-context";
 import { useFileTreeNode } from "./file-tree-keyboard";
 import { SidebarTrashDialog } from "./sidebar-trash-dialog";
 import {
@@ -204,6 +204,21 @@ export const FileItem = React.memo(function FileItem({
     }
   };
 
+  const sidebarActions = useSidebarActions();
+  const rootKind = sidebarActions.rootKindOf?.(projectPath) ?? null;
+  // Inside the Shared root the tree belongs to someone else: content is
+  // edited live, but names and structure are theirs. A direct child can be
+  // left; anything can be copied into Notes.
+  const inShared = sidebarActions.isSharedRoot?.(projectPath) ?? false;
+  const canLeave = inShared && parentDir === projectPath && !!sidebarActions.leave;
+  const copyToNotes = (rootKind === "plain" || inShared) && sidebarActions.copyToNotes
+    ? () => sidebarActions.copyToNotes?.(entry.path)
+    : undefined;
+  const saveCopy = rootKind === "mirrored" && sidebarActions.saveCopy
+    ? () => sidebarActions.saveCopy?.(entry.path)
+    : undefined;
+  const leave = canLeave ? () => sidebarActions.leave?.(entry.path) : undefined;
+
   const { isFocused, nodeProps, restoreTreeFocus, focusTreePath } = useFileTreeNode({
     path: entry.path,
     projectPath,
@@ -214,13 +229,13 @@ export const FileItem = React.memo(function FileItem({
       activate: onSelect,
       preview: onSelect,
       openNewWindow: handleOpenInNewWindow,
-      rename: startRename,
-      duplicate: handleDuplicate,
-      trash: () => setShowDeleteDialog(true),
+      rename: inShared ? undefined : startRename,
+      duplicate: inShared ? undefined : handleDuplicate,
+      trash: inShared ? leave : () => setShowDeleteDialog(true),
       copyPath: handleCopyPath,
       reveal: handleRevealInFinder,
-      newFile: onNewSibling,
-      newFolder: onNewFolderSibling,
+      newFile: inShared ? undefined : onNewSibling,
+      newFolder: inShared ? undefined : onNewFolderSibling,
     },
   });
 
@@ -295,15 +310,18 @@ export const FileItem = React.memo(function FileItem({
               open: () => { void onSelect(); },
               openNewWindow: () => { void handleOpenInNewWindow(); },
               openNewProject: onAddProject,
-              newFile: onNewSibling,
-              newFolder: onNewFolderSibling,
+              newFile: inShared ? undefined : onNewSibling,
+              newFolder: inShared ? undefined : onNewFolderSibling,
               copy: () => { void handleCopyPath(); },
               copyTextAs: (format) => { void handleCopyTextAs(format); },
+              copyToNotes,
+              saveCopy,
+              leave,
               reveal: () => { void handleRevealInFinder(); },
               copyPath: () => { void handleCopyPath(); },
-              duplicate: () => { void handleDuplicate(); },
-              rename: startRename,
-              trash: () => setShowDeleteDialog(true),
+              duplicate: inShared ? undefined : () => { void handleDuplicate(); },
+              rename: inShared ? undefined : startRename,
+              trash: inShared ? undefined : () => setShowDeleteDialog(true),
             }}
           />
         )}

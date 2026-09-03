@@ -37,6 +37,15 @@ export interface SidebarTreeActions {
   rename?: () => void;
   trash?: () => void;
   closeProject?: () => void;
+  /** Sync this folder to Cloud; on a subfolder it becomes its own root. */
+  syncFolder?: () => void;
+  stopSyncing?: () => void;
+  linkIntoProject?: () => void;
+  /** Copy bridges between plain and synced folders. Always copies. */
+  copyToNotes?: () => void;
+  saveCopy?: () => void;
+  /** Give up access to something shared with you. */
+  leave?: () => void;
   toggle?: () => void;
 }
 
@@ -67,10 +76,22 @@ export function SidebarTreeContextMenu({
   );
   const projectItems = (
     <>
-      {actions.closeProject ? <ContextMenuItem onSelect={actions.closeProject}>Close Project</ContextMenuItem> : null}
+      {actions.closeProject ? <ContextMenuItem onSelect={actions.closeProject}>Close Folder</ContextMenuItem> : null}
+      {actions.syncFolder ? (
+        <ContextMenuItem onSelect={actions.syncFolder}>Sync to Cloud…</ContextMenuItem>
+      ) : null}
+      {actions.linkIntoProject ? (
+        <ContextMenuItem onSelect={actions.linkIntoProject}>Link into Project…</ContextMenuItem>
+      ) : null}
+      {actions.stopSyncing ? (
+        <ContextMenuItem onSelect={actions.stopSyncing}>Stop Syncing…</ContextMenuItem>
+      ) : null}
+      {actions.leave ? (
+        <ContextMenuItem onSelect={actions.leave}>Leave…</ContextMenuItem>
+      ) : null}
       {actions.openNewProject ? (
         <ContextMenuItem onSelect={actions.openNewProject}>
-          Open New Project
+          Open Folder…
           <ContextMenuShortcut>⌘O</ContextMenuShortcut>
         </ContextMenuItem>
       ) : null}
@@ -92,8 +113,14 @@ export function SidebarTreeContextMenu({
       ) : null}
     </>
   ) : null;
-  const copyItems = actions.copy || actions.copyTextAs ? (
+  const copyItems = actions.copy || actions.copyTextAs || actions.copyToNotes || actions.saveCopy ? (
     <>
+      {actions.copyToNotes ? (
+        <ContextMenuItem onSelect={actions.copyToNotes}>Copy to Notes</ContextMenuItem>
+      ) : null}
+      {actions.saveCopy ? (
+        <ContextMenuItem onSelect={actions.saveCopy}>Save a Copy…</ContextMenuItem>
+      ) : null}
       {actions.copy ? (
         <ContextMenuItem onSelect={actions.copy}>
           {kind === "file" ? "Copy File" : "Copy Folder"}

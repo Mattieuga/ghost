@@ -43,7 +43,7 @@ pub fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             .accelerator("CmdOrCtrl+Shift+P")
             .build(app)?)
         .separator()
-        .item(&MenuItemBuilder::with_id("add_folder", "Add Folder")
+        .item(&MenuItemBuilder::with_id("add_folder", "Open Folder…")
             .accelerator("CmdOrCtrl+O")
             .build(app)?)
         .item(&MenuItemBuilder::with_id("new_file", "New File")

@@ -409,6 +409,53 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
     await this.flush();
     await this.reconcileDurableUpdates();
     await this.sendDurableSignal();
+    await this.reverifyRole();
+  }
+
+  /**
+   * Access can change under a live session: an owner may downgrade,
+   * revoke, or promote. Ask again and follow the answer. Pending edits of
+   * a demoted editor are dropped, since the server would refuse them.
+   */
+  private async reverifyRole(): Promise<void> {
+    let verified: CloudDocumentRole | null;
+    try {
+      verified = await SupabaseCloudAdapter.loadRole(this.client, this.documentId);
+    } catch {
+      return;
+    }
+    if (this.destroyed || verified === this.currentRole) return;
+    if (!verified) {
+      this.pendingUpdates = [];
+      this.currentRole = "viewer";
+      this.updateSnapshot({
+        durability: "read-only",
+        role: "viewer",
+        pendingUpdates: 0,
+        lastError: "Access to this document was removed.",
+      });
+      this.notifyRoleVerified("viewer");
+      await this.onAccessRevoked?.();
+      return;
+    }
+    this.currentRole = verified;
+    if (verified === "viewer") {
+      const dropped = this.pendingUpdates.length > 0;
+      this.pendingUpdates = [];
+      this.updateSnapshot({
+        durability: "read-only",
+        role: "viewer",
+        pendingUpdates: 0,
+        lastError: dropped ? "Cloud access is now read-only; unsaved edits were not uploaded." : null,
+      });
+    } else {
+      this.updateSnapshot({
+        durability: this.pendingUpdates.length > 0 ? "pending" : "saved",
+        role: "editor",
+        lastError: null,
+      });
+    }
+    this.notifyRoleVerified(verified);
   }
 
   private async reconcileDurableUpdates(): Promise<void> {
@@ -517,6 +564,11 @@ export class SupabaseCloudAdapter implements CloudCollaborationSession {
 
       if (error) {
         this.pendingUpdates.unshift(merged);
+        if (error.code === "42501") {
+          // Refused by row-level security: the role has probably changed.
+          await this.reverifyRole();
+          if (this.currentRole !== "editor" || this.destroyed) return;
+        }
         this.updateSnapshot({
           durability: "error",
           pendingUpdates: this.pendingUpdates.length,

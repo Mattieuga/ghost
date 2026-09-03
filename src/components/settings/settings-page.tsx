@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Settings2, Type, Palette, X } from "lucide-react";
+import { Settings2, Type, Palette, UserRound, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Settings } from "@/hooks/use-settings";
 import type { ThemePreset } from "@/lib/theme-engine";
@@ -8,15 +8,17 @@ import type { UpdateInfo } from "@/hooks/use-updater";
 import { GeneralTab } from "@/components/settings/tabs/general-tab";
 import { EditorTab } from "@/components/settings/tabs/editor-tab";
 import { ThemesTab } from "@/components/settings/tabs/themes-tab";
+import { AccountTab, type AccountTabProps } from "@/components/settings/tabs/account-tab";
 import { useCompactMode } from "@/hooks/use-compact-mode";
 import type { LucideIcon } from "lucide-react";
 
-type SettingsTab = "general" | "editor" | "themes";
+type SettingsTab = "general" | "editor" | "themes" | "account";
 
 const tabs: { id: SettingsTab; label: string; icon: LucideIcon }[] = [
   { id: "general", label: "General", icon: Settings2 },
   { id: "editor", label: "Editor", icon: Type },
   { id: "themes", label: "Themes", icon: Palette },
+  { id: "account", label: "Account", icon: UserRound },
 ];
 
 interface SettingsPageProps {
@@ -27,6 +29,8 @@ interface SettingsPageProps {
   onSaveTheme: (preset: ThemePreset) => void;
   onDeleteTheme: (id: string) => void;
   updater: UpdateInfo;
+  account?: AccountTabProps;
+  initialTab?: SettingsTab;
 }
 
 export function SettingsPage({
@@ -37,8 +41,10 @@ export function SettingsPage({
   onSaveTheme,
   onDeleteTheme,
   updater,
+  account,
+  initialTab = "general",
 }: SettingsPageProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const compact = useCompactMode();
 
   useEffect(() => {
@@ -117,6 +123,9 @@ export function SettingsPage({
                 onUpdateSettings={onUpdateSettings}
                 compact={compact}
               />
+            )}
+            {activeTab === "account" && account && (
+              <AccountTab {...account} />
             )}
             {activeTab === "themes" && (
               <ThemesTab

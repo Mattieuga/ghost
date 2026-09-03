@@ -1,23 +1,28 @@
 import { Button } from "@/components/ui/button";
-import { FolderPlus } from "lucide-react";
 
 interface EmptyStateProps {
-  onAddFolder: () => void;
+  onNewFile: () => void;
+  onOpenFolder: () => void;
 }
 
-export function EmptyState({ onAddFolder }: EmptyStateProps) {
+/** Shown only when the user has closed every folder. A fresh install seeds Notes instead. */
+export function EmptyState({ onNewFile, onOpenFolder }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 px-4 py-8 text-center">
-      <FolderPlus className="size-8 text-muted-foreground" />
       <div>
-        <p className="text-sm font-medium">No folders tracked</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Add a folder to start editing
+        <p className="text-sm font-medium">Nothing open</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Start a note, or open any folder on your Mac.
         </p>
       </div>
-      <Button variant="outline" size="sm" onClick={onAddFolder}>
-        Add Folder
-      </Button>
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" onClick={onNewFile}>
+          New File
+        </Button>
+        <Button variant="outline" size="sm" onClick={onOpenFolder}>
+          Open Folder…
+        </Button>
+      </div>
     </div>
   );
 }

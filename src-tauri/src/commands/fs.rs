@@ -20,6 +20,8 @@ const SOURCE_LINE_SCAN_LIMIT: u64 = 5_000_001;
 // beyond this boundary are probed only; scanning the full file here would
 // defeat the fast bounded-viewer path selected by the frontend.
 const EXTREME_SOURCE_BYTES: u64 = 128 * 1024 * 1024;
+/// Per-folder Ghost metadata. Never listed, even when hidden files are shown.
+pub const GHOST_METADATA_DIR: &str = ".ghost";
 
 #[cfg(unix)]
 fn copy_extended_attributes(source: &Path, destination: &Path) -> Result<(), std::io::Error> {
@@ -210,6 +212,9 @@ fn read_dir_recursive(
     for entry in dir_entries {
         let name = entry.file_name().to_string_lossy().to_string();
 
+        if name == GHOST_METADATA_DIR {
+            continue;
+        }
         if !show_hidden && name.starts_with('.') {
             continue;
         }
@@ -239,7 +244,7 @@ fn read_dir_recursive(
                 let ext = path.extension()
                     .and_then(|e| e.to_str())
                     .unwrap_or("");
-                if !extensions.iter().any(|e| e == ext) {
+                if !extensions.iter().any(|e| e.eq_ignore_ascii_case(ext)) {
                     continue;
                 }
             }
@@ -1335,6 +1340,7 @@ pub async fn abort_source_save(
 pub async fn commit_source_save(
     write_state: State<'_, FileWriteState>,
     source_state: State<'_, SourceSaveState>,
+    own_writes: State<'_, crate::own_writes::OwnWriteRegistry>,
     session_id: u64,
 ) -> Result<FileVersionToken, WriteFileError> {
     let session = source_state
@@ -1383,6 +1389,7 @@ pub async fn commit_source_save(
                 let _ = directory.sync_all();
             }
         }
+        own_writes.record_path(&target_path);
         file_version(&target_path)
             .map_err(|error| WriteFileError::io(format!("Failed to inspect saved file: {}", error)))
     };
@@ -1430,6 +1437,7 @@ fn write_file_checked(
 #[tauri::command]
 pub async fn write_file(
     state: State<'_, FileWriteState>,
+    own_writes: State<'_, crate::own_writes::OwnWriteRegistry>,
     path: String,
     content: String,
     expected_content: Option<String>,
@@ -1453,6 +1461,7 @@ pub async fn write_file(
         expected_version.as_ref(),
         force.unwrap_or(false),
     )?;
+    own_writes.record_path(Path::new(&path));
     file_version(Path::new(&path))
         .map_err(|error| WriteFileError::io(format!("Failed to inspect saved file: {}", error)))
 }
@@ -1477,6 +1486,130 @@ pub async fn create_directory(parent: String, name: String) -> Result<String, St
     }
     fs::create_dir(&dir_path).map_err(|e| format!("Failed to create directory: {}", e))?;
     Ok(dir_path.to_string_lossy().to_string())
+}
+
+/// Sibling name for the disk side of a mirror conflict. The label is the
+/// caller's local timestamp, e.g. `2026-09-02 14.03`, so the file reads well
+/// in Finder without the backend needing a time zone.
+pub fn conflict_copy_path(path: &Path, label: &str) -> PathBuf {
+    let parent = path.parent().map(Path::to_path_buf).unwrap_or_default();
+    let stem = path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().to_string())
+        .unwrap_or_else(|| "file".to_string());
+    let extension = path
+        .extension()
+        .map(|extension| format!(".{}", extension.to_string_lossy()))
+        .unwrap_or_default();
+    let mut candidate = parent.join(format!("{stem} (conflict {label}){extension}"));
+    let mut counter = 2;
+    while candidate.exists() {
+        candidate = parent.join(format!("{stem} (conflict {label} {counter}){extension}"));
+        counter += 1;
+    }
+    candidate
+}
+
+#[tauri::command]
+pub async fn write_conflict_copy(path: String, content: String, label: String) -> Result<String, String> {
+    if label.is_empty() || label.contains('/') || label.contains("..") {
+        return Err("Invalid conflict label".to_string());
+    }
+    let target = conflict_copy_path(Path::new(&path), &label);
+    atomic_write_file(&target, &content)
+        .map_err(|error| format!("Failed to write conflict copy: {}", error))?;
+    Ok(target.to_string_lossy().to_string())
+}
+
+pub fn hash_text(text: &str) -> String {
+    blake3::hash(text.as_bytes()).to_hex().to_string()
+}
+
+#[tauri::command]
+pub async fn hash_file(path: String) -> Result<String, String> {
+    let mut file = fs::File::open(&path).map_err(|error| format!("Failed to open {}: {}", path, error))?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buffer = vec![0u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| format!("Failed to read {}: {}", path, error))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
+#[tauri::command]
+pub fn hash_text_content(text: String) -> String {
+    hash_text(&text)
+}
+
+/// Create a directory and any missing parents. Unlike `create_directory`,
+/// an existing directory is not an error.
+#[tauri::command]
+pub async fn ensure_directory(path: String) -> Result<(), String> {
+    fs::create_dir_all(&path).map_err(|error| format!("Failed to create {}: {}", path, error))
+}
+
+/// Permanently remove a file that lives inside a `.ghost` metadata folder.
+/// Version history is pruned this way; user files never go through here.
+#[tauri::command]
+pub async fn remove_ghost_metadata_file(path: String) -> Result<(), String> {
+    let target = Path::new(&path);
+    let inside_ghost = target
+        .components()
+        .any(|component| component.as_os_str() == GHOST_METADATA_DIR);
+    if !inside_ghost {
+        return Err("Only files inside a .ghost folder can be removed this way".to_string());
+    }
+    match fs::remove_file(target) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("Failed to remove {}: {}", path, error)),
+    }
+}
+
+#[cfg(test)]
+mod mirror_tests {
+    use super::*;
+
+    #[test]
+    fn conflict_copies_sit_beside_the_original_and_never_collide() {
+        let dir = std::env::temp_dir().join(format!("ghost-conflict-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let original = dir.join("plan.md");
+
+        let first = conflict_copy_path(&original, "2026-09-02 14.03");
+        assert_eq!(first, dir.join("plan (conflict 2026-09-02 14.03).md"));
+        fs::write(&first, "x").unwrap();
+        let second = conflict_copy_path(&original, "2026-09-02 14.03");
+        assert_eq!(second, dir.join("plan (conflict 2026-09-02 14.03 2).md"));
+        assert_eq!(
+            conflict_copy_path(&dir.join("README"), "2026-09-02 14.03"),
+            dir.join("README (conflict 2026-09-02 14.03)")
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn file_and_text_hashes_agree() {
+        let dir = std::env::temp_dir().join(format!("ghost-hash-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("note.md");
+        fs::write(&file, "# Note\n\nBody.\n").unwrap();
+
+        let from_file = tauri::async_runtime::block_on(hash_file(file.to_string_lossy().to_string())).unwrap();
+        assert_eq!(from_file, hash_text("# Note\n\nBody.\n"));
+        assert_ne!(from_file, hash_text("# Note\n\nBody!\n"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
 
 fn companion_assets_path_for_file_name(path: &Path) -> Option<PathBuf> {
@@ -1759,6 +1892,83 @@ pub async fn duplicate_file(path: String) -> Result<String, String> {
 
         Ok(dest.to_string_lossy().to_string())
     }
+}
+
+/// Copy a file, and its companion `.assets` folder, into another folder. The
+/// name is kept unless it collides, in which case a numbered name is used
+/// and image references are rewritten to the renamed assets folder. This is
+/// the "Copy to Notes" and "Save a copy" bridge: always a copy, never a link.
+#[tauri::command]
+pub async fn copy_file_into(source: String, target_dir: String) -> Result<String, String> {
+    let source = Path::new(&source);
+    let target_dir = Path::new(&target_dir);
+    if !source.is_file() {
+        return Err("Only files can be copied this way".to_string());
+    }
+    if !target_dir.is_dir() {
+        return Err(format!("{} is not a folder", target_dir.display()));
+    }
+    let stem = source.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    let ext = source.extension().and_then(|e| e.to_str()).map(|e| format!(".{}", e)).unwrap_or_default();
+
+    let mut counter = 1;
+    let mut dest = target_dir.join(format!("{stem}{ext}"));
+    let mut dest_assets = companion_assets_path_for_file_name(&dest);
+    while dest.exists() || dest_assets.as_ref().is_some_and(|assets| assets.exists()) {
+        counter += 1;
+        dest = target_dir.join(format!("{stem} {counter}{ext}"));
+        dest_assets = companion_assets_path_for_file_name(&dest);
+    }
+
+    let source_assets = companion_assets_path(source).filter(|assets| assets.is_dir());
+    let asset_rewrite = match (source_assets.as_ref(), dest_assets.as_ref()) {
+        (Some(from), Some(to)) => {
+            let old_name = from.file_name().and_then(|n| n.to_str()).ok_or("Cannot determine companion assets name")?;
+            let new_name = to.file_name().and_then(|n| n.to_str()).ok_or("Cannot determine copied assets name")?;
+            (old_name != new_name).then(|| (old_name.to_string(), new_name.to_string()))
+        }
+        _ => None,
+    };
+
+    let staging_file = unused_backup_path(&dest)?;
+    if let Err(error) = copy_file_with_metadata(source, &staging_file) {
+        remove_staging_path(&staging_file);
+        return Err(format!("Failed to copy file: {}", error));
+    }
+    if let Some((old_name, new_name)) = asset_rewrite {
+        if let Err(error) = atomic_replace_literal(&staging_file, old_name.as_bytes(), new_name.as_bytes()) {
+            remove_staging_path(&staging_file);
+            return Err(format!("Failed to update copied asset references: {}", error));
+        }
+    }
+    let staging_assets = match (source_assets.as_ref(), dest_assets.as_ref()) {
+        (Some(from), Some(to)) => {
+            let staging = unused_backup_path(to)?;
+            if let Err(error) = copy_dir_recursive(from, &staging) {
+                remove_staging_path(&staging_file);
+                remove_staging_path(&staging);
+                return Err(error);
+            }
+            Some(staging)
+        }
+        _ => None,
+    };
+    if let Err(error) = fs::rename(&staging_file, &dest) {
+        remove_staging_path(&staging_file);
+        if let Some(staging) = staging_assets.as_ref() {
+            remove_staging_path(staging);
+        }
+        return Err(format!("Failed to finish copying: {}", error));
+    }
+    if let (Some(staging), Some(to)) = (staging_assets.as_ref(), dest_assets.as_ref()) {
+        if let Err(error) = fs::rename(staging, to) {
+            let _ = fs::rename(&dest, &staging_file);
+            remove_staging_path(&staging_file);
+            remove_staging_path(staging);
+            return Err(format!("Failed to finish copying companion assets: {}", error));
+        }
+    }
+    Ok(dest.to_string_lossy().to_string())
 }
 
 fn copy_file_with_metadata(source: &Path, destination: &Path) -> Result<(), std::io::Error> {

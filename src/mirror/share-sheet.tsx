@@ -63,7 +63,10 @@ function roleLabel(role: CloudShareRole): string {
 /** The item's name, set off from the rest of the title. */
 function ItemPill({ name }: { name: string }) {
   return (
-    <span className="ml-1 inline-block max-w-[18rem] truncate rounded-md bg-accent px-2 py-0.5 align-baseline font-mono text-[13px] font-normal text-accent-foreground">
+    <span
+      title={name}
+      className="ml-1 inline-block max-w-[18rem] truncate rounded-md bg-accent px-2 py-0.5 align-baseline font-mono text-[13px] font-normal text-accent-foreground"
+    >
       {name}
     </span>
   );

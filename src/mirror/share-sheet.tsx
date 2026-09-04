@@ -65,9 +65,9 @@ function ItemPill({ name }: { name: string }) {
   return (
     <span
       title={name}
-      className="ml-1 inline-block max-w-[18rem] truncate rounded-md bg-accent px-2 py-0.5 align-baseline font-mono text-[13px] font-normal text-accent-foreground"
+      className="inline-flex max-w-[18rem] items-center rounded-md bg-accent px-2 py-0.5 font-mono text-[13px] font-normal leading-none text-accent-foreground"
     >
-      {name}
+      <span className="truncate">{name}</span>
     </span>
   );
 }
@@ -335,7 +335,7 @@ export function ShareSheet({
       </div>
     );
   } else if (root && root.kind === "mirrored") {
-    title = <>Share <ItemPill name={itemName} /></>;
+    title = <span className="flex items-center gap-2">Share <ItemPill name={itemName} /></span>;
     ariaLabel = `Share ${itemName}`;
     body = (
       <SharePanel
@@ -347,7 +347,7 @@ export function ShareSheet({
       />
     );
   } else {
-    title = <>Share <ItemPill name={itemName} /></>;
+    title = <span className="flex items-center gap-2">Share <ItemPill name={itemName} /></span>;
     ariaLabel = `Share ${itemName}`;
     description = target?.kind === "folder"
       ? `To share ${itemName}, sync it to Cloud. The folder stays where it is.`

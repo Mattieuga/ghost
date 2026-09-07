@@ -182,14 +182,18 @@ export function MirroredDocumentEditor({
       );
       const { documentId } = adopted;
       await updateGhostIndexEntry(fs, root.path, relativePath, adopted.entry);
-      if (cloud && root.cloudRootId) {
-        // A note created on this Mac joins Cloud the first time it opens.
-        await ensureCloudDocument({
+      // A note is edited through Cloud once it exists there. One that was
+      // created on this Mac joins Cloud the first time it opens; until that
+      // succeeds it is edited locally, never as a read-only Cloud document.
+      let inCloud = Boolean(cloud && root.cloudRootId && adopted.entry.cloudDocumentId);
+      if (cloud && root.cloudRootId && !inCloud) {
+        inCloud = await ensureCloudDocument({
           fs,
           client: cloud.client,
           openPersistence: (rootId, id, doc) => openYjsPersistence(mirrorLocalPersistenceKey(rootId, id), doc),
-        }, root, relativePath, documentId).catch((reason) => {
+        }, root, relativePath, documentId).then(() => true, (reason: unknown) => {
           console.warn("Could not add this note to Cloud yet:", reason);
+          return false;
         });
       }
       if (!active) return;
@@ -200,45 +204,52 @@ export function MirroredDocumentEditor({
         document,
       );
       const engineEditor = createHeadlessMarkdownEditor({ collaboration: document });
-      // Uploaded roots edit through Cloud so the phone and collaborators see
-      // changes live. If the server does not know this document yet, the
-      // local session keeps working and nothing is cleared.
+      // The note opens from its local store at once. A Cloud session starts
+      // from that copy and catches up with the server in the background, so
+      // no network round trip stands between the click and the editor. The
+      // role is the one verified last time; an own root is always editable,
+      // a shared note stays read-only until the server confirms otherwise.
       let session: CloudCollaborationSession;
-      if (cloud && root.cloudRootId) {
-        try {
-          session = await SupabaseCloudAdapter.create({
-            client: cloud.client,
-            document,
-            documentId,
-            user: presenceIdentity(cloud.user),
-            onRoleVerified: async () => undefined,
-            onAccessRevoked: async () => undefined,
-          });
-        } catch (reason) {
-          console.warn("Editing locally; Cloud session unavailable:", reason);
-          session = new LocalCollaborationSession(document);
-        }
+      if (cloud && inCloud) {
+        session = SupabaseCloudAdapter.createFromCache({
+          client: cloud.client,
+          document,
+          documentId,
+          user: presenceIdentity(cloud.user),
+          onRoleVerified: (role) => persistence.rememberRole(role),
+          onAccessRevoked: async () => undefined,
+        }, persistence.cachedRole ?? (root.shared ? "viewer" : "editor"));
       } else {
         session = new LocalCollaborationSession(document);
       }
       const versionFs = versionFsFrom(fs);
       const queue = new IngestionQueue();
 
-      // Merge bases: recent local versions, then the mirror as adopted.
+      // Merge bases: the mirror as adopted now, recent local versions once
+      // they are read. The read runs on the ingestion queue, ahead of the
+      // first ingestion, so the editor is not held for it.
       const generations: MirrorGeneration[] = [];
-      const seedVersions = (await listLocalVersions(versionFs, root.path, documentId))
-        .slice(0, SEED_VERSION_LIMIT)
-        .reverse();
-      for (const version of seedVersions) {
-        const markdown = await fs.readText(version.markdownPath).catch(() => null);
-        if (markdown !== null) rememberGeneration(generations, { contentHash: null, markdown });
-      }
       if (adopted.entry.mirrorVersion) {
         const markdown = await fs.readText(path).catch(() => null);
         if (markdown !== null) {
           rememberGeneration(generations, { contentHash: adopted.entry.contentHash, markdown });
         }
       }
+      void queue.run(async () => {
+        const seedVersions = (await listLocalVersions(versionFs, root.path, documentId))
+          .slice(0, SEED_VERSION_LIMIT)
+          .reverse();
+        const older: MirrorGeneration[] = [];
+        for (const version of seedVersions) {
+          const markdown = await fs.readText(version.markdownPath).catch(() => null);
+          if (markdown !== null) older.push({ contentHash: null, markdown });
+        }
+        // Versions are older than the mirror, so they go in front of it,
+        // within the same cap the running list keeps.
+        generations.unshift(...older);
+        if (generations.length > GENERATION_LIMIT) generations.splice(0, generations.length - GENERATION_LIMIT);
+        return "ignore";
+      });
 
       const writer = new MirrorWriter({
         document,

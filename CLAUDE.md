@@ -4,7 +4,7 @@ This file provides guidance to the coding agent working in this repository.
 
 Read this before making changes. Full architecture lives in `docs/reference/ghost-architecture.md` — this file is the compressed rulebook distilled from that living reference.
 
-_Last reconciled with code: 2026-09-03 (evening)._ When you change an architectural invariant, update this line, this file, and the relevant `docs/reference/` doc in the same change (see "Before you commit").
+_Last reconciled with code: 2026-09-06._ When you change an architectural invariant, update this line, this file, and the relevant `docs/reference/` doc in the same change (see "Before you commit").
 
 ## What this is
 
@@ -24,6 +24,7 @@ Ghost is a native Mac Markdown editor (Tauri 2, React 19, Tiptap 3) that also op
 - **Never sync inside a version-controlled checkout.** Pre-flight refuses it; a synced folder is only ever linked into a repository as an ignored symlink.
 - **External writes are ingested by rule**: ignore own writes, record formatting-only changes, merge real changes three ways at block level, and make a conflict copy only for overlapping edits. Capture a local version before every ingestion. Apply changes as block diffs, never by replacing a whole collaborative document.
 - **Nothing destructive happens silently.** Record lossy edges in the plan and keep a version to return to.
+- **EPUB is a read-only viewer**, using lazy EPUB.js, bounded native ZIP validation, and offline script-free chapters. Reading position is local UI state; never rewrite or extract a book on open. See `docs/adrs/2026-09-06-epub-reader.md`.
 - **One parser and one serializer** (`parseMarkdownDocument`, `serializeMarkdownDocument`) on the Mac, the web, and in version history.
 - **Sign-in is additive** and lives only in Share, "Open on phone", and Settings → Account. Signing out pauses sync and touches no files.
 - **Cloud data changes only through security-definer RPCs** behind row-level security. An item has one share link, off, view, or edit; its token is readable by the owner only and travels in the URL fragment.

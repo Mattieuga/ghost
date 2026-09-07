@@ -6,6 +6,8 @@ For the role of this folder in the docs taxonomy, see [`docs/README.md`](../READ
 
 ## Index
 
+- [`2026-09-06-epubjs-lifecycle.md`](./2026-09-06-epubjs-lifecycle.md) — EPUB.js URL cleanup, missing navigation, and asynchronous disposal.
+
 - [`2026-09-03-synced-folders-review.md`](./2026-09-03-synced-folders-review.md) — what the review of synced folders and sharing found: index write races, remounts that adopt twice, the two meanings of "missing on disk", server checks that authorized the source but not the destination.
 - [`ghost-build-learnings.md`](./ghost-build-learnings.md) — architecture decisions and lessons from the first build of the editor.
 - [`2026-03-26-pre-push-review.md`](./2026-03-26-pre-push-review.md) — findings from the pre-push review of the first release, by priority.

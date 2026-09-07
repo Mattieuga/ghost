@@ -12,6 +12,8 @@ Why date-prefixed and not sequential integers (`0001`, `0002`, …): an integer 
 
 ## Index
 
+- [`2026-09-06-epub-reader.md`](./2026-09-06-epub-reader.md) — bounded, sandboxed EPUB reading through EPUB.js.
+
 - [`0001-extensible-file-viewers.md`](./0001-extensible-file-viewers.md) — file classification and a registry of viewers, so Ghost opens more than Markdown.
 - [`0002-bounded-large-file-loading.md`](./0002-bounded-large-file-loading.md) — capability degradation and bounded resource handling for large files.
 - [`0003-native-quick-look-document-previews.md`](./0003-native-quick-look-document-previews.md) — native Quick Look for documents Ghost does not render itself.

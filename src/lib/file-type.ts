@@ -84,6 +84,7 @@ export type ViewerKind =
   | "svg"
   | "image"
   | "pdf"
+  | "epub"
   | "font"
   | "audio"
   | "video"
@@ -590,6 +591,14 @@ const FILE_TYPE_DEFINITIONS: readonly FileTypeDefinition[] = [
     }),
   },
   { matches: isPdf, describe: () => PDF_DESCRIPTOR },
+  {
+    matches: (filePath) => getExtension(filePath) === "epub",
+    describe: () => ({
+      kind: "epub",
+      ...VIEWER_CAPABILITIES,
+      mimeType: "application/epub+zip",
+    }),
+  },
   {
     matches: isQuickLookDocument,
     describe: (filePath) => ({

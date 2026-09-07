@@ -2,6 +2,7 @@ import { MarkdownEditor } from "@/components/editor/markdown-editor";
 import { CodeEditor } from "@/components/editor/code-editor";
 import { ImageViewer } from "@/components/viewer/image-viewer";
 import { PdfViewer } from "@/components/viewer/pdf-viewer";
+import { EpubViewer } from "@/components/viewer/epub-viewer";
 import { FontViewer } from "@/components/viewer/font-viewer";
 import { CsvViewer } from "@/components/viewer/csv-viewer";
 import { SvgViewer } from "@/components/viewer/svg-viewer";
@@ -166,6 +167,8 @@ export function FileViewer({
       return <ImageViewer key={filePath} filePath={filePath} />;
     case "pdf":
       return <PdfViewer key={filePath} filePath={filePath} />;
+    case "epub":
+      return <EpubViewer key={filePath} filePath={filePath} />;
     case "font":
       return <FontViewer key={filePath} filePath={filePath} />;
     case "audio":

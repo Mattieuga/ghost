@@ -70,6 +70,7 @@
     "@tiptap/starter-kit": "3.30.2",
     "class-variance-authority": "^0.7",
     "clsx": "^2",
+    "epubjs": "0.3.93",
     "lucide-react": "^0.500",
     "marked": "17.0.6",
     "radix-ui": "^1.4.3",

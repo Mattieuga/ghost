@@ -2,7 +2,7 @@
 
 > **Status:** living reference — the always-current description of Ghost as built. Kept in sync with the code; when this disagrees with the implementation, the code wins and this doc gets updated. ADRs in [`../adrs/`](../adrs/) change this document; it's the synthesis they edit.
 >
-> **Last updated:** 2026-09-03
+> **Last updated:** 2026-09-06
 
 Ghost is a native Mac Markdown editor that grew into a general file editor and is becoming a notes app with sync, sharing, and a browser client. Files on disk are the product: every sidebar root is a real folder, agents and other apps write to the same files, and Cloud is added on top of a folder rather than being a second place where notes live. This document covers the two clients and the public site, the roots and mirror engine on the Mac, the Cloud backend, the flows that keep the three in step, and what is still open. The decisions behind it are the ADRs, chiefly [synced folders](../adrs/0005-synced-folders.md) and [cloud collaborative workspaces](../adrs/0004-cloud-collaborative-markdown-workspaces.md).
 
@@ -37,6 +37,8 @@ Ghost is a native Mac Markdown editor that grew into a general file editor and i
 ## The three surfaces
 
 **The Mac app** is a Tauri 2 shell around a React 19 frontend. Markdown opens in a Tiptap 3 editor over ProseMirror; a CodeMirror source view and a family of viewers handle everything else (see the [file viewers](../adrs/0001-extensible-file-viewers.md), [bounded loading](../adrs/0002-bounded-large-file-loading.md), and [Quick Look](../adrs/0003-native-quick-look-document-previews.md) ADRs). Rust owns the filesystem: reads and writes with version tokens, directory listing, search, archive previews, the `~/Ghost` folder, sync pre-flight, repository links, and a global watcher that emits structured `fs-event`s and ignores the app's own writes by device, inode, and modification time.
+
+EPUB books use a dedicated read-only viewer with lazy-loaded EPUB.js, chapter/page navigation, text sizing, and local CFI bookmarks. Rust validates the immutable ZIP snapshot before binary IPC (64 MiB compressed, 32 MiB per resource, 256 MiB expanded, 10,000 entries). Detached chapter documents are stripped of active content and external links, then rendered in script-free iframes with an offline CSP. Protected resources fall back to an external reader. The source book is never rewritten or extracted. See the [EPUB reader ADR](../adrs/2026-09-06-epub-reader.md).
 
 **The browser client** is the same React code with the Tauri-only pieces left out, built on its own by `vite.web.config.ts` with `/app/` as its base. It shows an account's synced roots under "Cloud" and everything shared with it under "Shared", edits through the same collaboration adapter, and uses hash routes: `#/d/<documentId>` opens one document and `#share=<token>` redeems a share link. It refreshes its tree on focus; there is no live tree feed yet.
 

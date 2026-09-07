@@ -1,5 +1,6 @@
 pub mod archive;
 pub mod archive_preview;
+pub mod epub;
 pub mod fs;
 pub mod ghost_folder;
 pub mod search;

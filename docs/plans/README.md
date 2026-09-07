@@ -12,6 +12,8 @@ Active:
 
 Finished, kept as build logs:
 
+- [`2026-09-06-epub-reader.md`](./2026-09-06-epub-reader.md) — read-only EPUB reader side quest. Completed 2026-09-06.
+
 - [`cloud-collaboration-roadmap.md`](./cloud-collaboration-roadmap.md) — the first Cloud build: spike, foundation, Mac plus web vertical slice. Superseded from its Phase 4 on by the synced-folders roadmap.
 - [`file-viewer-roadmap.md`](./file-viewer-roadmap.md) — extensible file viewers. Completed 2026-08-22.
 - [`large-file-hardening.md`](./large-file-hardening.md) — bounded loading for large files. Implemented and verified 2026-08-24.

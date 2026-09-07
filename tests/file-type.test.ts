@@ -19,6 +19,7 @@ describe("file classification", () => {
     ["photo.PNG", "image", "viewer-owned", false],
     ["icon.icns", "image", "viewer-owned", false],
     ["manual.pdf", "pdf", "viewer-owned", false],
+    ["book.EPUB", "epub", "viewer-owned", false],
     ["proposal.docx", "quick-look", "viewer-owned", false],
     ["budget.xlsx", "quick-look", "viewer-owned", false],
     ["deck.pptx", "quick-look", "viewer-owned", false],

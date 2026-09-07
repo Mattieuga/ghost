@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  foliate-js@0.0.0:
+    hash: f48454c91231341c3ba40f90944af2c59b778a3de09c5f04b7a65429d88a6293
+    path: patches/foliate-js@0.0.0.patch
+
 importers:
 
   .:
@@ -179,6 +184,9 @@ importers:
       epubjs:
         specifier: 0.3.93
         version: 0.3.93
+      foliate-js:
+        specifier: https://codeload.github.com/johnfactotum/foliate-js/tar.gz/78914aef4466eb960965702401634c2cb348e9b1
+        version: https://codeload.github.com/johnfactotum/foliate-js/tar.gz/78914aef4466eb960965702401634c2cb348e9b1(patch_hash=f48454c91231341c3ba40f90944af2c59b778a3de09c5f04b7a65429d88a6293)
       lucide-react:
         specifier: ^0.500
         version: 0.500.0(react@19.2.4)
@@ -2227,6 +2235,10 @@ packages:
     peerDependenciesMeta:
       picomatch:
         optional: true
+
+  foliate-js@https://codeload.github.com/johnfactotum/foliate-js/tar.gz/78914aef4466eb960965702401634c2cb348e9b1:
+    resolution: {tarball: https://codeload.github.com/johnfactotum/foliate-js/tar.gz/78914aef4466eb960965702401634c2cb348e9b1}
+    version: 0.0.0
 
   fsevents@2.3.2:
     resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
@@ -4950,6 +4962,8 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.5):
     optionalDependencies:
       picomatch: 4.0.5
+
+  foliate-js@https://codeload.github.com/johnfactotum/foliate-js/tar.gz/78914aef4466eb960965702401634c2cb348e9b1(patch_hash=f48454c91231341c3ba40f90944af2c59b778a3de09c5f04b7a65429d88a6293): {}
 
   fsevents@2.3.2:
     optional: true

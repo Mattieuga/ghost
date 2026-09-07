@@ -8,9 +8,12 @@ For the role of this folder in the docs taxonomy, see [`docs/README.md`](../READ
 
 Active:
 
+
 - [`synced-folders-roadmap.md`](./synced-folders-roadmap.md) — the six-phase build of synced folders, Cloud upload, sharing, the Shared root, and later blobs and tasks. Phases 1 to 4 built; Phase 4 awaiting click-through.
 
 Finished, kept as build logs:
+
+- [`2026-09-06-additional-book-formats.md`](./2026-09-06-additional-book-formats.md) — MOBI/AZW3/FB2 and CBZ/CBR reader addition. Completed 2026-09-06.
 
 - [`2026-09-06-epub-reader.md`](./2026-09-06-epub-reader.md) — read-only EPUB reader side quest. Completed 2026-09-06.
 

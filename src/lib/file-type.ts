@@ -85,6 +85,8 @@ export type ViewerKind =
   | "image"
   | "pdf"
   | "epub"
+  | "ebook"
+  | "comic"
   | "font"
   | "audio"
   | "video"
@@ -597,6 +599,22 @@ const FILE_TYPE_DEFINITIONS: readonly FileTypeDefinition[] = [
       kind: "epub",
       ...VIEWER_CAPABILITIES,
       mimeType: "application/epub+zip",
+    }),
+  },
+  {
+    matches: (filePath) => ["mobi", "azw3", "fb2"].includes(getExtension(filePath)),
+    describe: (filePath) => ({
+      kind: "ebook",
+      ...VIEWER_CAPABILITIES,
+      mimeType: getExtension(filePath) === "fb2" ? "application/x-fictionbook+xml" : "application/x-mobipocket-ebook",
+    }),
+  },
+  {
+    matches: (filePath) => ["cbz", "cbr"].includes(getExtension(filePath)),
+    describe: (filePath) => ({
+      kind: "comic",
+      ...VIEWER_CAPABILITIES,
+      mimeType: getExtension(filePath) === "cbz" ? "application/vnd.comicbook+zip" : "application/vnd.comicbook-rar",
     }),
   },
   {

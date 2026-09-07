@@ -36,7 +36,7 @@ describe("loadFileModel", () => {
     expect(reader.probeText).not.toHaveBeenCalled();
   });
 
-  it.each(["book.epub", "photo.jpg", "manual.pdf", "font.otf", "proposal.docx", "budget.xlsx", "deck.pptx"])(
+  it.each(["book.epub", "book.mobi", "book.azw3", "book.fb2", "comic.cbz", "comic.cbr", "photo.jpg", "manual.pdf", "font.otf", "proposal.docx", "budget.xlsx", "deck.pptx"])(
     "leaves known viewer content to the viewer for %s",
     async (path) => {
       const reader = backend();

@@ -102,6 +102,8 @@ export function ArchiveEntryPreview({ artifact }: { artifact: ArchivePreviewArti
       return <VideoViewer filePath={artifact.path} displayName={artifact.display_name} />;
     case "quick-look":
     case "epub":
+    case "ebook":
+    case "comic":
     case "archive":
     case "unsupported":
       return (

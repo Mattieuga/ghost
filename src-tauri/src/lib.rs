@@ -42,6 +42,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::archive::list_archive,
             commands::epub::read_epub,
+            commands::ebook::read_ebook,
             commands::archive::extract_archive,
             commands::archive_preview::materialize_archive_entry,
             commands::archive_preview::cancel_archive_preview,

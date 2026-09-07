@@ -1,0 +1,127 @@
+diff --git a/mobi.js b/mobi.js
+index 20c77a83db677cc01a0549bc8dad073ab7e9f030..f2228d578cc2847a953ed99c3a2ea886232a12c5 100644
+--- a/mobi.js
++++ b/mobi.js
+@@ -538,7 +538,9 @@ export class MOBI extends PDB {
+             }
+         }
+         await this.#setup()
+-        return isKF8 ? new KF8(this).init() : new MOBI6(this).init()
++        const book = isKF8 ? new KF8(this) : new MOBI6(this)
++        try { return await book.init() }
++        catch (error) { book.destroy(); throw error }
+     }
+     #getHeaders(buf) {
+         const palmdoc = getStruct(PALMDOC_HEADER, buf)
+diff --git a/paginator.js b/paginator.js
+index 7980c20297049e38b5e5a1d44a9eee11b1fbd68e..b6525ad6583ee152bf755212e6c11107b7df93ae 100644
+--- a/paginator.js
++++ b/paginator.js
+@@ -252,9 +252,10 @@ class View {
+     }
+     async load(src, afterLoad, beforeRender) {
+         if (typeof src !== 'string') throw new Error(`${src} is not string`)
+-        return new Promise(resolve => {
++        return new Promise((resolve, reject) => {
+             this.#iframe.addEventListener('load', () => {
+                 const doc = this.document
++                if (!doc) { reject(new Error('Reader closed while loading')); return }
+                 afterLoad?.(doc)
+ 
+                 // it needs to be visible for Firefox to get computed style
+@@ -283,7 +284,7 @@ class View {
+         })
+     }
+     render(layout) {
+-        if (!layout) return
++        if (!layout || !this.document) return
+         this.#column = layout.flow !== 'scrolled'
+         this.#layout = layout
+         if (this.#column) this.columnize(layout)
+@@ -360,6 +361,7 @@ class View {
+         }
+     }
+     expand() {
++        if (!this.document) return
+         const { documentElement } = this.document
+         if (this.#column) {
+             const side = this.#vertical ? 'height' : 'width'
+@@ -416,7 +418,7 @@ class View {
+         return this.#overlayer
+     }
+     destroy() {
+-        if (this.document) this.#observer.unobserve(this.document.body)
++        this.#observer.disconnect()
+     }
+ }
+ 
+@@ -620,7 +622,7 @@ export class Paginator extends HTMLElement {
+         })
+ 
+         this.#mediaQueryListener = () => {
+-            if (!this.#view) return
++            if (!this.#view?.document) return
+             this.#background.style.background = getBackground(this.#view.document)
+         }
+         this.#mediaQuery.addEventListener('change', this.#mediaQueryListener)
+@@ -752,7 +754,7 @@ export class Paginator extends HTMLElement {
+         return { height, width, margin, gap, columnWidth }
+     }
+     render() {
+-        if (!this.#view) return
++        if (!this.#view?.document) return
+         this.#view.render(this.#beforeRender({
+             vertical: this.#vertical,
+             rtl: this.#rtl,
+@@ -919,6 +921,7 @@ export class Paginator extends HTMLElement {
+         return this.#scrollToAnchor(anchor, select ? 'selection' : 'navigation')
+     }
+     async #scrollToAnchor(anchor, reason = 'anchor') {
++        if (!this.#view?.document) return
+         this.#anchor = anchor
+         const rects = uncollapse(anchor)?.getClientRects?.()
+         // if anchor is an element or a range
+@@ -950,6 +953,7 @@ export class Paginator extends HTMLElement {
+             this.start - size, this.end - size, this.#getRectMapper())
+     }
+     #afterScroll(reason) {
++        if (!this.#view?.document) return
+         const range = this.#getVisibleRange()
+         this.#lastVisibleRange = range
+         // don't set new anchor if relocation was to scroll to anchor
+@@ -1015,7 +1019,7 @@ export class Paginator extends HTMLElement {
+                 .catch(e => {
+                     console.warn(e)
+                     console.warn(new Error(`Failed to load section ${index}`))
+-                    return {}
++                    throw e
+                 }))
+         }
+     }
+@@ -1109,20 +1113,21 @@ export class Paginator extends HTMLElement {
+         } else $style.textContent = styles
+ 
+         // NOTE: needs `requestAnimationFrame` in Chromium
+-        requestAnimationFrame(() =>
+-            this.#background.style.background = getBackground(this.#view.document))
++        requestAnimationFrame(() => {
++            if (this.#view?.document) this.#background.style.background = getBackground(this.#view.document)
++        })
+ 
+         // needed because the resize observer doesn't work in Firefox
+-        this.#view?.document?.fonts?.ready?.then(() => this.#view.expand())
++        this.#view?.document?.fonts?.ready?.then(() => this.#view?.expand())
+     }
+     focusView() {
+         this.#view.document.defaultView.focus()
+     }
+     destroy() {
+         this.#observer.unobserve(this)
+-        this.#view.destroy()
++        this.#view?.destroy()
+         this.#view = null
+-        this.sections[this.#index]?.unload?.()
++        this.sections?.[this.#index]?.unload?.()
+         this.#mediaQuery.removeEventListener('change', this.#mediaQueryListener)
+     }
+ }

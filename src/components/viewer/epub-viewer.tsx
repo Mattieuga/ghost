@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
+import { BookReaderControls, restoreBookFocus } from "@/components/viewer/book-reader-controls";
 import type { Book, Contents, Location, Rendition } from "epubjs";
 import type Section from "epubjs/types/section";
 import { useMediaAsset } from "@/hooks/use-media-asset";
@@ -37,16 +37,7 @@ export function EpubViewer({ filePath }: { filePath: string }) {
     }).finally(() => {
       if (renditionRef.current !== rendition) return;
       setBusy(false);
-      // Crossing a chapter destroys its focused iframe. Keep keyboard reading
-      // on the stable viewer, without taking focus from another app control.
-      if (focusedFrame && !focusedFrame.isConnected && document.activeElement === document.body) {
-        readerRef.current?.focus({ preventScroll: true });
-      }
-      // A committed contents selection resumes reading. Leave focus alone if
-      // the user chose another control while the chapter was loading.
-      if (returnFocusFrom && (document.activeElement === returnFocusFrom || document.activeElement === document.body)) {
-        readerRef.current?.focus({ preventScroll: true });
-      }
+      restoreBookFocus(readerRef.current, focusedFrame, returnFocusFrom);
     });
   }, []);
   actionRef.current = navigate;
@@ -211,7 +202,6 @@ export function EpubViewer({ filePath }: { filePath: string }) {
     renditionRef.current?.themes.fontSize(`${next}%`);
   };
   const selectedChapter = toc.find((item) => item.href.split("#")[0] === location?.start.href)?.href ?? "";
-  const controlClass = "rounded p-1.5 hover:bg-muted focus-visible:outline focus-visible:outline-ring disabled:opacity-30";
 
   return (
     <div ref={readerRef} className="flex h-full flex-col pt-12 outline-none" tabIndex={0} data-viewer-focus-target data-epub-path={filePath}
@@ -230,23 +220,11 @@ export function EpubViewer({ filePath }: { filePath: string }) {
           <OpenExternalButton filePath={filePath} />
         </div>}
       </div>
-      <div className="flex shrink-0 flex-col items-center gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground sm:flex-row">
-        <select aria-label="Table of contents" value={selectedChapter} disabled={!ready || busy || !!error}
-          onChange={(event) => navigate(event.target.value, event.currentTarget)}
-          className="w-full min-w-0 flex-1 truncate rounded border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-ring">
-          <option value="" disabled>Contents</option>
-          {toc.map((item, index) => <option key={`${item.href}:${index}`} value={item.href}>{item.label}</option>)}
-        </select>
-        <div className="flex shrink-0 items-center justify-center gap-1">
-        <button aria-label="Previous page" title="Previous page (Left arrow)" className={controlClass} disabled={!ready || busy || !!error || location?.atStart} onClick={() => navigate("previous")}><ChevronLeft className="size-4" /></button>
-        <span className="min-w-24 text-center text-[11px] tabular-nums" aria-live="polite">{location ? `${location.start.displayed.page} / ${location.start.displayed.total} in chapter` : "—"}</span>
-        <button aria-label="Next page" title="Next page (Right arrow)" className={controlClass} disabled={!ready || busy || !!error || location?.atEnd} onClick={() => navigate("next")}><ChevronRight className="size-4" /></button>
-        <span className="mx-1 h-4 w-px bg-border" />
-        <button aria-label="Smaller text" className={controlClass} disabled={!ready || !!error || fontSize <= 80} onClick={() => changeFontSize(-10)}><Minus className="size-3.5" /></button>
-        <span className="w-8 text-center text-[11px] tabular-nums">{fontSize}%</span>
-        <button aria-label="Larger text" className={controlClass} disabled={!ready || !!error || fontSize >= 160} onClick={() => changeFontSize(10)}><Plus className="size-3.5" /></button>
-        </div>
-      </div>
+      <BookReaderControls options={toc} selected={selectedChapter} onSelect={navigate}
+        disabled={!ready || busy || !!error} atStart={location?.atStart} atEnd={location?.atEnd}
+        onPrevious={() => navigate("previous")} onNext={() => navigate("next")}
+        progress={location ? `${location.start.displayed.page} / ${location.start.displayed.total} in chapter` : "—"}
+        scale={{ value: fontSize, min: 80, max: 160, change: changeFontSize }} />
     </div>
   );
 }

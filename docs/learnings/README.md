@@ -6,6 +6,8 @@ For the role of this folder in the docs taxonomy, see [`docs/README.md`](../READ
 
 ## Index
 
+- [`2026-09-06-foliate-lifecycle.md`](./2026-09-06-foliate-lifecycle.md) — detached-frame cleanup, error propagation, and the sanitized blob boundary.
+
 - [`2026-09-06-epubjs-lifecycle.md`](./2026-09-06-epubjs-lifecycle.md) — EPUB.js URL cleanup, missing navigation, and asynchronous disposal.
 
 - [`2026-09-03-synced-folders-review.md`](./2026-09-03-synced-folders-review.md) — what the review of synced folders and sharing found: index write races, remounts that adopt twice, the two meanings of "missing on disk", server checks that authorized the source but not the destination.

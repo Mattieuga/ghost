@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { BookOpen, ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
 import type { Book, Contents, Location, Rendition } from "epubjs";
 import type Section from "epubjs/types/section";
 import { useMediaAsset } from "@/hooks/use-media-asset";
@@ -17,8 +17,6 @@ export function EpubViewer({ filePath }: { filePath: string }) {
   const renditionRef = useRef<Rendition | null>(null);
   const bookmarkRef = useRef(readEpubBookmark(filePath));
   const [fontSize, setFontSize] = useState(bookmarkRef.current.fontSize);
-  const [title, setTitle] = useState(filePath.split("/").pop() ?? "EPUB");
-  const [author, setAuthor] = useState("");
   const [toc, setToc] = useState<Array<{ href: string; label: string }>>([]);
   const [location, setLocation] = useState<Location | null>(null);
   const [ready, setReady] = useState(false);
@@ -102,8 +100,6 @@ export function EpubViewer({ filePath }: { filePath: string }) {
       if (!book.spine.first()) throw new Error("This EPUB has no readable chapters");
 
       const metadata = await book.loaded.metadata;
-      setTitle(metadata.title || filePath.split("/").pop() || "EPUB");
-      setAuthor(metadata.creator || "");
       const navigation = await withEpubTimeout(book.loaded.navigation);
       let contents = flattenEpubContents(navigation.toc, book.packaging.navPath || book.packaging.ncxPath);
       if (!contents.length) {
@@ -226,14 +222,6 @@ export function EpubViewer({ filePath }: { filePath: string }) {
           navigate(event.key === "ArrowRight" ? "next" : "previous");
         }
       }}>
-      <div className="flex shrink-0 items-center gap-3 border-b border-border px-5 py-3">
-        <BookOpen className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm text-foreground">{title}</div>
-          {author && <div className="truncate text-xs text-muted-foreground">{author}</div>}
-        </div>
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">EPUB</span>
-      </div>
       <div className="relative min-h-0 flex-1">
         <div ref={surfaceRef} className="absolute inset-0 mx-auto max-w-4xl" />
         {!ready && !error && <div role="status" className="absolute inset-0 flex items-center justify-center bg-background text-sm text-muted-foreground">Opening book…</div>}

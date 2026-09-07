@@ -1,12 +1,23 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import type { CloudCollaborationSession, CloudCollaborationSnapshot } from "@/cloud/collaboration/types";
 
-/** The session's snapshot as React state, following every change. */
+/**
+ * The session's snapshot as React state, following every change. Plain
+ * state rather than an external-store subscription: `getSnapshot()` builds
+ * a fresh object each call, which the store hook would read as a change on
+ * every render.
+ */
 export function useSessionSnapshot(session: CloudCollaborationSession | null): CloudCollaborationSnapshot | null {
-  return useSyncExternalStore(
-    useCallback((listener: () => void) => (session ? session.subscribe(() => listener()) : () => undefined), [session]),
-    () => (session ? session.getSnapshot() : null),
-  );
+  const [snapshot, setSnapshot] = useState<CloudCollaborationSnapshot | null>(() => session?.getSnapshot() ?? null);
+  useEffect(() => {
+    if (!session) {
+      setSnapshot(null);
+      return;
+    }
+    setSnapshot(session.getSnapshot());
+    return session.subscribe(setSnapshot);
+  }, [session]);
+  return snapshot;
 }
 
 /** Names of everyone with a cursor in the document, this user included. */

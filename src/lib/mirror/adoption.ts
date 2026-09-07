@@ -169,6 +169,10 @@ export function commitIndexPass(
             : {}),
           ...(!entry.cloudDocumentId && live.cloudDocumentId ? { cloudDocumentId: live.cloudDocumentId } : {}),
         };
+      } else if (live && !before && live.documentId !== entry.documentId) {
+        // The pass adopted a file the editor had claimed meanwhile; the
+        // editor's document is the one being edited, so it wins.
+        merged.documents[path] = live;
       } else {
         merged.documents[path] = entry;
       }
@@ -204,6 +208,31 @@ export async function relocateIndexEntry(
     index.documents[toRelative] = moved;
   });
   return moved;
+}
+
+/**
+ * Claim a path for a document before the slow part of adoption runs, so a
+ * reconciliation pass that lists the same new file meanwhile finds it
+ * taken and does not mint a second document. Returns the entry to adopt
+ * with: the reservation, or whatever got there first.
+ */
+export async function reserveIndexEntry(
+  fs: MirrorFs,
+  root: string,
+  relativePath: string,
+  documentId: string,
+): Promise<GhostIndexEntry> {
+  let entry: GhostIndexEntry | null = null;
+  await mutateGhostIndex(fs, root, (index) => {
+    const existing = index.documents[relativePath];
+    if (existing) {
+      entry = existing;
+      return;
+    }
+    entry = { documentId, contentHash: null, mirrorVersion: null, mirrorStateVector: null };
+    index.documents[relativePath] = entry;
+  });
+  return entry as unknown as GhostIndexEntry;
 }
 
 /**

@@ -324,6 +324,12 @@ export async function reconcileMirroredRoot(
   const added: string[] = [];
   for (const relativePath of reconciliation.added) {
     if (isOpen(`${root.path}/${relativePath}`)) continue;
+    // The editor may have claimed this file since the pass began.
+    const claimed = (await readGhostFolder(fs, root.path)).index.documents[relativePath];
+    if (claimed) {
+      next.documents[relativePath] = claimed;
+      continue;
+    }
     let adopted;
     try {
       adopted = await adoptDocument(

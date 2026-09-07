@@ -163,7 +163,8 @@ export function CloudWebApp() {
     }
     const item = tree.items.find((candidate) => candidate.id === route.id && candidate.kind === "document");
     if (item) {
-      setActiveDocument((current) => (current?.id === item.id ? current : item));
+      // The tree's row is the current truth, name included.
+      setActiveDocument((current) => (current === item ? current : item));
       return;
     }
     if (!tree.loading && tree.items.length > 0 && missingRouteNoticed.current !== route.id) {

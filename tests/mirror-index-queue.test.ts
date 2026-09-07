@@ -125,3 +125,32 @@ describe("MirrorWriter without a disk record", () => {
     }
   });
 });
+
+describe("one document per new file", () => {
+  it("reserves a path so a second claimant gets the first document", async () => {
+    const { fs } = memoryFs({});
+    await writeGhostIndex(fs, ROOT, emptyGhostIndex());
+    const { reserveIndexEntry } = await import("../src/lib/mirror/adoption");
+
+    const first = await reserveIndexEntry(fs, ROOT, "Untitled.md", "editor-doc");
+    const second = await reserveIndexEntry(fs, ROOT, "Untitled.md", "pass-doc");
+
+    expect(first.documentId).toBe("editor-doc");
+    expect(second.documentId).toBe("editor-doc");
+    expect((await readGhostFolder(fs, ROOT)).index.documents["Untitled.md"].documentId).toBe("editor-doc");
+  });
+
+  it("lets the editor's claim win over a pass that adopted the same new file", async () => {
+    const { fs } = memoryFs({});
+    await writeGhostIndex(fs, ROOT, emptyGhostIndex());
+    const snapshot = emptyGhostIndex();
+    // The editor claims the path while the pass is running.
+    await updateGhostIndexEntry(fs, ROOT, "Untitled.md", entry({ documentId: "editor-doc", contentHash: "h" }));
+    const result = emptyGhostIndex();
+    result.documents["Untitled.md"] = entry({ documentId: "pass-doc", contentHash: "h", cloudDocumentId: "pass-doc" });
+
+    await commitIndexPass(fs, ROOT, snapshot, result);
+
+    expect((await readGhostFolder(fs, ROOT)).index.documents["Untitled.md"].documentId).toBe("editor-doc");
+  });
+});

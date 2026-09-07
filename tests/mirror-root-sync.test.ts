@@ -198,6 +198,38 @@ describe("reconcileMirroredRoot", () => {
     expect((await readGhostFolder(fs, ROOT_PATH)).index.documents).toEqual({});
   });
 
+  it("does not adopt a new file the editor claimed while the pass was listing", async () => {
+    const { fs } = memoryFs({ [`${ROOT_PATH}/Untitled.md`]: "# new" });
+    await seedIndex(fs, {});
+    const { client, calls } = fakeClient();
+    const base = deps(fs, client);
+    // The editor's claim lands between the listing and the adoption.
+    let claimed = false;
+    const fsWithClaim = new Proxy(fs, {
+      get(target, property, receiver) {
+        if (property === "hashFile" && !claimed) {
+          claimed = true;
+          return async (path: string) => {
+            const index = (await readGhostFolder(target, ROOT_PATH)).index;
+            index.documents["Untitled.md"] = { documentId: "editor-doc", contentHash: null, mirrorVersion: null, mirrorStateVector: null };
+            await writeGhostIndex(target, ROOT_PATH, index);
+            return target.hashFile(path);
+          };
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    const result = await reconcileMirroredRoot({ ...base, fs: fsWithClaim }, uploadedRoot);
+
+    expect(result.added).toEqual([]);
+    const { index } = await readGhostFolder(fs, ROOT_PATH);
+    expect(index.documents["Untitled.md"].documentId).toBe("editor-doc");
+    // The pass still puts the editor's document in Cloud, once.
+    expect(calls.filter((call) => call.name === "cloud_adopt_items")).toHaveLength(1);
+    expect((calls[0].args as { items: Array<{ id: string }> }).items[0].id).toBe("editor-doc");
+  });
+
   it("puts documents adopted while signed out into Cloud on the next signed-in pass", async () => {
     const { fs } = memoryFs({ [`${ROOT_PATH}/later.md`]: "# later" });
     await seedIndex(fs, { "later.md": { id: "doc-later", hash: hashOf("# later") } });

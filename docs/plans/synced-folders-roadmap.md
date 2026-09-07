@@ -556,8 +556,6 @@ Deferred from this phase, recorded rather than dropped:
   would need the shared plan in root reconciliation.
 - Live tree updates. Cloud to Mac and web trees refresh on focus and on a
   timer, not on a realtime signal.
-- Email delivery for invitations; the sharer tells the person themselves or
-  sends a link.
 - Upgrading a guest to an account in place; a guest signs in normally and
   opens the link again.
 

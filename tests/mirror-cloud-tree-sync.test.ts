@@ -77,6 +77,7 @@ describe("syncCloudTreeToDisk", () => {
     expect(result.removed).toEqual(["Gone.md"]);
     expect(trashed).toEqual([`${ROOT}/Gone.md`]);
     expect(result.added).toEqual(["Fresh.md"]);
+    expect(result.pendingOpen).toEqual([{ from: "Open.md", to: "Open renamed.md" }]);
     const { index: next } = await readGhostFolder(fs, ROOT);
     expect(Object.keys(next.documents).sort()).toEqual(["Fresh.md", "Local only.md", "Open.md", "Plans/New.md", "Renamed here.md"]);
     expect(next.folders).toEqual({ Plans: "f" });
@@ -93,7 +94,7 @@ describe("syncCloudTreeToDisk", () => {
     index.documents["a.md"] = entry({ documentId: "a" });
     await writeGhostIndex(fs, ROOT, index);
     const deps = pullDeps(fs, headsClient({}), {});
-    expect(await syncCloudTreeToDisk(deps, root, [])).toEqual({ moved: [], removed: [], added: [] });
+    expect(await syncCloudTreeToDisk(deps, root, [])).toEqual({ moved: [], removed: [], added: [], pendingOpen: [] });
     expect(trashed).toEqual([]);
   });
 });

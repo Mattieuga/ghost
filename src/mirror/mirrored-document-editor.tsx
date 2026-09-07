@@ -29,6 +29,7 @@ import {
   updateGhostIndexEntry,
   locateRenamedEntry,
   relocateIndexEntry,
+  reserveIndexEntry,
 } from "@/lib/mirror/adoption";
 import { relativeToRoot } from "@/lib/mirror/ghost-index";
 import { ensureCloudDocument } from "@/lib/mirror/root-sync";
@@ -164,6 +165,10 @@ export function MirroredDocumentEditor({
         if (renamedFrom) {
           existingEntry = await relocateIndexEntry(fs, root.path, renamedFrom, relativePath, { cloudStale: true });
         }
+      }
+      if (!existingEntry) {
+        // Claim the path now, so reconciliation does not adopt it too.
+        existingEntry = await reserveIndexEntry(fs, root.path, relativePath, defaultDocumentId());
       }
       const adopted = await adoptDocument(
         {

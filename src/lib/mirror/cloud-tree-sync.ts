@@ -51,9 +51,11 @@ export interface CloudTreeSyncResult {
   moved: Array<{ from: string; to: string }>;
   removed: string[];
   added: string[];
+  /** Moves not made because the file is open; the editor's owner applies them. */
+  pendingOpen: Array<{ from: string; to: string }>;
 }
 
-const NOTHING: CloudTreeSyncResult = { moved: [], removed: [], added: [] };
+const NOTHING: CloudTreeSyncResult = { moved: [], removed: [], added: [], pendingOpen: [] };
 
 export async function syncCloudTreeToDisk(
   deps: CloudPullDeps,
@@ -80,6 +82,7 @@ export async function syncCloudTreeToDisk(
   }
 
   const moved: Array<{ from: string; to: string }> = [];
+  const pendingOpen: Array<{ from: string; to: string }> = [];
   const added: string[] = [];
   for (const [relativePath, item] of Object.entries(plan.documents)) {
     const current = pathByCloudId.get(item.id);
@@ -99,7 +102,11 @@ export async function syncCloudTreeToDisk(
     if (current === relativePath) continue;
     const entry = index.documents[current];
     // A rename made here while signed out has not reached Cloud yet; it wins.
-    if (entry.cloudStale || isOpen(`${root.path}/${current}`) || next.documents[relativePath]) continue;
+    if (entry.cloudStale || next.documents[relativePath]) continue;
+    if (isOpen(`${root.path}/${current}`)) {
+      pendingOpen.push({ from: current, to: relativePath });
+      continue;
+    }
     try {
       const to = `${root.path}/${relativePath}`;
       await fs.ensureDir(to.slice(0, to.lastIndexOf("/")));
@@ -125,5 +132,5 @@ export async function syncCloudTreeToDisk(
   if (moved.length || added.length || removed.length || JSON.stringify(next.folders) !== JSON.stringify(index.folders)) {
     await commitIndexPass(fs, root.path, snapshot, next);
   }
-  return { moved, removed, added };
+  return { moved, removed, added, pendingOpen };
 }

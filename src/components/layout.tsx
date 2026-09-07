@@ -70,7 +70,7 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { History, Plus, Search, Share, SlidersHorizontal } from "lucide-react";
+import { Plus, Search, Share, SlidersHorizontal } from "lucide-react";
 import { CloudVersionHistory } from "@/cloud/cloud-version-history-panel";
 import { PresenceAvatars } from "@/cloud/presence-avatars";
 import { usePresenceNames, useSessionSnapshot } from "@/cloud/collaboration/use-session";
@@ -109,7 +109,7 @@ import { MirroredDocumentEditor } from "@/mirror/mirrored-document-editor";
 import { MirrorSaveStatus } from "@/mirror/mirror-save-status";
 import { MirroredRootNotice } from "@/mirror/mirrored-root-notice";
 import { StopSyncingDialog, SyncFolderDialog } from "@/mirror/sync-folder-dialog";
-import { readGhostFolder } from "@/lib/mirror/adoption";
+import { readGhostFolder, relocateIndexEntry } from "@/lib/mirror/adoption";
 import { relativeToRoot } from "@/lib/mirror/ghost-index";
 import { tauriMirrorFs, type FsEvent } from "@/lib/mirror/mirror-fs";
 import { reconcileMirroredRoot, relocateDocument } from "@/lib/mirror/root-sync";
@@ -1489,6 +1489,24 @@ export function GhostLayout() {
           // Structure first (renames, moves, trash, new notes from the web), then content.
           const synced = await syncCloudTreeToDisk({ fs: tauriMirrorFs, client, openPersistence, isOpen }, root, visible);
           if (synced.moved.length || synced.removed.length || synced.added.length) changed = true;
+          // The open note was renamed or moved elsewhere: apply it the way a
+          // rename here is applied, flushing first and retargeting the editor.
+          for (const move of synced.pendingOpen) {
+            const from = `${root.path}/${move.from}`;
+            const to = `${root.path}/${move.to}`;
+            if (activeFileRef.current !== from) continue;
+            try {
+              await flushActiveDocument();
+              await tauriMirrorFs.ensureDir(to.slice(0, to.lastIndexOf("/")));
+              await tauriMirrorFs.movePath(from, to);
+              await relocateIndexEntry(tauriMirrorFs, root.path, move.from, move.to);
+              renameTreeEntry(from, to);
+              await retargetActiveFile(from, to);
+              changed = true;
+            } catch (error) {
+              console.warn("Could not apply a rename from Cloud to the open note:", error);
+            }
+          }
           const pulled = await pullCloudChanges({ fs: tauriMirrorFs, client, openPersistence, isOpen }, root);
           if (pulled.written.length > 0) changed = true;
         }
@@ -1503,7 +1521,7 @@ export function GhostLayout() {
     rootSyncChain.current = run.catch(() => undefined);
     refreshingCloud.current = run;
     return run;
-  }, [cloudClient, cloudMismatch, ensureSharedRoot, ghostFolderPath, handleFsChange, loading, removeFolder, signedIn]);
+  }, [cloudClient, cloudMismatch, ensureSharedRoot, flushActiveDocument, ghostFolderPath, handleFsChange, loading, removeFolder, renameTreeEntry, retargetActiveFile, signedIn]);
 
   useEffect(() => {
     if (!signedIn) return;
@@ -2317,19 +2335,6 @@ export function GhostLayout() {
                       session={mirrorSession.session}
                       compact
                     />
-                  ) : signedIn && cloudClient && activeRoot?.cloudRootId && !cloudMismatch(activeRoot) ? (
-                    // The note's Cloud session is still opening; the button is
-                    // there from the first frame so the header does not shift.
-                    <button
-                      type="button"
-                      data-history-button
-                      aria-label="Version history"
-                      className="text-ring/50"
-                      title="Version history"
-                      disabled
-                    >
-                      <History className="size-3.5" />
-                    </button>
                   ) : null}
                 </>
               ) : fileDescriptor?.editable ? (

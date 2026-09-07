@@ -141,8 +141,10 @@ unsafe extern "C" fn will_open_menu(
         }
     }
 
-    let insert_index = if copy_index >= 0 { copy_index + 1 } else { count };
-    let _: () = msg_send![menu, insertItem: parent_item, atIndex: insert_index];
+    // Every NSMenu the web view opens passes through here, a <select>'s
+    // popup included. Only a menu that offers Copy is a context menu.
+    if copy_index < 0 { return; }
+    let _: () = msg_send![menu, insertItem: parent_item, atIndex: copy_index + 1];
 }
 
 /// Helper: evaluate JS that calls the global __ghostCopyAs function

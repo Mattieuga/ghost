@@ -88,7 +88,7 @@ Clients change data only through security-definer RPCs, all grouped by prefix: `
 
 ## Known risks and open work
 
-- Tree changes between devices arrive on focus and on a timer, not live, so a rename or trash on the web reaches the Mac on the next refresh, within five minutes.
+- Tree changes between devices arrive on focus and on a timer, not live, so a rename or trash on the web reaches the Mac on the next refresh, within five minutes. A rename of the note that is open is applied then too, by retargeting the editor.
 - The Shared root is read-only in structure from the Mac: no creating, renaming, or trashing inside a shared folder there, even with edit rights. The web can.
 - Invitation email goes only to addresses without an account, through Supabase's invite email on its default sender, which is rate-limited; custom SMTP is needed before this is relied on. An existing account gets no email. A guest cannot upgrade to an account in place.
 - Images and other blobs do not sync yet, and table widths and image sizes have no home in Markdown; the version captured before ingestion is the recovery path.
@@ -96,4 +96,4 @@ Clients change data only through security-definer RPCs, all grouped by prefix: `
 - Initializing Git inside a folder that is already synced is recorded in the plan as needing a pause and a dialog; it is not handled yet.
 - Loose top-level Cloud items from before synced folders still exist in the database and are hidden by the web client rather than removed.
 - A root uploaded by one account is edited locally only when another account signs in on the same Mac; re-uploading it would need Cloud IDs distinct from local document IDs.
-- Accessory windows do not yet open mirrored documents through the mirror boundary, and Stop Syncing does not move the Cloud copy to Trash.
+- Accessory windows do not yet open mirrored documents through the mirror boundary.

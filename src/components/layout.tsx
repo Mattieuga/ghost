@@ -70,7 +70,7 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Search, Share, SlidersHorizontal } from "lucide-react";
+import { History, Plus, Search, Share, SlidersHorizontal } from "lucide-react";
 import { CloudVersionHistory } from "@/cloud/cloud-version-history-panel";
 import { PresenceAvatars } from "@/cloud/presence-avatars";
 import { usePresenceNames, useSessionSnapshot } from "@/cloud/collaboration/use-session";
@@ -2315,7 +2315,21 @@ export function GhostLayout() {
                       editor={editorInstance}
                       networkReady={mirrorSnapshot?.synchronization === "synced"}
                       session={mirrorSession.session}
+                      compact
                     />
+                  ) : signedIn && cloudClient && activeRoot?.cloudRootId && !cloudMismatch(activeRoot) ? (
+                    // The note's Cloud session is still opening; the button is
+                    // there from the first frame so the header does not shift.
+                    <button
+                      type="button"
+                      data-history-button
+                      aria-label="Version history"
+                      className="text-ring/50"
+                      title="Version history"
+                      disabled
+                    >
+                      <History className="size-3.5" />
+                    </button>
                   ) : null}
                 </>
               ) : fileDescriptor?.editable ? (

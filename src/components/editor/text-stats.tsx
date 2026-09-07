@@ -98,7 +98,7 @@ function LiveTextStats({
   const display = `${(stats[countMode] ?? 0).toLocaleString()} ${MODE_LABELS[countMode]}`;
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative flex items-center" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
         className="text-[12px] text-ring hover:text-muted-foreground transition-colors cursor-pointer select-none whitespace-nowrap shrink-0 ml-3"

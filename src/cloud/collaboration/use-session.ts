@@ -20,7 +20,7 @@ export function useSessionSnapshot(session: CloudCollaborationSession | null): C
   return snapshot;
 }
 
-/** Names of everyone with a cursor in the document, this user included. */
+/** Names of the other people in the document. This user is not listed. */
 export function usePresenceNames(session: CloudCollaborationSession | null): string[] {
   const [names, setNames] = useState<string[]>([]);
   useEffect(() => {
@@ -29,8 +29,9 @@ export function usePresenceNames(session: CloudCollaborationSession | null): str
       return;
     }
     const refresh = () => {
-      const next = Array.from(session.awareness.getStates().values())
-        .map((state) => state?.user?.name)
+      const next = Array.from(session.awareness.getStates().entries())
+        .filter(([clientId]) => clientId !== session.awareness.clientID)
+        .map(([, state]) => state?.user?.name)
         .filter((name): name is string => typeof name === "string");
       setNames(Array.from(new Set(next)));
     };

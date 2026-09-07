@@ -7,14 +7,14 @@ export function PresenceAvatars({ names }: { names: string[] }) {
       {visible.map((name, index) => (
         <span
           key={name}
-          className="flex size-6 items-center justify-center rounded-full border-2 border-background bg-secondary text-[9px] font-semibold uppercase text-secondary-foreground"
+          className="flex size-7 items-center justify-center rounded-full border-2 border-background bg-secondary text-[10px] font-semibold uppercase text-secondary-foreground"
           style={{ zIndex: visible.length - index }}
         >
           {name.trim().charAt(0) || "?"}
         </span>
       ))}
       {names.length > visible.length ? (
-        <span className="flex size-6 items-center justify-center rounded-full border-2 border-background bg-secondary text-[8px] text-secondary-foreground">
+        <span className="flex size-7 items-center justify-center rounded-full border-2 border-background bg-secondary text-[9px] text-secondary-foreground">
           +{names.length - visible.length}
         </span>
       ) : null}

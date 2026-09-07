@@ -68,9 +68,15 @@ describe("useSessionSnapshot", () => {
     });
     expect(host.firstElementChild?.getAttribute("data-sync")).toBe("offline");
 
+    // This user is not listed; another client is.
     await act(async () => {
       session.awareness.setLocalStateField("user", { name: "Matt" });
     });
-    expect(host.firstElementChild?.getAttribute("data-names")).toBe("Matt");
+    expect(host.firstElementChild?.getAttribute("data-names")).toBe("");
+    await act(async () => {
+      session.awareness.states.set(999, { user: { name: "Sam" } });
+      session.awareness.emit("change", [{ added: [999], updated: [], removed: [] }, "test"]);
+    });
+    expect(host.firstElementChild?.getAttribute("data-names")).toBe("Sam");
   });
 });

@@ -55,12 +55,15 @@ export function CloudVersionHistory({
   editor,
   networkReady,
   session,
+  compact = false,
 }: {
   client: SupabaseClient;
   documentId: string;
   editor: Editor;
   networkReady: boolean;
   session: CloudCollaborationSession;
+  /** Icon only, coloured like the header's other controls. */
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [versions, setVersions] = useState<CloudDocumentVersion[]>([]);
@@ -220,15 +223,27 @@ export function CloudVersionHistory({
       if (nextOpen) void refreshVersions();
     }}>
       <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          size="xs"
-          className={error ? "text-destructive" : undefined}
-          title={error ?? (saving ? "Saving version…" : "Version history")}
-        >
-          <History />
-          History
-        </Button>
+        {compact ? (
+          <button
+            type="button"
+            data-history-button
+            aria-label="Version history"
+            className={`cursor-pointer transition-colors ${error ? "text-destructive" : "text-ring hover:text-sidebar-foreground"}`}
+            title={error ?? (saving ? "Saving version…" : "Version history")}
+          >
+            <History className="size-3.5" />
+          </button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="xs"
+            className={error ? "text-destructive" : undefined}
+            title={error ?? (saving ? "Saving version…" : "Version history")}
+          >
+            <History />
+            History
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="h-[min(720px,calc(100svh-2rem))] max-w-4xl grid-rows-[auto_minmax(0,1fr)_auto]">
         <DialogHeader>

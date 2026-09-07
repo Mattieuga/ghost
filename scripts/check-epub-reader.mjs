@@ -78,6 +78,15 @@ try {
     const saved = JSON.parse(localStorage.getItem('ghost:epub:/books/epub-reader.epub'));
     return saved?.cfi && saved.cfi !== cfi && !document.querySelector('select').disabled;
   }, previous?.cfi);
+  // A committed chapter choice must hand keyboard navigation back to reading.
+  await contents.focus();
+  await contents.selectOption('Text/two.xhtml');
+  await frame.getByRole('heading', { name: 'The next morning' }).waitFor();
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('ghost:epub:/books/epub-reader.epub'))?.href === 'Text/two.xhtml' && !document.querySelector('select').disabled);
+  const selectedBookmark = await bookmark();
+  await page.keyboard.press('ArrowLeft');
+  await waitMoved(selectedBookmark);
+  assert.equal((await bookmark()).href, 'Text/one.xhtml');
   for (const input of ['buttons', 'keyboard']) {
     await contents.selectOption('Text/one.xhtml');
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('ghost:epub:/books/epub-reader.epub'))?.href === 'Text/one.xhtml');

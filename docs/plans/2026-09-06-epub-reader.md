@@ -3,7 +3,7 @@
 **Branch:** `feat/sharing-polish`
 **Related references:** [EPUB reader ADR](../adrs/2026-09-06-epub-reader.md), [file viewers](../adrs/0001-extensible-file-viewers.md)
 **Last updated:** 2026-09-06
-**Current status:** done — reader shipped; arrow-key focus loss across chapters reproduced and fixed. Ready for native click-through.
+**Current status:** done — reader shipped; arrow-key focus loss across chapters and after contents selection reproduced and fixed. Ready for native click-through.
 
 ## Why this plan exists
 
@@ -36,7 +36,7 @@ Editing, annotations, DRM or font deobfuscation, Cloud EPUB sync, and previewing
 
 ## Click-through follow-up — arrow keys
 
-The initial integration check covered chapter links, contents selection, and page buttons but did not continue typing after a keyboard chapter crossing. The new check reproduces the failure in WebKit: the old focused iframe disappears and focus falls back to the outer body. Restore focus to the stable reader only when the old chapter held focus and the user has not moved elsewhere. Forward/backward chapter crossings now run in the standard browser check for both buttons and keyboard.
+The initial integration check covered chapter links, contents selection, and page buttons but did not continue typing after a keyboard chapter crossing. The new check reproduces the failure in WebKit: the old focused iframe disappears and focus falls back to the outer body. Restore focus to the stable reader only when the old chapter held focus and the user has not moved elsewhere. Forward/backward chapter crossings now run in the standard browser check for both buttons and keyboard. Committing a contents selection also returns focus from the dropdown to the reader; a regression check presses an arrow immediately after selecting a chapter.
 
 Bookmark storage remains unchanged: on each location event, save CFI, chapter href and font size in WebView localStorage under the absolute file path. No book writes or Cloud storage.
 

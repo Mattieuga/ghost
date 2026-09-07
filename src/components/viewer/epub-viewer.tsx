@@ -26,7 +26,7 @@ export function EpubViewer({ filePath }: { filePath: string }) {
   const [error, setError] = useState<string | null>(null);
   const actionRef = useRef<(action: "next" | "previous" | string) => void>(() => undefined);
 
-  const navigate = useCallback((target: string) => {
+  const navigate = useCallback((target: string, returnFocusFrom?: HTMLElement) => {
     const rendition = renditionRef.current;
     if (!rendition) return;
     const focusedFrame = surfaceRef.current?.contains(document.activeElement)
@@ -42,6 +42,11 @@ export function EpubViewer({ filePath }: { filePath: string }) {
       // Crossing a chapter destroys its focused iframe. Keep keyboard reading
       // on the stable viewer, without taking focus from another app control.
       if (focusedFrame && !focusedFrame.isConnected && document.activeElement === document.body) {
+        readerRef.current?.focus({ preventScroll: true });
+      }
+      // A committed contents selection resumes reading. Leave focus alone if
+      // the user chose another control while the chapter was loading.
+      if (returnFocusFrom && (document.activeElement === returnFocusFrom || document.activeElement === document.body)) {
         readerRef.current?.focus({ preventScroll: true });
       }
     });
@@ -239,7 +244,7 @@ export function EpubViewer({ filePath }: { filePath: string }) {
       </div>
       <div className="flex shrink-0 flex-col items-center gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground sm:flex-row">
         <select aria-label="Table of contents" value={selectedChapter} disabled={!ready || busy || !!error}
-          onChange={(event) => navigate(event.target.value)}
+          onChange={(event) => navigate(event.target.value, event.currentTarget)}
           className="w-full min-w-0 flex-1 truncate rounded border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-ring">
           <option value="" disabled>Contents</option>
           {toc.map((item, index) => <option key={`${item.href}:${index}`} value={item.href}>{item.label}</option>)}

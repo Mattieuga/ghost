@@ -16,7 +16,7 @@ import {
 import type { TrackedRoot } from "@/hooks/use-tracked-folders";
 import { SettingRow, SettingSelect, SettingSwitch } from "@/components/settings/setting-row";
 import { Button } from "@/components/ui/button";
-import { FloatingPanel } from "@/components/ui/floating-panel";
+import { FloatingPanel, PanelTitle } from "@/components/ui/floating-panel";
 import { Input } from "@/components/ui/input";
 
 export interface SignInSurfaceProps {
@@ -58,18 +58,6 @@ async function copyText(text: string): Promise<void> {
 
 function roleLabel(role: CloudShareRole): string {
   return role === "editor" ? "can edit" : "can view";
-}
-
-/** The item's name, set off from the rest of the title. */
-function ItemPill({ name }: { name: string }) {
-  return (
-    <span
-      title={name}
-      className="inline-flex max-w-[18rem] items-center rounded-md bg-accent px-2 py-0.5 font-mono text-[13px] font-normal leading-none text-accent-foreground"
-    >
-      <span className="truncate">{name}</span>
-    </span>
-  );
 }
 
 const ROLE_OPTIONS: Array<{ value: CloudShareRole; label: string }> = [
@@ -335,7 +323,7 @@ export function ShareSheet({
       </div>
     );
   } else if (root && root.kind === "mirrored") {
-    title = <span className="flex items-center gap-2">Share <ItemPill name={itemName} /></span>;
+    title = <PanelTitle before="Share" name={itemName} />;
     ariaLabel = `Share ${itemName}`;
     body = (
       <SharePanel
@@ -347,7 +335,7 @@ export function ShareSheet({
       />
     );
   } else {
-    title = <span className="flex items-center gap-2">Share <ItemPill name={itemName} /></span>;
+    title = <PanelTitle before="Share" name={itemName} />;
     ariaLabel = `Share ${itemName}`;
     description = target?.kind === "folder"
       ? `To share ${itemName}, sync it to Cloud. The folder stays where it is.`

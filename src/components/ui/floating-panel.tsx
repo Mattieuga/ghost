@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { useCompactMode } from "@/hooks/use-compact-mode";
@@ -10,11 +10,33 @@ import { useCompactMode } from "@/hooks/use-compact-mode";
  * the backdrop close it. Other sheets use the same shell so they read as
  * one family.
  */
+/** A name inside a panel title, set off from the words around it. */
+export function ItemPill({ name }: { name: string }) {
+  return (
+    <span
+      title={name}
+      className="inline-flex max-w-[18rem] items-center rounded-md bg-accent px-2 py-0.5 font-mono text-[13px] font-normal leading-none text-accent-foreground"
+    >
+      <span className="truncate">{name}</span>
+    </span>
+  );
+}
+
+/** "Share <name>", "Sync <name> to Cloud?": a title with a pill in it. */
+export function PanelTitle({ before, name, after }: { before: string; name: string; after?: string }) {
+  return (
+    <span className="flex items-center gap-2">
+      {before} <ItemPill name={name} />{after ? (/^[?!.]/.test(after) ? after : ` ${after}`) : ""}
+    </span>
+  );
+}
+
 export function FloatingPanel({
   title,
   ariaLabel,
   description,
   onClose,
+  onKeyDown,
   headerExtra,
   footer,
   width = 520,
@@ -26,6 +48,8 @@ export function FloatingPanel({
   ariaLabel?: string;
   description?: ReactNode;
   onClose: () => void;
+  /** Keys pressed anywhere in the panel, for Enter to confirm. */
+  onKeyDown?: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
   /** Rendered below the title inside the header, for a tab bar. */
   headerExtra?: ReactNode;
   footer?: ReactNode;
@@ -62,6 +86,7 @@ export function FloatingPanel({
           aria-label={ariaLabel ?? (typeof title === "string" ? title : undefined)}
           className="rounded-xl border border-border bg-popover shadow-2xl overflow-hidden flex flex-col"
           style={{ maxHeight: "min(72vh, calc(100vh - 2rem))" }}
+          onKeyDown={onKeyDown}
           {...rest}
         >
           <div className={`px-5 pt-5 border-b border-border shrink-0 ${headerExtra ? "pb-3" : "pb-4"}`}>
@@ -81,7 +106,7 @@ export function FloatingPanel({
             </div>
             {headerExtra}
           </div>
-          <div className="overflow-y-auto p-5">{children}</div>
+          {children ? <div className="overflow-y-auto p-5">{children}</div> : null}
           {footer ? <div className="flex justify-end gap-2 border-t border-border px-5 py-4 shrink-0">{footer}</div> : null}
         </div>
       </div>

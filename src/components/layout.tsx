@@ -70,7 +70,11 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Search, SlidersHorizontal } from "lucide-react";
+import { Plus, Search, Share, SlidersHorizontal } from "lucide-react";
+import { CloudVersionHistory } from "@/cloud/cloud-version-history-panel";
+import { PresenceAvatars } from "@/cloud/presence-avatars";
+import { usePresenceNames, useSessionSnapshot } from "@/cloud/collaboration/use-session";
+import type { MirroredSessionInfo } from "@/mirror/mirrored-document-editor";
 import { SearchBar } from "@/components/editor/search-bar";
 import {
   CommandPalette,
@@ -213,6 +217,10 @@ export function GhostLayout() {
     Boolean(root?.cloudOwnerId && cloudUserId && root.cloudOwnerId !== cloudUserId)
   ), [cloudUserId]);
   const [shareOpen, setShareOpen] = useState(false);
+  // The open synced note's live session, for presence and history in the header.
+  const [mirrorSession, setMirrorSession] = useState<MirroredSessionInfo | null>(null);
+  const presenceNames = usePresenceNames(mirrorSession?.session ?? null);
+  const mirrorSnapshot = useSessionSnapshot(mirrorSession?.session ?? null);
   // What the Share sheet is about: the open note by default, or any note or
   // folder from the sidebar.
   const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
@@ -890,6 +898,36 @@ export function GhostLayout() {
     return ensureNotesRoot();
   }, [ensureNotesRoot]);
 
+  // ⇧⌘U syncs the folder that owns what you are looking at: a focused
+  // sidebar folder, else the root of the focused or open note. Only a
+  // plain folder qualifies; a synced one just says so.
+  const syncContextTarget = useMemo((): string | null => {
+    const focused = treeKeyboardRef.current?.hasFocus() ? treeKeyboardRef.current.getFocusedNode() : null;
+    const anchorPath = focused ? focused.path : activeFile;
+    if (!anchorPath) return null;
+    const root = rootForPath(roots, anchorPath);
+    if (!root || root.shared) return null;
+    if (focused?.kind === "folder" && root.kind === "plain") return focused.path;
+    return root.kind === "plain" ? root.path : null;
+    // The focused node is read from a ref; the palette recomputes on open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFile, roots, commandPaletteOpen]);
+  const syncToCloudFromContext = useCallback(() => {
+    const focused = treeKeyboardRef.current?.hasFocus() ? treeKeyboardRef.current.getFocusedNode() : null;
+    const anchorPath = focused ? focused.path : activeFileRef.current;
+    const root = anchorPath ? rootForPath(rootsForResolution.current, anchorPath) : null;
+    if (!root) {
+      setMirrorNotification("Open a note or select a folder to sync.");
+      return;
+    }
+    if (root.shared) return;
+    if (root.kind === "mirrored") {
+      setMirrorNotification(`${folderNameOf(root.path)} is already in Cloud.`);
+      return;
+    }
+    setSyncDialogPath(focused?.kind === "folder" ? focused.path : root.path);
+  }, []);
+
   // Expose functions for Rust menu events
   const createNewFile = useCallback(async (targetDirectory?: string) => {
     let targetDir: string;
@@ -948,6 +986,7 @@ export function GhostLayout() {
   useEffect(() => {
     window.__ghostAddFolder = addFolder;
     window.__ghostNewFile = createNewFile;
+    window.__ghostSyncToCloud = syncToCloudFromContext;
     window.__ghostFind = () => openSearchIfFile("find");
     window.__ghostFindAndReplace = () => openSearchIfFile("replace");
     window.__ghostCommandPalette = () => openCommandPalette("commands");
@@ -961,6 +1000,7 @@ export function GhostLayout() {
     return () => {
       delete window.__ghostAddFolder;
       delete window.__ghostNewFile;
+      delete window.__ghostSyncToCloud;
       delete window.__ghostFind;
       delete window.__ghostFindAndReplace;
       delete window.__ghostCommandPalette;
@@ -1384,7 +1424,6 @@ export function GhostLayout() {
         try {
           const result = await uploadMirroredRoot({ client, fs: tauriMirrorFs, ghostFolder: ghost, openPersistence }, root);
           updateRoot(root.id, { cloudRootId: result.cloudRootId, cloudOwnerId: userId });
-          if (!result.alreadyUploaded) setMirrorNotification(`${folderNameOf(root.path)} is in Cloud.`);
         } catch (error) {
           failedUploads.current.add(root.id);
           setMirrorNotification(isMissingServerFunction(error)
@@ -1931,6 +1970,14 @@ export function GhostLayout() {
       run: addFolder,
     },
     {
+      id: "folder.sync",
+      title: "Sync to Cloud…",
+      shortcut: "⇧⌘U",
+      detail: syncContextTarget ? folderNameOf(syncContextTarget) : undefined,
+      disabled: !syncContextTarget,
+      run: syncToCloudFromContext,
+    },
+    {
       id: "view.toggleSidebar",
       title: sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar",
       shortcut: "⌘\\",
@@ -2257,19 +2304,20 @@ export function GhostLayout() {
             ) : undefined}
             right={activeFile ? (
               <>
-                {fileDescriptor?.kind === "markdown" ? (
-                  <button
-                    type="button"
-                    data-share-button
-                    className="cursor-pointer text-[11px] text-ring transition-colors hover:text-sidebar-foreground"
-                    title="Share this note"
-                    onClick={() => { if (activeFile) openShare(activeFile, "file"); }}
-                  >
-                    Share
-                  </button>
-                ) : null}
                 {mirroredActive ? (
-                <MirrorSaveStatus status={mirrorStatus.status} error={mirrorStatus.error} />
+                <>
+                  <MirrorSaveStatus status={mirrorStatus.status} error={mirrorStatus.error} />
+                  <PresenceAvatars names={presenceNames} />
+                  {mirrorSession?.cloud && cloudClient && editorInstance ? (
+                    <CloudVersionHistory
+                      client={cloudClient}
+                      documentId={mirrorSession.documentId}
+                      editor={editorInstance}
+                      networkReady={mirrorSnapshot?.synchronization === "synced"}
+                      session={mirrorSession.session}
+                    />
+                  ) : null}
+                </>
               ) : fileDescriptor?.editable ? (
                 <>
                   <SaveStatus
@@ -2290,6 +2338,18 @@ export function GhostLayout() {
               ) : fileDescriptor?.canOpenExternally ? (
                 <OpenExternalButton filePath={activeFile} />
               ) : null}
+                {fileDescriptor?.kind === "markdown" ? (
+                  <button
+                    type="button"
+                    data-share-button
+                    aria-label="Share"
+                    className="cursor-pointer text-ring transition-colors hover:text-sidebar-foreground"
+                    title="Share this note"
+                    onClick={() => { if (activeFile) openShare(activeFile, "file"); }}
+                  >
+                    <Share className="size-3.5" />
+                  </button>
+                ) : null}
               </>
             ) : null}
           />
@@ -2313,6 +2373,7 @@ export function GhostLayout() {
               showStyleBar={settings.showStyleBar}
               onToggleStyleBar={() => updateSettings({ showStyleBar: !settings.showStyleBar })}
               onEditorReady={setEditorInstance}
+              onSessionChange={setMirrorSession}
               platformActions={tauriMarkdownEditorActions}
               onStatusChange={(status, error) => setMirrorStatus({ status, error })}
               onNotify={setMirrorNotification}

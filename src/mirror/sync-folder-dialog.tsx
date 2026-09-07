@@ -3,14 +3,7 @@ import type { TrackedRoot } from "@/hooks/use-tracked-folders";
 import { tauriMirrorFs, type MirrorFs } from "@/lib/mirror/mirror-fs";
 import { prepareSync, type SyncPreparation } from "@/lib/mirror/sync-folder";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { FloatingPanel, PanelTitle } from "@/components/ui/floating-panel";
 
 type DialogState =
   | { kind: "checking" }
@@ -22,9 +15,10 @@ function folderName(path: string): string {
 }
 
 /**
- * The "Sync to Cloud" confirmation. Runs pre-flight when opened. A refusal
- * explains itself and offers only Close. An allowed folder lists what will
- * be skipped and any warnings, then asks once.
+ * The "Sync to Cloud" confirmation, in the same panel as Settings and Share.
+ * Runs pre-flight when opened. A refusal explains itself and offers only
+ * Close. An allowed folder lists what will be skipped and any warnings,
+ * then asks once.
  */
 export function SyncFolderDialog({
   path,
@@ -71,66 +65,68 @@ export function SyncFolderDialog({
       setConfirming(false);
     }
   };
+  const close = () => { if (!confirming) onClose(); };
 
-  return (
-    <Dialog open onOpenChange={(open) => { if (!open && !confirming) onClose(); }}>
-      <DialogContent
-        data-sync-folder-dialog
-        onKeyDown={(event) => { if (event.key === "Enter" && allowed && !confirming) void confirm(); }}
-      >
-        <DialogHeader>
-          <DialogTitle>{refusal ? `Can't sync ${name}` : `Sync ${name} to Cloud?`}</DialogTitle>
-          <DialogDescription>
-            {state.kind === "checking" ? `Looking at ${name}…` : null}
-            {state.kind === "error" ? state.message : null}
-            {refusal ? refusal.message : null}
-            {allowed
-              ? `${name} keeps living where it is. Ghost will keep its notes up to date on your phone and let you share them. ${describeCounts(preparation)}`
-              : null}
-          </DialogDescription>
-        </DialogHeader>
+  const description = state.kind === "checking"
+    ? `Looking at ${name}…`
+    : state.kind === "error"
+      ? state.message
+      : refusal
+        ? refusal.message
+        : `${name} keeps living where it is. Ghost will keep its notes up to date on your phone and let you share them. ${describeCounts(preparation)}`;
 
-        {allowed && preparation ? (
-          <div className="space-y-3 text-sm">
-            {preparation.result.excluded.length > 0 ? (
-              <div>
-                <p className="text-muted-foreground">
-                  {preparation.result.excluded.length === 1
-                    ? "One folder inside will be skipped:"
-                    : `${preparation.result.excluded.length} folders inside will be skipped:`}
-                </p>
-                <ul className="mt-1 max-h-32 overflow-auto pl-4 text-muted-foreground">
-                  {preparation.result.excluded.map((item) => (
-                    <li key={`${item.path}/${item.marker}`} className="list-disc">
-                      {folderName(item.path)}
-                      <span className="text-ring"> ({item.reason === "version-control" ? "version control" : "managed by another app"})</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            {preparation.result.warnings.map((warning) => (
-              <p key={warning.code} role="note" className="text-ghost-amber">
-                {warning.message}
-              </p>
-            ))}
+  const details = allowed && preparation && (preparation.result.excluded.length > 0 || preparation.result.warnings.length > 0)
+    ? (
+      <div className="rounded-xl border bg-card p-6 space-y-3 text-sm">
+        {preparation.result.excluded.length > 0 ? (
+          <div>
+            <p className="text-muted-foreground">
+              {preparation.result.excluded.length === 1
+                ? "One folder inside will be skipped:"
+                : `${preparation.result.excluded.length} folders inside will be skipped:`}
+            </p>
+            <ul className="mt-1 max-h-32 overflow-auto pl-4 text-muted-foreground">
+              {preparation.result.excluded.map((item) => (
+                <li key={`${item.path}/${item.marker}`} className="list-disc">
+                  {folderName(item.path)}
+                  <span className="text-ring"> ({item.reason === "version-control" ? "version control" : "managed by another app"})</span>
+                </li>
+              ))}
+            </ul>
           </div>
         ) : null}
+        {preparation.result.warnings.map((warning) => (
+          <p key={warning.code} role="note" className="text-ghost-amber">
+            {warning.message}
+          </p>
+        ))}
+      </div>
+    )
+    : null;
 
-        <DialogFooter>
-          {allowed ? (
-            <>
-              <Button variant="outline" onClick={onClose} disabled={confirming}>Cancel</Button>
-              <Button onClick={() => void confirm()} disabled={confirming}>
-                {confirming ? "Syncing…" : "Sync"}
-              </Button>
-            </>
-          ) : (
-            <Button variant="outline" onClick={onClose}>Close</Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+  return (
+    <FloatingPanel
+      data-sync-folder-dialog
+      title={refusal
+        ? <PanelTitle before="Can't sync" name={name} />
+        : <PanelTitle before="Sync" name={name} after="to Cloud?" />}
+      ariaLabel={refusal ? `Can't sync ${name}` : `Sync ${name} to Cloud?`}
+      description={description}
+      onClose={close}
+      onKeyDown={(event) => { if (event.key === "Enter" && allowed && !confirming) void confirm(); }}
+      footer={allowed ? (
+        <>
+          <Button variant="outline" onClick={onClose} disabled={confirming}>Cancel</Button>
+          <Button onClick={() => void confirm()} disabled={confirming}>
+            {confirming ? "Syncing…" : "Sync"}
+          </Button>
+        </>
+      ) : (
+        <Button variant="outline" onClick={onClose}>Close</Button>
+      )}
+    >
+      {details}
+    </FloatingPanel>
   );
 }
 
@@ -162,23 +158,23 @@ export function StopSyncingDialog({
     }
   };
   return (
-    <Dialog open onOpenChange={(open) => { if (!open && !working) onClose(); }}>
-      <DialogContent data-stop-syncing-dialog onKeyDown={(event) => { if (event.key === "Enter" && !working) void confirm(); }}>
-        <DialogHeader>
-          <DialogTitle>Stop syncing {name}?</DialogTitle>
-          <DialogDescription>
-            The files stay on this Mac as plain Markdown. {name} will no longer appear on
-            your phone. If you are signed in, its Cloud copy moves to Cloud Trash and anyone
-            you shared it with loses access.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
+    <FloatingPanel
+      data-stop-syncing-dialog
+      title={<PanelTitle before="Stop syncing" name={name} after="?" />}
+      ariaLabel={`Stop syncing ${name}?`}
+      description={`The files stay on this Mac as plain Markdown. ${name} will no longer appear on your phone. If you are signed in, its Cloud copy moves to Cloud Trash and anyone you shared it with loses access.`}
+      onClose={() => { if (!working) onClose(); }}
+      onKeyDown={(event) => { if (event.key === "Enter" && !working) void confirm(); }}
+      footer={(
+        <>
           <Button variant="outline" onClick={onClose} disabled={working}>Cancel</Button>
           <Button variant="destructive" onClick={() => void confirm()} disabled={working}>
             {working ? "Stopping…" : "Stop Syncing"}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      )}
+    >
+      {null}
+    </FloatingPanel>
   );
 }

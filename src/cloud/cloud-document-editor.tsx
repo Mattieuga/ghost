@@ -8,6 +8,7 @@ import type {
   CloudCollaborationSnapshot,
 } from "@/cloud/collaboration/types";
 import { CloudAccessError } from "@/cloud/collaboration/types";
+import { PresenceAvatars } from "@/cloud/presence-avatars";
 import {
   openCloudLocalPersistence,
   type CloudLocalPersistenceHandle,
@@ -341,29 +342,6 @@ function CloudSaveStatus({ snapshot }: { snapshot: CloudCollaborationSnapshot })
     return <span className="text-[11px] text-ring/65">Saved</span>;
   }
   return <span className="text-[11px] text-ring/65">Connecting…</span>;
-}
-
-function PresenceAvatars({ names }: { names: string[] }) {
-  if (names.length === 0) return null;
-  const visible = names.slice(0, 3);
-  return (
-    <div className="flex -space-x-1" title={`Active: ${names.join(", ")}`} aria-label={`Active: ${names.join(", ")}`}>
-      {visible.map((name, index) => (
-        <span
-          key={name}
-          className="flex size-6 items-center justify-center rounded-full border-2 border-background bg-secondary text-[9px] font-semibold uppercase text-secondary-foreground"
-          style={{ zIndex: visible.length - index }}
-        >
-          {name.trim().charAt(0) || "?"}
-        </span>
-      ))}
-      {names.length > visible.length ? (
-        <span className="flex size-6 items-center justify-center rounded-full border-2 border-background bg-secondary text-[8px] text-secondary-foreground">
-          +{names.length - visible.length}
-        </span>
-      ) : null}
-    </div>
-  );
 }
 
 function CloudEditorNotice({

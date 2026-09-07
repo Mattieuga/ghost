@@ -56,6 +56,14 @@ export interface MirroredCloudContext {
   user: User;
 }
 
+/** The open note's live session, for the header's presence and history. */
+export interface MirroredSessionInfo {
+  session: CloudCollaborationSession;
+  documentId: string;
+  /** True when the session is a Cloud session rather than a local one. */
+  cloud: boolean;
+}
+
 const PRESENCE_COLORS = ["#ff7145", "#5ba8ff", "#76c98f", "#d68cff", "#f4bd50"];
 
 function presenceIdentity(user: User) {
@@ -103,6 +111,7 @@ export function MirroredDocumentEditor({
   showStyleBar = true,
   onToggleStyleBar,
   onEditorReady,
+  onSessionChange,
   platformActions,
   onStatusChange,
   onNotify,
@@ -115,6 +124,8 @@ export function MirroredDocumentEditor({
   showStyleBar?: boolean;
   onToggleStyleBar?: () => void;
   onEditorReady?: (editor: Editor | null) => void;
+  /** The live session once the note is open, and null when it closes. */
+  onSessionChange?: (info: MirroredSessionInfo | null) => void;
   platformActions?: MarkdownEditorPlatformActions;
   onStatusChange: (status: MirrorWriteStatus, error: string | null) => void;
   onNotify: (message: string) => void;
@@ -128,6 +139,8 @@ export function MirroredDocumentEditor({
   onStatusChangeRef.current = onStatusChange;
   const onNotifyRef = useRef(onNotify);
   onNotifyRef.current = onNotify;
+  const onSessionChangeRef = useRef(onSessionChange);
+  onSessionChangeRef.current = onSessionChange;
   const registerFlushRef = useRef(registerFlush);
   registerFlushRef.current = registerFlush;
 
@@ -362,6 +375,11 @@ export function MirroredDocumentEditor({
       };
 
       setBoot({ kind: "ready", session });
+      onSessionChangeRef.current?.({
+        session,
+        documentId,
+        cloud: !(session instanceof LocalCollaborationSession),
+      });
     };
 
     void start().catch((reason: unknown) => {
@@ -372,6 +390,7 @@ export function MirroredDocumentEditor({
 
     return () => {
       active = false;
+      onSessionChangeRef.current?.(null);
       // Unregister now, before the next editor registers its own flush.
       registerFlushRef.current(null);
       void teardown?.();

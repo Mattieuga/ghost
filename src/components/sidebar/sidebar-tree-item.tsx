@@ -80,7 +80,10 @@ export function SidebarTreeContextMenu({
       {actions.share ? <ContextMenuItem onSelect={actions.share}>Share…</ContextMenuItem> : null}
       {actions.closeProject ? <ContextMenuItem onSelect={actions.closeProject}>Close Folder</ContextMenuItem> : null}
       {actions.syncFolder ? (
-        <ContextMenuItem onSelect={actions.syncFolder}>Sync to Cloud…</ContextMenuItem>
+        <ContextMenuItem onSelect={actions.syncFolder}>
+          Sync to Cloud…
+          <ContextMenuShortcut>⇧⌘U</ContextMenuShortcut>
+        </ContextMenuItem>
       ) : null}
       {actions.linkIntoProject ? (
         <ContextMenuItem onSelect={actions.linkIntoProject}>Link into Project…</ContextMenuItem>
@@ -248,6 +251,7 @@ export function SidebarFolderTreeItem({
   dotColor = "var(--muted-foreground)",
   onActivate,
   menu,
+  trailing,
   children,
   containerRef,
   containerProps,
@@ -265,6 +269,8 @@ export function SidebarFolderTreeItem({
   dotColor?: string;
   onActivate(): void;
   menu: ReactNode;
+  /** A small mark at the row's right edge, such as the cloud on a synced root. */
+  trailing?: ReactNode;
   children?: ReactNode;
   containerRef?: Ref<HTMLDivElement>;
   containerProps?: HTMLAttributes<HTMLDivElement>;
@@ -318,6 +324,7 @@ export function SidebarFolderTreeItem({
             >
               {label}
             </span>
+            {trailing ? <span className="ml-auto flex shrink-0 items-center pl-2">{trailing}</span> : null}
           </button>
         </ContextMenuTrigger>
         {menu}

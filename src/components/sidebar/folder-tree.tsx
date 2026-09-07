@@ -1,3 +1,4 @@
+import { Cloud } from "lucide-react";
 import { FileItem } from "./file-item";
 import type { FileEntry } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
@@ -550,6 +551,9 @@ function DroppableFolder({
           requestAnimationFrame(restoreTreeFocus);
         }}
         menu={contextMenu}
+        trailing={isRoot && ownKind === "mirrored"
+          ? <Cloud aria-label="Synced to Cloud" className="size-3.5 text-muted-foreground" />
+          : undefined}
         containerRef={setNodeRef}
         containerProps={nodeProps}
         buttonProps={{

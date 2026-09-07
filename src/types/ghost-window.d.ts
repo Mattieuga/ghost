@@ -9,6 +9,7 @@ interface GhostWindow {
   __ghostActiveFile?: string;
   __ghostAddFolder?: () => void;
   __ghostNewFile?: () => void;
+  __ghostSyncToCloud?: () => void;
   __ghostFind?: () => void;
   __ghostFindAndReplace?: () => void;
   __ghostViewerFind?: () => boolean;

@@ -526,8 +526,19 @@ the Mac's files through `cloud-tree-sync.ts`; and an invitation by email
 sends Supabase's invite email through the `share-invite` Edge Function for
 addresses without an account.
 
+Header and dialogs (2026-09-07): the Mac header for a synced note gained
+presence initials and the Cloud version history, both reused from the web
+editor; Share became an icon at the far right with the save state to its
+left. Settings, the Share sheet, and the sync and stop-syncing dialogs share
+one floating panel with the item's name as a pill in the title. Sync to
+Cloud has a menu item and ⇧⌘U, and synced roots show a cloud mark. The
+"is in Cloud" toast after an upload is gone. Local version history on disk
+still has no UI; the History button covers Cloud versions only.
+
 Deferred from this phase, recorded rather than dropped:
 
+- A history panel for local versions, for notes never uploaded or while
+  signed out; today the History button appears only with a Cloud session.
 - Email for people who already have an account, and a better sender: the
   invite email goes out on Supabase's default sender until custom SMTP is
   set up, and the template still says "You have been invited".

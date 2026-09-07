@@ -50,6 +50,10 @@ pub fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             .accelerator("CmdOrCtrl+N")
             .build(app)?)
         .separator()
+        .item(&MenuItemBuilder::with_id("sync_to_cloud", "Sync to Cloud…")
+            .accelerator("CmdOrCtrl+Shift+U")
+            .build(app)?)
+        .separator()
         .close_window()
         .build()?;
 
@@ -154,6 +158,13 @@ pub fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                     let _ = window.show();
                     let _ = window.set_focus();
                     let _ = window.eval("window.__ghostNewFile && window.__ghostNewFile()");
+                }
+            }
+            "sync_to_cloud" => {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                    let _ = window.eval("window.__ghostSyncToCloud && window.__ghostSyncToCloud()");
                 }
             }
             "find" => {

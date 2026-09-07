@@ -73,6 +73,37 @@ try {
   assert.equal(await frame.getByAltText('Moon over the hills').evaluate(img => img.complete && img.naturalWidth > 0), true);
   assert.equal(await page.locator('iframe').getAttribute('sandbox'), 'allow-same-origin allow-scripts');
   assert.equal(await frame.locator('h1').evaluate(h => getComputedStyle(h).fontWeight), '400');
+  const bookmark = () => page.evaluate(() => JSON.parse(localStorage.getItem('ghost:epub:/books/epub-reader.epub')));
+  const waitMoved = async (previous) => page.waitForFunction(cfi => {
+    const saved = JSON.parse(localStorage.getItem('ghost:epub:/books/epub-reader.epub'));
+    return saved?.cfi && saved.cfi !== cfi && !document.querySelector('select').disabled;
+  }, previous?.cfi);
+  for (const input of ['buttons', 'keyboard']) {
+    await contents.selectOption('Text/one.xhtml');
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('ghost:epub:/books/epub-reader.epub'))?.href === 'Text/one.xhtml');
+    if (input === 'keyboard') await frame.getByRole('heading', { name: 'A quiet beginning' }).click();
+    for (let step = 0; step < 20; step++) {
+      const previous = await bookmark();
+      if (previous.href === 'Text/two.xhtml') break;
+      if (input === 'keyboard') await page.keyboard.press('ArrowRight');
+      else await page.getByRole('button', { name: 'Next page' }).click();
+      await waitMoved(previous);
+    }
+    assert.equal((await bookmark()).href, 'Text/two.xhtml');
+    for (const [key, button, expected] of [
+      ['ArrowLeft', 'Previous page', 'Text/one.xhtml'],
+      ['ArrowRight', 'Next page', 'Text/two.xhtml'],
+    ]) {
+      const previous = await bookmark();
+      if (input === 'keyboard') await page.keyboard.press(key);
+      else await page.getByRole('button', { name: button }).click();
+      await waitMoved(previous);
+      assert.equal((await bookmark()).href, expected);
+    }
+  }
+  console.log('Repeated chapter crossings passed for buttons and keyboard.');
+  await contents.selectOption('Text/one.xhtml');
+  await frame.getByRole('heading', { name: 'A quiet beginning' }).waitFor();
   for (const [foreground, background] of [['#e8e6e2', '#121518'], ['#242526', '#faf6ed']]) {
     await page.evaluate(([fg, bg]) => {
       document.documentElement.style.setProperty('--foreground', fg);
@@ -141,7 +172,7 @@ try {
   await page.evaluate(() => window.closeBook());
   await page.waitForFunction(() => window.liveEpubUrls.size === 0);
   assert.deepEqual(errors, []);
-  console.log('EPUB 2/3 rendering, image/CSS loading, chapter links, navigation, reading position, font size, light/dark colors, script blocking, resize, and URL cleanup passed.');
+  console.log('EPUB 2/3 rendering, image/CSS loading, chapter links, arrow keys across chapters, navigation, reading position, font size, light/dark colors, script blocking, resize, and URL cleanup passed.');
 } catch (error) {
   const page = browser?.contexts()[0]?.pages()[0];
   if (page) { console.error(await page.locator('#root').innerText()); console.error(await page.evaluate(() => [...document.querySelectorAll('iframe')].map(f => ({ style: f.style.cssText, text: f.contentDocument?.body?.innerText.slice(0, 300), parent: f.parentElement.style.cssText })))); await page.screenshot({ path: '/tmp/ghost-epub-failure.png' }); }

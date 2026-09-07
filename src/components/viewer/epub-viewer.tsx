@@ -12,6 +12,7 @@ import {
 
 export function EpubViewer({ filePath }: { filePath: string }) {
   const asset = useMediaAsset(filePath);
+  const readerRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const renditionRef = useRef<Rendition | null>(null);
   const bookmarkRef = useRef(readEpubBookmark(filePath));
@@ -28,13 +29,21 @@ export function EpubViewer({ filePath }: { filePath: string }) {
   const navigate = useCallback((target: string) => {
     const rendition = renditionRef.current;
     if (!rendition) return;
+    const focusedFrame = surfaceRef.current?.contains(document.activeElement)
+      ? document.activeElement : null;
     setBusy(true);
     const operation = target === "next" ? rendition.next()
       : target === "previous" ? rendition.prev() : rendition.display(target);
     void withEpubTimeout(operation).catch((reason) => {
       if (renditionRef.current === rendition) setError(String(reason));
     }).finally(() => {
-      if (renditionRef.current === rendition) setBusy(false);
+      if (renditionRef.current !== rendition) return;
+      setBusy(false);
+      // Crossing a chapter destroys its focused iframe. Keep keyboard reading
+      // on the stable viewer, without taking focus from another app control.
+      if (focusedFrame && !focusedFrame.isConnected && document.activeElement === document.body) {
+        readerRef.current?.focus({ preventScroll: true });
+      }
     });
   }, []);
   actionRef.current = navigate;
@@ -204,7 +213,7 @@ export function EpubViewer({ filePath }: { filePath: string }) {
   const controlClass = "rounded p-1.5 hover:bg-muted focus-visible:outline focus-visible:outline-ring disabled:opacity-30";
 
   return (
-    <div className="flex h-full flex-col pt-12 outline-none" tabIndex={0} data-viewer-focus-target data-epub-path={filePath}
+    <div ref={readerRef} className="flex h-full flex-col pt-12 outline-none" tabIndex={0} data-viewer-focus-target data-epub-path={filePath}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget || event.metaKey || event.ctrlKey || event.altKey) return;
         if (event.key === "ArrowRight" || event.key === "ArrowLeft") {

@@ -90,6 +90,8 @@ pub fn run() {
             commands::fs::duplicate_file,
             commands::fs::reveal_in_finder,
             commands::fs::open_url,
+            commands::fs::read_file_bytes,
+            commands::fs::write_file_bytes,
             commands::fs::save_image,
             commands::fs::save_image_from_path,
             commands::fs::markdown_to_html,

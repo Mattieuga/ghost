@@ -28,6 +28,8 @@ interface GhostWindow {
   __ghostFlushSave?: () => Promise<void>;
   __ghostFlushEditorSave?: () => Promise<void>;
   __ghostFlushCloudSave?: () => Promise<void>;
+  /** Set by the browser client: a relative image path to a URL that serves it. */
+  __ghostResolveImage?: (src: string) => Promise<string | null>;
 }
 
 declare global {

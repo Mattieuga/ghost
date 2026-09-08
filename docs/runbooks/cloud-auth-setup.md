@@ -211,3 +211,15 @@ to it; nothing to configure. It sends Supabase's "Invite user" email, so:
 
 Addresses that already have an account get no email yet; the share shows up
 under Shared on their next visit.
+
+## Images and live updates
+
+Two later migrations need nothing beyond `db query -f`:
+
+- `20260907010000_cloud_live_tree.sql` broadcasts tree changes from the
+  database with `realtime.send`. If a project lacks that function the
+  triggers swallow the error and clients fall back to focus and timer
+  refreshes.
+- `20260907020000_cloud_assets.sql` creates the private `cloud-assets`
+  bucket (25 MiB per file) and its policies. Nothing to configure in the
+  dashboard; access follows the note.

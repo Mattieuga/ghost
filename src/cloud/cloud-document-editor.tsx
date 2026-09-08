@@ -10,6 +10,7 @@ import type {
 import { CloudAccessError } from "@/cloud/collaboration/types";
 import { PresenceAvatars } from "@/cloud/presence-avatars";
 import { useCloudVersionCapture } from "@/cloud/use-cloud-version-capture";
+import { ASSETS_BUCKET } from "@/lib/mirror/asset-sync";
 import { History } from "lucide-react";
 import { cloudToHistory, previewFor, restoreVersion } from "@/components/editor/version-history";
 import { VersionHistorySidebar, type HistoryVersion } from "@/components/editor/version-history-sidebar";
@@ -286,6 +287,28 @@ function CollaborativeSurface({
     session.awareness.on("change", refresh);
     return () => session.awareness.off("change", refresh);
   }, [session]);
+
+  // Images live in Cloud under the document's ID; each is served through a
+  // short-lived signed URL, remembered for as long as the note is open.
+  useEffect(() => {
+    const urls = new Map<string, Promise<string | null>>();
+    const resolve = (src: string): Promise<string | null> => {
+      const name = src.slice(src.lastIndexOf("/") + 1);
+      if (!name) return Promise.resolve(null);
+      let pending = urls.get(name);
+      if (!pending) {
+        pending = client.storage.from(ASSETS_BUCKET)
+          .createSignedUrl(`${documentId}/${name}`, 60 * 60)
+          .then(({ data, error }) => (error ? null : data?.signedUrl ?? null));
+        urls.set(name, pending);
+      }
+      return pending;
+    };
+    window.__ghostResolveImage = resolve;
+    return () => {
+      if (window.__ghostResolveImage === resolve) delete window.__ghostResolveImage;
+    };
+  }, [client, documentId]);
 
   useEffect(() => {
     const flush = () => { void flushRef.current().catch(() => undefined); };

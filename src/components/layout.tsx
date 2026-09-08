@@ -141,6 +141,7 @@ import { isMissingServerFunction, switchCloudOwner, uploadMirroredRoot } from "@
 import type * as Y from "yjs";
 import { pullCloudChanges } from "@/lib/mirror/cloud-pull";
 import { syncCloudTreeToDisk } from "@/lib/mirror/cloud-tree-sync";
+import { companionAssetsDir, mentionsCompanionAssets, pullDocumentAssets, pushDocumentAssets } from "@/lib/mirror/asset-sync";
 import { liveTopicsFor, useCloudLive } from "@/cloud/use-cloud-live";
 import { editableSharedFolder, planSharedRoot, refreshSharedRoot, SHARED_FOLDER_NAME } from "@/lib/mirror/shared-root";
 import {
@@ -1465,11 +1466,36 @@ export function GhostLayout() {
           isOpen: (path) => activeFileRef.current === path,
         }, root);
         if (result.added.length || result.removed.length || result.renamed.length) handleFsChange();
+        if (result.cloud && cloudClient) {
+          for (const relativePath of result.uploaded) {
+            await pushDocumentAssets({ fs: tauriMirrorFs, client: cloudClient }, root, relativePath)
+              .catch((error: unknown) => console.warn("Could not send a note's images:", error));
+          }
+        }
       }).catch((error: unknown) => {
         console.error("Failed to reconcile a synced folder:", error);
       });
     }, 700));
   }, [cloudClient, cloudMismatch, handleFsChange, signedIn]);
+  // A change inside `<note>.assets/` sends that note's images, a moment
+  // after the last change, on the same queue as everything else.
+  const assetPushTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const pushAssetsForDir = useCallback((root: TrackedRoot, assetsDir: string) => {
+    if (!signedIn || !cloudClient || cloudMismatch(root)) return;
+    const client = cloudClient;
+    const timers = assetPushTimers.current;
+    const pending = timers.get(assetsDir);
+    if (pending) clearTimeout(pending);
+    timers.set(assetsDir, setTimeout(() => {
+      timers.delete(assetsDir);
+      rootSyncChain.current = rootSyncChain.current.then(async () => {
+        const { index } = await readGhostFolder(tauriMirrorFs, root.path);
+        const relativePath = Object.keys(index.documents).find((path) => companionAssetsDir(root.path, path) === assetsDir);
+        if (!relativePath) return;
+        await pushDocumentAssets({ fs: tauriMirrorFs, client }, root, relativePath);
+      }).catch((error: unknown) => console.warn("Could not send a note's images:", error));
+    }, 1500));
+  }, [cloudClient, cloudMismatch, signedIn]);
   // Ids and paths: a root that moved is reconciled again at its new place.
   const mirroredRootKey = JSON.stringify(
     roots.filter((root) => root.kind === "mirrored" && !root.shared).map((root) => [root.id, root.path]),
@@ -1489,6 +1515,11 @@ export function GhostLayout() {
         const inside = (candidate: string | null) => candidate !== null
           && candidate.startsWith(`${root.path}/`)
           && !candidate.includes("/.ghost/");
+        const assetsDir = [path, from].find((candidate) => candidate && inside(candidate) && /\.assets(\/|$)/.test(candidate));
+        if (assetsDir) {
+          pushAssetsForDir(root, assetsDir.slice(0, assetsDir.indexOf(".assets") + ".assets".length));
+          continue;
+        }
         if (inside(path) || inside(from)) reconcileRoot(root.id);
       }
     });
@@ -1544,6 +1575,13 @@ export function GhostLayout() {
         try {
           const result = await uploadMirroredRoot({ client, fs: tauriMirrorFs, ghostFolder: ghost, openPersistence }, root);
           updateRoot(root.id, { cloudRootId: result.cloudRootId, cloudOwnerId: userId });
+          if (!result.alreadyUploaded) {
+            const { index } = await readGhostFolder(tauriMirrorFs, root.path);
+            for (const relativePath of Object.keys(index.documents)) {
+              await pushDocumentAssets({ fs: tauriMirrorFs, client }, root, relativePath)
+                .catch((error: unknown) => console.warn("Could not send a note's images:", error));
+            }
+          }
         } catch (error) {
           failedUploads.current.add(root.id);
           setMirrorNotification(isMissingServerFunction(error)
@@ -1576,9 +1614,29 @@ export function GhostLayout() {
     const openPersistence = (rootId: string, documentId: string, document: Y.Doc) => (
       openYjsPersistence(mirrorLocalPersistenceKey(rootId, documentId), document)
     );
+    // Images arrive for notes that arrived or changed, and for the note that
+    // is open, whose text may reference an image another device added.
+    const pullAssetsFor = async (root: TrackedRoot, relativePaths: string[]) => {
+      const targets = new Set(relativePaths);
+      const open = activeFileRef.current;
+      if (open && insideRoot(root, open)) {
+        const relative = relativeToRoot(root.path, open);
+        const text = await tauriMirrorFs.readText(open).catch(() => "");
+        if (relative && mentionsCompanionAssets(text)) targets.add(relative);
+      }
+      for (const relativePath of targets) {
+        const text = targets.size > 1 || relativePath !== (open ? relativeToRoot(root.path, open) : null)
+          ? await tauriMirrorFs.readText(`${root.path}/${relativePath}`).catch(() => "")
+          : null;
+        if (text !== null && !mentionsCompanionAssets(text)) continue;
+        const pulled = await pullDocumentAssets({ fs: tauriMirrorFs, client }, root, relativePath)
+          .catch((error: unknown) => { console.warn("Could not fetch a note's images:", error); return null; });
+        if (pulled && pulled.downloaded.length > 0) changed = true;
+      }
+    };
     // Same queue as root reconciliation, so a pull never races a delete.
+    let changed = false;
     const run = rootSyncChain.current.then(async () => {
-      let changed = false;
       try {
         await acceptCloudInvitations(client).catch((error) => {
           if (!isMissingSharingFunction(error)) throw error;
@@ -1600,6 +1658,7 @@ export function GhostLayout() {
           setSharedFolderRoles({ base: sharedRoot.path, roles: planSharedRoot(visible).folderRoles });
           const result = await refreshSharedRoot({ fs: tauriMirrorFs, client, openPersistence, isOpen }, sharedRoot, visible);
           if (result.added.length || result.removed.length || result.moved.length || result.pull.written.length) changed = true;
+          await pullAssetsFor(sharedRoot, [...result.added, ...result.pull.written]);
           if (result.added.length === 1) setMirrorNotification(`${folderNameOf(result.added[0])} was shared with you.`);
           else if (result.added.length > 1) setMirrorNotification(`${result.added.length} notes were shared with you.`);
           // The root goes when nothing is shared, unless a note in it is still open.
@@ -1633,6 +1692,7 @@ export function GhostLayout() {
           }
           const pulled = await pullCloudChanges({ fs: tauriMirrorFs, client, openPersistence, isOpen }, root);
           if (pulled.written.length > 0) changed = true;
+          await pullAssetsFor(root, [...pulled.written, ...synced.added]);
         }
       } catch (error) {
         console.warn("Cloud refresh failed:", error);

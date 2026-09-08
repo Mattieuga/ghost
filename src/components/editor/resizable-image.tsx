@@ -62,6 +62,19 @@ export function ResizableImageView({ node, updateAttributes, selected, editor, g
       return;
     }
 
+    // The browser client has no disk; it serves images from Cloud.
+    const resolver = window.__ghostResolveImage;
+    if (resolver) {
+      let stale = false;
+      resolver(src)
+        .then((url) => { if (!stale) setResolvedSrc(url); })
+        .catch(() => { if (!stale) setResolvedSrc(null); });
+      return () => {
+        stale = true;
+        setResolvedSrc(null);
+      };
+    }
+
     // Relative path — resolve against the active file's directory
     const activeFile = window.__ghostActiveFile;
     if (!activeFile) return;

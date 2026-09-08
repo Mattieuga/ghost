@@ -4,7 +4,7 @@ This file provides guidance to the coding agent working in this repository.
 
 Read this before making changes. Full architecture lives in `docs/reference/ghost-architecture.md` — this file is the compressed rulebook distilled from that living reference.
 
-_Last reconciled with code: 2026-09-06._ When you change an architectural invariant, update this line, this file, and the relevant `docs/reference/` doc in the same change (see "Before you commit").
+_Last reconciled with code: 2026-09-07._ When you change an architectural invariant, update this line, this file, and the relevant `docs/reference/` doc in the same change (see "Before you commit").
 
 ## What this is
 
@@ -20,7 +20,7 @@ Ghost is a native Mac Markdown editor (Tauri 2, React 19, Tiptap 3) that also op
 ## Architectural invariants
 
 - **Every root is a real folder on disk**, because agents and other apps must see everything Ghost sees.
-- **One owner per file.** Plain roots are owned by the disk; synced roots are owned by their Yjs document and the file is a mirror. Never write a synced file from anything but the mirror writer, ingestion, or the Cloud pull.
+- **One owner per file.** Plain roots are owned by the disk; synced roots are owned by their Yjs document and the file is a mirror. Never write a synced file from anything but the mirror writer, ingestion, or the Cloud pull. A note's images live beside it in `<note>.assets/` and mirror to the `cloud-assets` bucket under the note's Cloud ID.
 - **Never sync inside a version-controlled checkout.** Pre-flight refuses it; a synced folder is only ever linked into a repository as an ignored symlink.
 - **External writes are ingested by rule**: ignore own writes, record formatting-only changes, merge real changes three ways at block level, and make a conflict copy only for overlapping edits. Capture a local version before every ingestion. Apply changes as block diffs, never by replacing a whole collaborative document.
 - **Nothing destructive happens silently.** Record lossy edges in the plan and keep a version to return to.

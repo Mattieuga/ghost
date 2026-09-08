@@ -62,6 +62,9 @@ export interface MirrorFs {
   movePath(from: string, to: string): Promise<void>;
   /** Move a file or folder to the macOS Trash. */
   trashPath(path: string): Promise<void>;
+  /** Companion assets travel as bytes. */
+  readBytes(path: string): Promise<Uint8Array>;
+  writeBytes(path: string, data: Uint8Array): Promise<void>;
 }
 
 export interface RepositoryLink {
@@ -131,4 +134,6 @@ export const tauriMirrorFs: MirrorFs = {
     }
   },
   trashPath: (path) => invoke<void>("delete_file", { path }),
+  readBytes: async (path) => new Uint8Array(await invoke<number[]>("read_file_bytes", { path })),
+  writeBytes: (path, data) => invoke<void>("write_file_bytes", { path, data: Array.from(data) }),
 };

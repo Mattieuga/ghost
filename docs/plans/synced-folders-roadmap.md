@@ -535,27 +535,30 @@ Cloud has a menu item and ⇧⌘U, and synced roots show a cloud mark. The
 "is in Cloud" toast after an upload is gone. Local version history on disk
 still has no UI; the History button covers Cloud versions only.
 
-Deferred from this phase, recorded rather than dropped:
+The deferred list was worked through on 2026-09-07, all but email: history
+is a sidebar with the changes shown in the editor, on the Mac (local and
+Cloud versions together) and the web; switching accounts uploads a copy
+and keeps a per-account link under `.ghost/cloud-links/`; a folder renamed
+on disk keeps its Cloud folder and an emptied one goes to Cloud Trash; a
+repository created in a synced folder pauses sync with a panel; tree
+changes travel live over Realtime broadcast (migration
+`20260907010000_cloud_live_tree.sql`); editors can create notes and folders
+inside shared folders on the Mac; and companion images sync through the
+`cloud-assets` bucket (migration `20260907020000_cloud_assets.sql`) with
+signed-URL delivery on the web.
 
-- A history panel for local versions, for notes never uploaded or while
-  signed out; today the History button appears only with a Cloud session.
+Deferred, recorded rather than dropped:
+
 - Email for people who already have an account, and a better sender: the
   invite email goes out on Supabase's default sender until custom SMTP is
   set up, and the template still says "You have been invited".
-- Switching accounts on one Mac. A root uploaded by account A stays local
-  for account B rather than being re-uploaded, because its document IDs
-  already exist in A's Cloud. Re-uploading under fresh IDs needs the index
-  to map local document IDs to Cloud IDs throughout.
-- A folder renamed on disk creates a new Cloud folder; the empty old one
-  stays in Cloud.
 - A seeded document that later meets its Cloud copy while signed out cannot
   tell it is the same text; the signed-in open skips seeding, the
   signed-out one cannot.
-
-- Creating notes inside a shared folder from the Mac. The web can; the Mac
-  would need the shared plan in root reconciliation.
-- Live tree updates. Cloud to Mac and web trees refresh on focus and on a
-  timer, not on a realtime signal.
+- Adding images from the web; the browser client shows them but has no
+  picker or paste path yet.
+- Other file types as synced blobs, and the filter UI (Phase 5).
+- Renaming, moving, and trashing inside a shared folder from the Mac.
 - Upgrading a guest to an account in place; a guest signs in normally and
   opens the link again.
 

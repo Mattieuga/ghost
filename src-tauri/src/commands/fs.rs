@@ -2217,6 +2217,52 @@ fn reserve_image_asset(active_file: &Path, filename: &str) -> Result<(String, Pa
     Ok((format!("{}/{}", assets_dir_name, final_name), assets_dir.join(final_name)))
 }
 
+const ASSET_FILE_MAX_BYTES: usize = 25 * 1024 * 1024;
+
+/// Bytes of one companion asset, for uploading it to Cloud.
+#[tauri::command]
+pub async fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
+    reject_parent_dir(&path)?;
+    let metadata = fs::metadata(&path).map_err(|e| format!("Failed to read file: {}", e))?;
+    if !metadata.is_file() {
+        return Err("Not a file".to_string());
+    }
+    if metadata.len() as usize > ASSET_FILE_MAX_BYTES {
+        return Err(format!("Files over {} MiB are not synced", ASSET_FILE_MAX_BYTES / (1024 * 1024)));
+    }
+    fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))
+}
+
+/// Write a companion asset pulled from Cloud, atomically and as Ghost's own
+/// write so the watcher stays quiet.
+#[tauri::command]
+pub async fn write_file_bytes(
+    own_writes: State<'_, crate::own_writes::OwnWriteRegistry>,
+    path: String,
+    data: Vec<u8>,
+) -> Result<(), String> {
+    reject_parent_dir(&path)?;
+    if data.len() > ASSET_FILE_MAX_BYTES {
+        return Err(format!("Files over {} MiB are not synced", ASSET_FILE_MAX_BYTES / (1024 * 1024)));
+    }
+    let target = Path::new(&path);
+    let parent = target.parent().ok_or("File has no parent directory")?;
+    fs::create_dir_all(parent).map_err(|e| format!("Failed to create folder: {}", e))?;
+    let temporary = parent.join(format!(
+        ".ghost-{}-{}-{}.tmp",
+        target.file_name().and_then(|name| name.to_str()).unwrap_or("asset"),
+        std::process::id(),
+        TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::write(&temporary, &data).map_err(|e| format!("Failed to write file: {}", e))?;
+    if let Err(error) = fs::rename(&temporary, target) {
+        let _ = fs::remove_file(&temporary);
+        return Err(format!("Failed to write file: {}", error));
+    }
+    own_writes.record_path(target);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn save_image(active_file: String, filename: String, data: Vec<u8>) -> Result<String, String> {
     reject_parent_dir(&active_file)?;

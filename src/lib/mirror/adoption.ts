@@ -119,6 +119,7 @@ function cloudFieldsOf(entry: GhostIndexEntry | undefined): Partial<GhostIndexEn
     ...(entry.cloudCursor !== undefined ? { cloudCursor: entry.cloudCursor } : {}),
     ...(entry.cloudStale ? { cloudStale: true } : {}),
     ...(entry.cloudStaleFrom ? { cloudStaleFrom: entry.cloudStaleFrom } : {}),
+    ...(entry.assets ? { assets: entry.assets } : {}),
   };
 }
 

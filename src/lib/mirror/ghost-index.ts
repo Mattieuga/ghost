@@ -36,6 +36,8 @@ export interface GhostIndexEntry {
   cloudStale?: boolean;
   /** Where the file was before that rename or move, so a folder rename can be told apart from single moves. */
   cloudStaleFrom?: string;
+  /** Companion images as last synced: file name to its content hash and Cloud etag. */
+  assets?: Record<string, { hash: string; etag: string | null }>;
 }
 
 export interface GhostIndex {
@@ -116,6 +118,7 @@ export function parseGhostIndex(text: string): GhostIndex {
         : {}),
       ...(value.cloudStale === true ? { cloudStale: true } : {}),
       ...(typeof value.cloudStaleFrom === "string" && value.cloudStaleFrom ? { cloudStaleFrom: value.cloudStaleFrom } : {}),
+      ...(value.assets && typeof value.assets === "object" ? { assets: value.assets } : {}),
     };
   }
   const folders: Record<string, string> = {};

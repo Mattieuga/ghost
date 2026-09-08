@@ -131,7 +131,7 @@ import { SidebarTrashDialog } from "@/components/sidebar/sidebar-trash-dialog";
 import type { TrackedRoot } from "@/hooks/use-tracked-folders";
 import { getMacCloudClient, MAC_CLOUD_AUTH_REDIRECT_URL, openMacCloudOAuthUrl } from "@/cloud/mac-cloud-client";
 import { mirrorLocalPersistenceKey, openYjsPersistence } from "@/cloud/cloud-local-persistence";
-import { isMissingServerFunction, uploadMirroredRoot } from "@/lib/mirror/cloud-upload";
+import { isMissingServerFunction, switchCloudOwner, uploadMirroredRoot } from "@/lib/mirror/cloud-upload";
 import type * as Y from "yjs";
 import { pullCloudChanges } from "@/lib/mirror/cloud-pull";
 import { syncCloudTreeToDisk } from "@/lib/mirror/cloud-tree-sync";
@@ -1413,10 +1413,24 @@ export function GhostLayout() {
             // Uploaded before the owner was recorded: it was this account.
             updateRoot(root.id, { cloudOwnerId: userId });
           } else if (root.cloudOwnerId !== userId) {
-            failedUploads.current.add(root.id);
-            setMirrorNotification(
-              `${folderNameOf(root.path)} is in Cloud under another account. It stays local until you sign in as that account, or stop and restart syncing.`,
-            );
+            // Another account: restore its link to this root, or upload a
+            // copy for it. The leaving account's link is kept for its return.
+            uploadingRoots.current.add(root.id);
+            try {
+              const result = await switchCloudOwner(
+                { client, fs: tauriMirrorFs, ghostFolder: ghost, openPersistence },
+                root,
+                root.cloudOwnerId,
+                userId,
+              );
+              updateRoot(root.id, { cloudRootId: result.cloudRootId, cloudOwnerId: userId });
+            } catch (error) {
+              failedUploads.current.add(root.id);
+              setMirrorNotification(`Could not bring ${folderNameOf(root.path)} to this account: ${error instanceof Error ? error.message : String(error)}`);
+            } finally {
+              uploadingRoots.current.delete(root.id);
+            }
+            reconcileRoot(root.id);
           }
           continue;
         }

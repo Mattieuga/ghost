@@ -214,12 +214,15 @@ export function MirroredDocumentEditor({
       // no network round trip stands between the click and the editor. The
       // role is the one verified last time; an own root is always editable,
       // a shared note stays read-only until the server confirms otherwise.
+      // A root uploaded as a copy under another account maps each local
+      // document to a Cloud ID of its own; the first upload used the same ID.
+      const cloudDocumentId = adopted.entry.cloudDocumentId ?? documentId;
       let session: CloudCollaborationSession;
       if (cloud && inCloud) {
         session = SupabaseCloudAdapter.createFromCache({
           client: cloud.client,
           document,
-          documentId,
+          documentId: cloudDocumentId,
           user: presenceIdentity(cloud.user),
           onRoleVerified: (role) => persistence.rememberRole(role),
           onAccessRevoked: async () => undefined,
@@ -393,7 +396,7 @@ export function MirroredDocumentEditor({
       setBoot({ kind: "ready", session });
       onSessionChangeRef.current?.({
         session,
-        documentId,
+        documentId: cloudDocumentId,
         cloud: !(session instanceof LocalCollaborationSession),
       });
     };

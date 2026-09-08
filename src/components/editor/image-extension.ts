@@ -10,6 +10,17 @@ function escapeAttr(s: string): string {
 }
 
 /**
+ * A link destination Markdown reads back whole. A note called "My note"
+ * keeps its images in "My note.assets", and a bare destination ends at the
+ * first space, so one with spaces or parentheses goes in angle brackets,
+ * as CommonMark allows. The Rust side wraps the same way when it renames
+ * or copies a note's folder.
+ */
+export function markdownDestination(src: string): string {
+  return /[\s()<>]/.test(src) ? `<${src.replace(/</g, "%3C").replace(/>/g, "%3E")}>` : src;
+}
+
+/**
  * Get the full path of the currently active file.
  */
 export function getActiveFilePath(): string {
@@ -96,7 +107,7 @@ export const ResizableImage = Image.extend({
 
     const escapedAlt = String(alt || "").replace(/([\\\]])/g, "\\$1");
     const escapedTitle = String(title || "").replace(/([\\"])/g, "\\$1");
-    return `![${escapedAlt}](${src || ""}${title ? ` "${escapedTitle}"` : ""})`;
+    return `![${escapedAlt}](${markdownDestination(src || "")}${title ? ` "${escapedTitle}"` : ""})`;
   },
 
   addNodeView() {

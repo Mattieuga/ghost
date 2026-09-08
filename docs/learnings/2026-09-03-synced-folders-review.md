@@ -15,6 +15,7 @@ The 2026-09-03 review of the synced-folders and sharing work (rationale in the [
 - A file-id cache for rename pairing walks every watched folder, symlinks included. That is fine for a notes folder and disastrous for an open code checkout.
 - Identity columns are assigned at insert, not commit. "Everything after ID n" can skip a row committed later with a smaller ID.
 - "Same document" must mean "reads back the same". An attribute Markdown cannot carry (an image's empty alt) made a file differ from the document that wrote it, and every open produced a conflict copy of identical bytes.
+- A bare Markdown destination ends at the first space. A note called "My note" keeps images in `My note.assets`, and `![](My note.assets/x.png)` reads back as text; destinations with spaces or parentheses go in angle brackets, on both sides of the bridge.
 
 ## The pull resurrected deleted files
 
@@ -51,6 +52,10 @@ The 2026-09-03 review of the synced-folders and sharing work (rationale in the [
 ## An inserted image made every open a conflict
 
 **Symptom:** add an image to a synced note; the image does not show, and each open of the note writes a conflict copy that is byte-identical to the note. **Cause:** two schemas and one asymmetry. The visible editor used Tiptap's plain image node while the engine used Ghost's resizable one, so the note rendered a bare relative `<img>` that the webview cannot load. And an inserted image has `alt: null` while `![](x.png)` parsed back to `alt: ""`; both serialize to the same text, but the parsed-tree comparison called them different, adoption dropped the mirror version, the writer held its first write, and ingestion with no version and no state vector could only make a conflict copy. **Fix:** one image node in every editor, the Markdown parser reads an absent alt or title as null, and `markdownMatchesDocument` accepts a file when it reads back the way the document's own serialization does. Existing documents that stored the empty string are covered by the last rule.
+
+## A space in the note's name broke its images
+
+**Symptom:** duplicate "notes.md", or add an image to "My note.md", and the copy shows the raw `![](...)` text instead of the picture. A conflict copy, whose name always has spaces and parentheses, would never have shown an image. **Cause:** the serializer and the Rust rename, duplicate, and conflict paths all wrote the folder name bare into the destination, and a bare CommonMark destination ends at the first space. **Fix:** a destination with spaces or parentheses is wrapped in angle brackets by the editor's image serializer and by one shared Rust rewrite that rename, duplicate, copy, and the conflict copy all use; the parser already read the bracketed form. Image file names never carry spaces, since saving replaces them, so the folder name was the only source.
 
 ## Watching a code checkout walked it whole
 

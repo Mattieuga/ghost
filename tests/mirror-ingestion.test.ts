@@ -133,6 +133,19 @@ describe("markdownMatchesDocument", () => {
     expect(markdownMatchesDocument(editor, written)).toBe(true);
   });
 
+  it("keeps an image whose folder has spaces through the file", () => {
+    const editor = editorWith("Text\n");
+    editor.commands.focus("end");
+    editor.commands.setImage({ src: "My note (draft).assets/pic.png" });
+    const written = serializeMarkdownDocument(editor);
+    expect(written).toContain("![](<My note (draft).assets/pic.png>)");
+    expect(markdownMatchesDocument(editor, written)).toBe(true);
+    expect(parseMarkdownDocument(editor, written).content?.[1]).toMatchObject({
+      type: "image",
+      attrs: { src: "My note (draft).assets/pic.png" },
+    });
+  });
+
   it("reads an image without alt or title back as the editor inserts it", () => {
     const editor = editorWith("![](plan.assets/pic.png)\n");
     expect(editor.getJSON().content?.[0]).toEqual({

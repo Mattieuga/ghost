@@ -1280,8 +1280,68 @@ fn atomic_write_file(path: &Path, content: &str) -> Result<(), std::io::Error> {
     result
 }
 
+/// Whether a Markdown link destination can stand bare. One with spaces or
+/// parentheses ends early when read back, so it goes in angle brackets, as
+/// CommonMark allows and as the editor writes it.
+fn destination_needs_brackets(name: &str) -> bool {
+    name.chars().any(|c| c.is_whitespace() || c == '(' || c == ')')
+}
+
+/// Point every mention of the `old` companion folder at `new`. A bare
+/// Markdown destination that would no longer read back whole is wrapped in
+/// angle brackets; a wrapped one, an HTML attribute, and a mention in prose
+/// are replaced as they are.
+fn rewrite_companion_links(content: &str, old: &str, new: &str) -> String {
+    if old.is_empty() || old == new {
+        return content.to_string();
+    }
+    let wrap = destination_needs_brackets(new);
+    let mut out = String::with_capacity(content.len() + 16);
+    let mut rest = content;
+    while let Some(at) = rest.find(old) {
+        let (before, after) = rest.split_at(at);
+        out.push_str(before);
+        let after_old = &after[old.len()..];
+        if wrap && out.ends_with("](") && after_old.starts_with('/') {
+            // The destination runs to the closing parenthesis, or to the
+            // whitespace before a title.
+            let end = after_old
+                .find(|c: char| c == ')' || c.is_whitespace())
+                .unwrap_or(after_old.len());
+            out.push('<');
+            out.push_str(new);
+            out.push_str(&after_old[..end]);
+            out.push('>');
+            rest = &after_old[end..];
+        } else {
+            out.push_str(new);
+            rest = after_old;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// `rewrite_companion_links` on a file, in place and atomically. A file that
+/// is not text gets the literal replacement instead.
+fn rewrite_companion_links_in_file(path: &Path, old: &str, new: &str) -> Result<(), std::io::Error> {
+    match fs::read_to_string(path) {
+        Ok(content) => {
+            let rewritten = rewrite_companion_links(&content, old, new);
+            if rewritten == content {
+                return Ok(());
+            }
+            atomic_write_file(path, &rewritten)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::InvalidData => {
+            atomic_replace_literal(path, old.as_bytes(), new.as_bytes())
+        }
+        Err(error) => Err(error),
+    }
+}
+
 /// Atomically replace a literal byte sequence without materializing the file.
-/// Used for Ghost's companion-assets path rewrite during rename/duplicate.
+/// The fallback for a companion-assets rewrite in a file that is not text.
 fn atomic_replace_literal(path: &Path, needle: &[u8], replacement: &[u8]) -> Result<(), std::io::Error> {
     if needle.is_empty() || needle == replacement {
         return Ok(());
@@ -1692,24 +1752,69 @@ pub fn conflict_copy_path(path: &Path, label: &str) -> PathBuf {
         .extension()
         .map(|extension| format!(".{}", extension.to_string_lossy()))
         .unwrap_or_default();
+    let taken = |candidate: &Path| {
+        candidate.exists()
+            || companion_assets_path_for_file_name(candidate).is_some_and(|assets| assets.exists())
+    };
     let mut candidate = parent.join(format!("{stem} (conflict {label}){extension}"));
     let mut counter = 2;
-    while candidate.exists() {
+    while taken(&candidate) {
         candidate = parent.join(format!("{stem} (conflict {label} {counter}){extension}"));
         counter += 1;
     }
     candidate
 }
 
+/// Write the disk side of a conflict beside the note. The copy is a note in
+/// its own right, so like Duplicate it gets a companion assets folder of its
+/// own and refers to that, never to the original's, which stays untouched.
 #[tauri::command]
 pub async fn write_conflict_copy(path: String, content: String, label: String) -> Result<String, String> {
     reject_parent_dir(&path)?;
     if label.is_empty() || label.contains('/') || label.contains("..") {
         return Err("Invalid conflict label".to_string());
     }
-    let target = conflict_copy_path(Path::new(&path), &label);
-    atomic_write_file(&target, &content)
-        .map_err(|error| format!("Failed to write conflict copy: {}", error))?;
+    let source = Path::new(&path);
+    let target = conflict_copy_path(source, &label);
+    let source_assets = companion_assets_path(source).filter(|assets| assets.is_dir());
+    let target_assets = companion_assets_path_for_file_name(&target);
+    let assets = match (source_assets.as_ref(), target_assets.as_ref()) {
+        (Some(from), Some(to)) => {
+            let old_name = from.file_name().and_then(|n| n.to_str()).ok_or("Cannot determine companion assets name")?;
+            let new_name = to.file_name().and_then(|n| n.to_str()).ok_or("Cannot determine conflict assets name")?;
+            Some((from.clone(), to.clone(), old_name.to_string(), new_name.to_string()))
+        }
+        _ => None,
+    };
+    let content = match assets.as_ref() {
+        Some((_, _, old_name, new_name)) => rewrite_companion_links(&content, old_name, new_name),
+        None => content,
+    };
+
+    let staging_assets = match assets.as_ref() {
+        Some((from, to, _, _)) => {
+            let staging = unused_backup_path(to)?;
+            if let Err(error) = copy_dir_recursive(from, &staging) {
+                remove_staging_path(&staging);
+                return Err(error);
+            }
+            Some((staging, to.clone()))
+        }
+        None => None,
+    };
+    if let Err(error) = atomic_write_file(&target, &content) {
+        if let Some((staging, _)) = staging_assets.as_ref() {
+            remove_staging_path(staging);
+        }
+        return Err(format!("Failed to write conflict copy: {}", error));
+    }
+    if let Some((staging, to)) = staging_assets.as_ref() {
+        if let Err(error) = fs::rename(staging, to) {
+            remove_staging_path(staging);
+            let _ = fs::remove_file(&target);
+            return Err(format!("Failed to copy companion assets for the conflict copy: {}", error));
+        }
+    }
     Ok(target.to_string_lossy().to_string())
 }
 
@@ -1957,11 +2062,7 @@ pub async fn rename_file(old_path: String, new_name: String) -> Result<String, S
             let _ = fs::rename(&new_path, old);
             return Err(format!("Failed to rename companion assets: {}", error));
         }
-        if let Err(error) = atomic_replace_literal(
-            &new_path,
-            old_name.as_bytes(),
-            new_name.as_bytes(),
-        ) {
+        if let Err(error) = rewrite_companion_links_in_file(&new_path, &old_name, &new_name) {
             let _ = fs::rename(&new_assets, &old_assets);
             let _ = fs::rename(&new_path, old);
             return Err(format!("Failed to update asset references: {}", error));
@@ -2047,11 +2148,7 @@ pub async fn duplicate_file(path: String) -> Result<String, String> {
             return Err(format!("Failed to duplicate file: {}", error));
         }
         if let Some((old_name, new_name)) = asset_rewrite {
-            if let Err(error) = atomic_replace_literal(
-                &staging_file,
-                old_name.as_bytes(),
-                new_name.as_bytes(),
-            ) {
+            if let Err(error) = rewrite_companion_links_in_file(&staging_file, &old_name, &new_name) {
                 remove_staging_path(&staging_file);
                 return Err(format!("Failed to update duplicated asset references: {}", error));
             }
@@ -2138,7 +2235,7 @@ pub async fn copy_file_into(source: String, target_dir: String) -> Result<String
         return Err(format!("Failed to copy file: {}", error));
     }
     if let Some((old_name, new_name)) = asset_rewrite {
-        if let Err(error) = atomic_replace_literal(&staging_file, old_name.as_bytes(), new_name.as_bytes()) {
+        if let Err(error) = rewrite_companion_links_in_file(&staging_file, &old_name, &new_name) {
             remove_staging_path(&staging_file);
             return Err(format!("Failed to update copied asset references: {}", error));
         }
@@ -2550,8 +2647,8 @@ mod tests {
         build_workspace_file_index, decode_text_bytes, duplicate_file, file_version,
         inspect_source, move_file,
         read_dir_recursive, read_file_if_text, read_source_chunk, read_source_chunk_raw,
-        rename_file, write_file_checked, WriteFileError, EXTREME_SOURCE_BYTES,
-        TEMP_FILE_COUNTER, TEXT_PROBE_BYTES,
+        rename_file, rewrite_companion_links, write_conflict_copy, write_file_checked,
+        WriteFileError, EXTREME_SOURCE_BYTES, TEMP_FILE_COUNTER, TEXT_PROBE_BYTES,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -3020,6 +3117,29 @@ mod tests {
     }
 
     #[test]
+    fn companion_link_rewrite_brackets_destinations_that_cannot_stand_bare() {
+        let content = concat!(
+            "![A](notes.assets/a.png) and ![B](notes.assets/b.png \"Title\")\n",
+            "![C](<notes.assets/c.png>) <img src=\"notes.assets/d.png\" width=\"300\">\n",
+            "See notes.assets for the originals.\n",
+        );
+        assert_eq!(
+            rewrite_companion_links(content, "notes.assets", "notes copy.assets"),
+            concat!(
+                "![A](<notes copy.assets/a.png>) and ![B](<notes copy.assets/b.png> \"Title\")\n",
+                "![C](<notes copy.assets/c.png>) <img src=\"notes copy.assets/d.png\" width=\"300\">\n",
+                "See notes copy.assets for the originals.\n",
+            ),
+        );
+        // A name that stands bare is swapped in place.
+        assert_eq!(
+            rewrite_companion_links("![A](notes.assets/a.png)", "notes.assets", "renamed.assets"),
+            "![A](renamed.assets/a.png)",
+        );
+        assert_eq!(rewrite_companion_links("plain", "notes.assets", "x.assets"), "plain");
+    }
+
+    #[test]
     fn duplicate_creates_independent_companion_assets_and_updates_references() {
         let directory = test_directory("duplicate-assets");
         let source_path = directory.join("notes.md");
@@ -3038,15 +3158,55 @@ mod tests {
         let duplicated_path = directory.join("notes copy.md");
         let duplicated_assets = directory.join("notes copy.assets");
         assert_eq!(PathBuf::from(duplicated), duplicated_path);
+        // The copy's folder has a space, so the destination is bracketed
+        // to read back whole.
         assert_eq!(
             fs::read_to_string(&duplicated_path).unwrap(),
-            "![Diagram](notes copy.assets/diagram.png)",
+            "![Diagram](<notes copy.assets/diagram.png>)",
         );
         assert_eq!(
             fs::read(duplicated_assets.join("diagram.png")).unwrap(),
             b"image",
         );
         assert!(source_assets.join("diagram.png").exists());
+        fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[test]
+    fn conflict_copy_gets_its_own_companion_assets() {
+        let directory = test_directory("conflict-assets");
+        let note = directory.join("notes.md");
+        let assets = directory.join("notes.assets");
+        fs::write(&note, "![Diagram](notes.assets/diagram.png)").expect("fixture should be written");
+        fs::create_dir(&assets).expect("assets directory should be created");
+        fs::write(assets.join("diagram.png"), b"image").expect("asset should be written");
+
+        let copy = tauri::async_runtime::block_on(write_conflict_copy(
+            note.to_string_lossy().to_string(),
+            "Theirs\n\n![Diagram](notes.assets/diagram.png)".to_string(),
+            "2026-09-02 14.03".to_string(),
+        ))
+        .expect("conflict copy should be written");
+
+        let copy_path = directory.join("notes (conflict 2026-09-02 14.03).md");
+        let copy_assets = directory.join("notes (conflict 2026-09-02 14.03).assets");
+        assert_eq!(PathBuf::from(copy), copy_path);
+        assert_eq!(
+            fs::read_to_string(&copy_path).unwrap(),
+            "Theirs\n\n![Diagram](<notes (conflict 2026-09-02 14.03).assets/diagram.png>)",
+        );
+        assert_eq!(fs::read(copy_assets.join("diagram.png")).unwrap(), b"image");
+        assert_eq!(fs::read(assets.join("diagram.png")).unwrap(), b"image");
+
+        // A second copy the same minute takes the next free name for both.
+        let second = tauri::async_runtime::block_on(write_conflict_copy(
+            note.to_string_lossy().to_string(),
+            "Theirs again".to_string(),
+            "2026-09-02 14.03".to_string(),
+        ))
+        .expect("second conflict copy should be written");
+        assert_eq!(PathBuf::from(second), directory.join("notes (conflict 2026-09-02 14.03 2).md"));
+        assert!(directory.join("notes (conflict 2026-09-02 14.03 2).assets").is_dir());
         fs::remove_dir_all(directory).expect("test directory should be removed");
     }
 

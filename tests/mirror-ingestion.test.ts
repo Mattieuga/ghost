@@ -5,6 +5,7 @@ import * as Y from "yjs";
 import type { Editor } from "@tiptap/core";
 import { createHeadlessMarkdownEditor } from "../src/components/editor/markdown-schema";
 import { parseMarkdownDocument } from "../src/components/editor/frontmatter";
+import { serializeMarkdownDocument } from "../src/components/editor/markdown-source";
 import {
   conflictCopyName,
   decideIngestion,
@@ -121,6 +122,37 @@ describe("markdownMatchesDocument", () => {
   it("notices a real content change", () => {
     const editor = editorWith("# Plan\n\n- one\n- two\n");
     expect(markdownMatchesDocument(editor, "# Plan\n\n- one\n- three\n")).toBe(false);
+  });
+
+  it("matches the file written from an image the editor inserted", () => {
+    const editor = editorWith("# Plan\n\nSome text\n");
+    editor.commands.focus("end");
+    editor.commands.setImage({ src: "plan.assets/pic.png" });
+    const written = serializeMarkdownDocument(editor);
+    expect(written).toContain("![](plan.assets/pic.png)");
+    expect(markdownMatchesDocument(editor, written)).toBe(true);
+  });
+
+  it("reads an image without alt or title back as the editor inserts it", () => {
+    const editor = editorWith("![](plan.assets/pic.png)\n");
+    expect(editor.getJSON().content?.[0]).toEqual({
+      type: "image",
+      attrs: { src: "plan.assets/pic.png", alt: null, title: null, width: null, height: null },
+    });
+  });
+
+  it("overlooks an attribute the file cannot carry", () => {
+    // A document built before empty alts were normalised keeps the empty string.
+    const editor = editorWith("Text\n");
+    editor.commands.setContent({
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Text" }] },
+        { type: "image", attrs: { src: "plan.assets/pic.png", alt: "" } },
+      ],
+    }, { emitUpdate: false });
+    expect(markdownMatchesDocument(editor, "Text\n\n![](plan.assets/pic.png)\n")).toBe(true);
+    expect(markdownMatchesDocument(editor, "Text\n\n![](plan.assets/other.png)\n")).toBe(false);
   });
 });
 

@@ -16,9 +16,9 @@ import { FindAndReplace } from "@tiptap/extension-find-and-replace";
 import { Markdown } from "@tiptap/markdown";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
-import Image from "@tiptap/extension-image";
 import type * as Y from "yjs";
 
+import { ResizableImage } from "./image-extension";
 import { ResizableTable } from "./table-extension";
 import { Frontmatter } from "./frontmatter-extension";
 import { parseMarkdownDocument } from "./frontmatter";
@@ -233,7 +233,10 @@ export function MarkdownEditor({
         isAllowedUri: (url, ctx) =>
           url.startsWith("#") || ctx.defaultValidate(url),
       }),
-      imageExtension ?? Image.configure({ allowBase64: false }),
+      // The same image node as the headless engine, so a mirrored note's
+      // document and its file agree, and so images resolve through the host:
+      // Tauri's asset grant on the Mac, signed Cloud URLs in the browser.
+      imageExtension ?? ResizableImage.configure({ allowBase64: false }),
       Focus.configure({
         className: "has-focus",
         mode: "deepest",

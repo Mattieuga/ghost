@@ -76,6 +76,15 @@ export const ResizableImage = Image.extend({
     };
   },
 
+  // `![](x.png)` reads back with the attributes an inserted image has: an
+  // absent alt or title is null, never an empty string. The mirror compares
+  // parsed files against live documents, so the two must agree.
+  parseMarkdown: (token, helpers) => helpers.createNode("image", {
+    src: token.href,
+    title: token.title || null,
+    alt: token.text || null,
+  }),
+
   renderMarkdown: (node) => {
     const { src, alt, title, width } = node.attrs ?? {};
     if (width) {

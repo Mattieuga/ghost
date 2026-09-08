@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/core";
 import { parseMarkdownDocument } from "@/components/editor/frontmatter";
+import { serializeMarkdownDocument } from "@/components/editor/markdown-source";
 import type { FileVersionToken } from "@/lib/source-document";
 
 /**
@@ -69,7 +70,14 @@ export function decideIngestion(input: IngestionInput): IngestionVerdict {
 export function markdownMatchesDocument(editor: Editor, markdown: string): boolean {
   try {
     const parsed = editor.schema.nodeFromJSON(parseMarkdownDocument(editor, markdown));
-    return parsed.eq(editor.state.doc);
+    if (parsed.eq(editor.state.doc)) return true;
+    // An attribute Markdown cannot carry, such as an image's empty alt, can
+    // set a document the editor built apart from its own file read back.
+    // The file is current when it reads back the way the document would.
+    const own = editor.schema.nodeFromJSON(
+      parseMarkdownDocument(editor, serializeMarkdownDocument(editor)),
+    );
+    return parsed.eq(own);
   } catch {
     return false;
   }

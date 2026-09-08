@@ -37,6 +37,10 @@ const liveTreeMigration = readFileSync(
   new URL("../supabase/migrations/20260907010000_cloud_live_tree.sql", import.meta.url),
   "utf8",
 );
+const sharingReviewMigration = readFileSync(
+  new URL("../supabase/migrations/20260908010000_cloud_sharing_review.sql", import.meta.url),
+  "utf8",
+);
 
 describe("Cloud foundation migration", () => {
   it("keeps retained Cloud tables separate from the disposable spike", () => {
@@ -330,5 +334,27 @@ describe("Live tree migration", () => {
     ]) {
       expect(liveTreeMigration).toContain(`revoke all on function ${helper} from public, anon, authenticated`);
     }
+  });
+});
+
+describe("Sharing review migration", () => {
+  it("lets the policy roles call the helpers their policies use", () => {
+    expect(sharingReviewMigration).toContain("grant execute on function private.cloud_asset_document(text) to authenticated");
+    expect(sharingReviewMigration).toContain("grant execute on function private.cloud_can_watch_topic(text, uuid) to authenticated");
+  });
+
+  it("ties link-made memberships to the link so its switch governs them", () => {
+    expect(sharingReviewMigration).toContain("add column if not exists via_link_id uuid references public.cloud_share_links(id) on delete set null");
+    expect(sharingReviewMigration).toContain("insert into public.cloud_memberships (item_id, user_id, role, granted_by, via_link_id)");
+    expect(sharingReviewMigration).toContain("where active.id = membership.via_link_id");
+    expect(sharingReviewMigration).toContain("where via_link_id = link.id and role <> link_role");
+    expect(sharingReviewMigration.match(/security definer\nset search_path = ''/g)).toHaveLength(4);
+  });
+
+  it("keeps a workspace topic to its owner and tells members on their own topic", () => {
+    expect(sharingReviewMigration).not.toContain("where i.workspace_id = workspace and m.user_id = target_user_id");
+    expect(sharingReviewMigration).toContain("where w.id = workspace and w.owner_id = target_user_id");
+    expect(sharingReviewMigration).toContain("where m.item_id = item or m.item_id in (select id from chain)");
+    expect(sharingReviewMigration).toContain("perform private.cloud_notify('ghost-user:' || member::text, payload)");
   });
 });

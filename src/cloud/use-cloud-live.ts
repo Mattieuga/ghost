@@ -4,8 +4,9 @@ import type { VisibleCloudItem } from "@/cloud/cloud-sharing";
 
 /**
  * Tree changes arrive over Realtime broadcast from the database (see the
- * live-tree migration): one topic per workspace the account can see, and
- * one for the account itself. Every event turns into one debounced reload.
+ * live-tree migration): one topic per workspace the account owns, and one
+ * for the account itself, where changes to anything shared with it arrive.
+ * Every event turns into one debounced reload.
  */
 export const LIVE_DEBOUNCE_MS = 400;
 
@@ -14,7 +15,11 @@ export function liveTopicsFor(userId: string | null, items: VisibleCloudItem[], 
   const topics = new Set<string>();
   if (userId) topics.add(`ghost-user:${userId}`);
   if (ownWorkspaceId) topics.add(`ghost-tree:${ownWorkspaceId}`);
-  for (const item of items) topics.add(`ghost-tree:${item.workspace_id}`);
+  // Another owner's workspace topic is theirs alone; what they share with
+  // this account is announced on the account's own topic.
+  for (const item of items) {
+    if (item.shared_root_id === null) topics.add(`ghost-tree:${item.workspace_id}`);
+  }
   return Array.from(topics).sort();
 }
 

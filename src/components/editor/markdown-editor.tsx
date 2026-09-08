@@ -133,6 +133,12 @@ interface MarkdownEditorProps {
   };
   imageExtension?: AnyExtension;
   platformActions?: MarkdownEditorPlatformActions;
+  /**
+   * A second editor beside the main one, such as a version preview. It
+   * publishes none of the window globals the main editor owns, so Find,
+   * Copy As, image insertion, and saves keep reaching the note.
+   */
+  secondary?: boolean;
 }
 
 export interface MarkdownEditorPlatformActions {
@@ -164,6 +170,7 @@ export function MarkdownEditor({
   collaboration,
   imageExtension,
   platformActions = browserPlatformActions,
+  secondary = false,
 }: MarkdownEditorProps) {
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flushSaveRef = useRef<() => Promise<void>>(async () => undefined);
@@ -173,9 +180,10 @@ export function MarkdownEditor({
 
   // Expose active file path for image save handler
   useEffect(() => {
+    if (secondary) return;
     window.__ghostActiveFile = activeFile ?? undefined;
     return () => { delete window.__ghostActiveFile; };
-  }, [activeFile]);
+  }, [activeFile, secondary]);
 
   const persistMarkdown = useCallback(async (
     currentEditor: Editor,
@@ -433,6 +441,7 @@ export function MarkdownEditor({
 
   // Expose flush function for updater (and other consumers) to force-save before relaunch
   useEffect(() => {
+    if (secondary) return;
     window.__ghostFlushEditorSave = flushPendingSave;
     // A parent window normally installs the public coordinator. Preserve the
     // standalone contract for tests and any future embedded editor consumer.
@@ -441,7 +450,7 @@ export function MarkdownEditor({
       if (window.__ghostFlushEditorSave === flushPendingSave) delete window.__ghostFlushEditorSave;
       if (window.__ghostFlushSave === flushPendingSave) delete window.__ghostFlushSave;
     };
-  }, [flushPendingSave]);
+  }, [flushPendingSave, secondary]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -457,12 +466,14 @@ export function MarkdownEditor({
       const { src } = (e as CustomEvent).detail;
       editor.chain().focus().setImage({ src }).run();
     };
+    if (secondary) return;
     window.addEventListener("ghost-insert-image", handleInsertImage);
     return () => window.removeEventListener("ghost-insert-image", handleInsertImage);
-  }, [editor]);
+  }, [editor, secondary]);
 
   // Expose search commands for top bar and native menu
   useEffect(() => {
+    if (secondary) return;
     window.__ghostSearch = {
       next: () => editor?.commands.goToNextResult(),
       previous: () => editor?.commands.goToPreviousResult(),
@@ -470,10 +481,11 @@ export function MarkdownEditor({
       replaceAll: () => editor?.commands.replaceAll(),
     };
     return () => { delete window.__ghostSearch; };
-  }, [editor]);
+  }, [editor, secondary]);
 
   // Expose copy-as function for native context menu
   useEffect(() => {
+    if (secondary) return;
     window.__ghostCopyAs = async (format: string) => {
       if (!editor) return;
       const { from, to } = editor.state.selection;
@@ -502,7 +514,7 @@ export function MarkdownEditor({
       }
     };
     return () => { delete window.__ghostCopyAs; };
-  }, [editor]);
+  }, [editor, secondary]);
 
   return (
     <div className="h-full relative" data-ghost-editor-root>

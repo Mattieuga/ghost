@@ -226,9 +226,10 @@ describe("reconcileMirroredRoot", () => {
     expect(result.added).toEqual([]);
     const { index } = await readGhostFolder(fs, ROOT_PATH);
     expect(index.documents["Untitled.md"].documentId).toBe("editor-doc");
-    // The pass still puts the editor's document in Cloud, once.
-    expect(calls.filter((call) => call.name === "cloud_adopt_items")).toHaveLength(1);
-    expect((calls[0].args as { items: Array<{ id: string }> }).items[0].id).toBe("editor-doc");
+    // The editor's record stands as the editor wrote it, and the editor
+    // puts its own document in Cloud; the pass touches neither.
+    expect(index.documents["Untitled.md"].contentHash).toBeNull();
+    expect(calls.filter((call) => call.name === "cloud_adopt_items")).toHaveLength(0);
   });
 
   it("puts documents adopted while signed out into Cloud on the next signed-in pass", async () => {
@@ -307,6 +308,32 @@ describe("folder renames", () => {
     expect(index.folders).toEqual({ notes: "folder-docs" });
     expect(index.documents["notes/a.md"].cloudStale).toBeUndefined();
     expect(index.documents["notes/a.md"].cloudStaleFrom).toBeUndefined();
+  });
+
+  it("moves documents one by one into a folder Cloud already has, rather than renaming over it", async () => {
+    const { fs } = memoryFs({
+      [`${ROOT_PATH}/archive/a.md`]: "# doc-a",
+      [`${ROOT_PATH}/archive/b.md`]: "# doc-b",
+      [`${ROOT_PATH}/archive/keep.md`]: "# doc-k",
+    });
+    await seedFolderTree(
+      fs,
+      { "docs/a.md": "doc-a", "docs/b.md": "doc-b", "archive/keep.md": "doc-k" },
+      { docs: "folder-docs", archive: "folder-archive" },
+    );
+    const { client, calls } = fakeClient();
+
+    const result = await reconcileMirroredRoot(deps(fs, client), uploadedRoot);
+
+    expect(result.renamedFolders).toEqual([]);
+    expect(calls).toEqual([
+      { name: "cloud_move_item", args: { target_item_id: "doc-a", target_parent_id: "folder-archive" } },
+      { name: "cloud_move_item", args: { target_item_id: "doc-b", target_parent_id: "folder-archive" } },
+    ]);
+    const { index } = await readGhostFolder(fs, ROOT_PATH);
+    // The emptied folder keeps its Cloud identity; the tree sync trashes it.
+    expect(index.folders).toEqual({ docs: "folder-docs", archive: "folder-archive" });
+    expect(Object.keys(index.documents).sort()).toEqual(["archive/a.md", "archive/b.md", "archive/keep.md"]);
   });
 
   it("does not treat a partial move as a folder rename", async () => {

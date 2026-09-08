@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import * as Y from "yjs";
+import { encodeBase64 } from "@/cloud/collaboration/base64";
+import { parseMarkdownDocument } from "@/components/editor/frontmatter";
+import { createHeadlessMarkdownEditor } from "@/components/editor/markdown-schema";
+import { serializeMarkdownDocument } from "@/components/editor/markdown-source";
 import type { TrackedRoot } from "@/hooks/use-tracked-folders";
-import { mutateGhostIndex, readGhostFolder } from "@/lib/mirror/adoption";
+import { defaultDocumentId, mutateGhostIndex, readGhostFolder, type PersistenceHandle } from "@/lib/mirror/adoption";
+import { applyDocumentAsBlockDiff } from "@/lib/mirror/block-diff";
 import type { GhostIndexEntry } from "@/lib/mirror/ghost-index";
 import type { MirrorFs } from "@/lib/mirror/mirror-fs";
 
@@ -17,9 +23,121 @@ const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "b
 
 export function companionAssetsDir(rootPath: string, relativePath: string): string {
   const dir = relativePath.includes("/") ? relativePath.slice(0, relativePath.lastIndexOf("/")) : "";
+  return `${rootPath}${dir ? `/${dir}` : ""}/${companionAssetsName(relativePath)}`;
+}
+
+/** The name of the companion folder beside a note: its stem plus `.assets`. */
+export function companionAssetsName(relativePath: string): string {
   const name = relativePath.slice(relativePath.lastIndexOf("/") + 1);
   const stem = name.includes(".") ? name.slice(0, name.lastIndexOf(".")) : name;
-  return `${rootPath}${dir ? `/${dir}` : ""}/${stem}.assets`;
+  return `${stem}.assets`;
+}
+
+/**
+ * Point every mention of the `oldName` companion folder at `newName`, the
+ * way the native side rewrites a file when a note is renamed: a bare
+ * Markdown destination that could no longer stand bare goes in angle
+ * brackets; a bracketed one, an HTML attribute, and a mention in prose are
+ * replaced as they are. Kept in step with `rewrite_companion_links` in
+ * `src-tauri/src/commands/fs.rs`.
+ */
+export function rewriteCompanionLinks(content: string, oldName: string, newName: string): string {
+  if (!oldName || oldName === newName) return content;
+  const wrap = /[\s()]/.test(newName);
+  let out = "";
+  let rest = content;
+  for (let at = rest.indexOf(oldName); at >= 0; at = rest.indexOf(oldName)) {
+    out += rest.slice(0, at);
+    const afterOld = rest.slice(at + oldName.length);
+    if (wrap && out.endsWith("](") && afterOld.startsWith("/")) {
+      const end = afterOld.search(/[)\s]/);
+      const stop = end < 0 ? afterOld.length : end;
+      out += `<${newName}${afterOld.slice(0, stop)}>`;
+      rest = afterOld.slice(stop);
+    } else {
+      out += newName;
+      rest = afterOld;
+    }
+  }
+  return out + rest;
+}
+
+export interface FollowRenameDeps {
+  fs: MirrorFs;
+  /** Present when signed in; the document's change is sent to Cloud. */
+  client: SupabaseClient | null;
+  openPersistence(rootId: string, documentId: string, document: Y.Doc): Promise<PersistenceHandle>;
+}
+
+/**
+ * When a note's file is renamed, the native side renames its companion
+ * folder and rewrites the file's image links, so the file no longer reads
+ * as the document that wrote it; the next open would take that for an
+ * outside edit and, with no version to merge against, make a conflict copy.
+ * Bring the document up to date with the file instead, as a block diff, send
+ * that to Cloud, and record the file as current. Only for a file Ghost wrote
+ * last, and only when the file is exactly that rewrite: anything else is left
+ * for ingestion. Returns the entry to record.
+ */
+export async function followCompanionRename(
+  deps: FollowRenameDeps,
+  root: TrackedRoot,
+  entry: GhostIndexEntry,
+  fromRelative: string,
+  toRelative: string,
+): Promise<GhostIndexEntry> {
+  const oldName = companionAssetsName(fromRelative);
+  const newName = companionAssetsName(toRelative);
+  if (oldName === newName || entry.contentHash === null) return entry;
+  const absolute = `${root.path}/${toRelative}`;
+  const markdown = await deps.fs.readText(absolute);
+  const fileHash = await deps.fs.hashText(markdown);
+  if (fileHash === entry.contentHash) return entry;
+
+  const document = new Y.Doc();
+  const persistence = await deps.openPersistence(root.id, entry.documentId, document);
+  try {
+    if (persistence.status === "unavailable") return entry;
+    const editor = createHeadlessMarkdownEditor({ collaboration: document });
+    try {
+      const expected = rewriteCompanionLinks(serializeMarkdownDocument(editor), oldName, newName);
+      if (await deps.fs.hashText(expected) !== fileHash) return entry;
+      const updates: Uint8Array[] = [];
+      const collect = (update: Uint8Array) => { updates.push(update); };
+      document.on("update", collect);
+      try {
+        applyDocumentAsBlockDiff(editor, parseMarkdownDocument(editor, markdown), { addToHistory: false });
+      } finally {
+        document.off("update", collect);
+      }
+      const cloudId = entry.cloudDocumentId;
+      if (deps.client && cloudId && updates.length > 0) {
+        const { error } = await deps.client
+          .from("cloud_document_updates")
+          .upsert(
+            {
+              document_id: cloudId,
+              client_id: defaultDocumentId(),
+              client_sequence: 1,
+              update: encodeBase64(Y.mergeUpdates(updates)),
+            },
+            { onConflict: "document_id,client_id,client_sequence", ignoreDuplicates: true },
+          );
+        if (error) throw new Error(error.message);
+      }
+      return {
+        ...entry,
+        contentHash: fileHash,
+        mirrorVersion: await deps.fs.getVersion(absolute),
+        mirrorStateVector: encodeBase64(Y.encodeStateVector(document)),
+      };
+    } finally {
+      editor.destroy();
+    }
+  } finally {
+    await persistence.destroy().catch(() => undefined);
+    document.destroy();
+  }
 }
 
 function isImageName(name: string): boolean {
@@ -80,7 +198,12 @@ export async function pushDocumentAssets(
   const cloudId = entry?.cloudDocumentId;
   if (!entry || !cloudId) return { uploaded: [], downloaded: [], removedRemote: [] };
   const dir = companionAssetsDir(root.path, relativePath);
-  const localNames = (await fs.listFiles(dir).catch(() => [] as string[])).filter(isImageName);
+  // A folder that is gone means its images were deleted; a folder that
+  // cannot be listed means nothing, and a failed listing must not be read
+  // as "all deleted" and remove every image from Cloud.
+  const localNames = (await fs.isDirectory(dir))
+    ? (await fs.listFiles(dir)).filter(isImageName)
+    : [];
   const recorded = { ...(entry.assets ?? {}) };
   const uploaded: string[] = [];
   for (const name of localNames) {

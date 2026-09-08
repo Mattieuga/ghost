@@ -255,6 +255,9 @@ export function GhostLayout() {
   // The active note's Cloud ID, resolved from its root's index while the
   // Share sheet is open. Null until the note is in Cloud.
   const [shareItemId, setShareItemId] = useState<string | null>(null);
+  const [shareFolderEmpty, setShareFolderEmpty] = useState(false);
+  // While the item is still on its way to Cloud, look again every so often.
+  const [shareResolveTick, setShareResolveTick] = useState(0);
   const leaveRef = useRef<((path: string) => Promise<void>) | null>(null);
   // undefined while resolving; null when the home folder cannot be found.
   const [ghostFolderPath, setGhostFolderPath] = useState<string | null | undefined>(undefined);
@@ -810,6 +813,7 @@ export function GhostLayout() {
       fs: tauriMirrorFs,
       client: signedIn && cloudClient && !cloudMismatch(root) ? cloudClient : null,
       openPersistence: (id, documentId, document) => openYjsPersistence(mirrorLocalPersistenceKey(id, documentId), document),
+      isOpen: (path) => activeFileRef.current === path,
     }, root, from, to));
     rootSyncChain.current = run.catch(() => undefined);
     await run.catch((error: unknown) => console.error("Failed to move a synced note's document:", error));
@@ -949,7 +953,10 @@ export function GhostLayout() {
       setMirrorNotification("Open a note or select a folder to sync.");
       return;
     }
-    if (root.shared) return;
+    if (root.shared) {
+      setMirrorNotification("Notes shared with you are already in Cloud.");
+      return;
+    }
     if (root.kind === "mirrored") {
       setMirrorNotification(`${folderNameOf(root.path)} is already in Cloud.`);
       return;
@@ -1171,7 +1178,8 @@ export function GhostLayout() {
     if (!historyOpen) return;
     void reloadLocalVersions();
     if (mirrorSession?.cloud) void cloudVersions.refresh();
-    // Refreshing on open is enough; captures update the Cloud list themselves.
+    // Cloud captures update their list themselves; local captures say so.
+    return mirrorSession?.history.subscribe(() => { void reloadLocalVersions(); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyOpen, mirrorSession]);
   const historyVersions = useMemo(
@@ -1210,12 +1218,13 @@ export function GhostLayout() {
   useEffect(() => {
     if (!shareOpen || !shareTarget || !shareRoot || shareRoot.kind !== "mirrored") {
       setShareItemId(null);
+      setShareFolderEmpty(false);
       return;
     }
     let cancelled = false;
     const root = shareRoot;
     const target = shareTarget;
-    void readGhostFolder(tauriMirrorFs, root.path).then(({ metadata, index }) => {
+    void readGhostFolder(tauriMirrorFs, root.path).then(async ({ metadata, index }) => {
       if (cancelled) return;
       const uploaded = root.cloudRootId ?? metadata?.cloudRootId ?? null;
       if (target.kind === "folder") {
@@ -1224,7 +1233,12 @@ export function GhostLayout() {
           return;
         }
         const relativeDir = relativeToRoot(root.path, target.path);
-        setShareItemId(relativeDir ? index.folders[relativeDir] ?? null : null);
+        const id = relativeDir ? index.folders[relativeDir] ?? null : null;
+        // A folder reaches Cloud with its first note; one with none never will.
+        const empty = id === null && (await tauriMirrorFs.listMarkdownFiles(target.path).catch(() => [])).length === 0;
+        if (cancelled) return;
+        setShareItemId(id);
+        setShareFolderEmpty(empty);
         return;
       }
       const relativePath = relativeToRoot(root.path, target.path);
@@ -1232,7 +1246,12 @@ export function GhostLayout() {
       setShareItemId(entry ? (entry.cloudDocumentId ?? (uploaded ? entry.documentId : null)) : null);
     }).catch(() => { if (!cancelled) setShareItemId(null); });
     return () => { cancelled = true; };
-  }, [shareOpen, shareRoot, shareTarget]);
+  }, [shareOpen, shareResolveTick, shareRoot, shareTarget]);
+  useEffect(() => {
+    if (!shareOpen || shareItemId !== null || shareFolderEmpty || shareRoot?.kind !== "mirrored") return;
+    const timer = setInterval(() => setShareResolveTick((tick) => tick + 1), 2000);
+    return () => clearInterval(timer);
+  }, [shareFolderEmpty, shareItemId, shareOpen, shareRoot]);
 
   const folderNameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1) || path;
 
@@ -1539,6 +1558,15 @@ export function GhostLayout() {
     const openPersistence = (rootId: string, documentId: string, document: Y.Doc) => (
       openYjsPersistence(mirrorLocalPersistenceKey(rootId, documentId), document)
     );
+    // Every note's images, for a root that has just been put into this
+    // account's Cloud: a first upload, or a copy under another account.
+    const pushAllAssets = async (root: TrackedRoot) => {
+      const { index } = await readGhostFolder(tauriMirrorFs, root.path);
+      for (const relativePath of Object.keys(index.documents)) {
+        await pushDocumentAssets({ fs: tauriMirrorFs, client }, root, relativePath)
+          .catch((error: unknown) => console.warn("Could not send a note's images:", error));
+      }
+    };
     // Same queue as reconciliation and pulls, so nothing else rewrites the
     // index while the upload records folder and document IDs.
     const run = rootSyncChain.current.then(async () => {
@@ -1561,6 +1589,8 @@ export function GhostLayout() {
                 userId,
               );
               updateRoot(root.id, { cloudRootId: result.cloudRootId, cloudOwnerId: userId });
+              // This account's bucket has none of the images yet.
+              await pushAllAssets(root);
             } catch (error) {
               failedUploads.current.add(root.id);
               setMirrorNotification(`Could not bring ${folderNameOf(root.path)} to this account: ${error instanceof Error ? error.message : String(error)}`);
@@ -1575,13 +1605,7 @@ export function GhostLayout() {
         try {
           const result = await uploadMirroredRoot({ client, fs: tauriMirrorFs, ghostFolder: ghost, openPersistence }, root);
           updateRoot(root.id, { cloudRootId: result.cloudRootId, cloudOwnerId: userId });
-          if (!result.alreadyUploaded) {
-            const { index } = await readGhostFolder(tauriMirrorFs, root.path);
-            for (const relativePath of Object.keys(index.documents)) {
-              await pushDocumentAssets({ fs: tauriMirrorFs, client }, root, relativePath)
-                .catch((error: unknown) => console.warn("Could not send a note's images:", error));
-            }
-          }
+          if (!result.alreadyUploaded) await pushAllAssets(root);
         } catch (error) {
           failedUploads.current.add(root.id);
           setMirrorNotification(isMissingServerFunction(error)
@@ -2544,7 +2568,7 @@ export function GhostLayout() {
               ) : fileDescriptor?.canOpenExternally ? (
                 <OpenExternalButton filePath={activeFile} />
               ) : null}
-                {fileDescriptor?.kind === "markdown" ? (
+                {fileDescriptor?.kind === "markdown" && !activeRoot?.shared ? (
                   <button
                     type="button"
                     data-share-button
@@ -2724,6 +2748,7 @@ export function GhostLayout() {
         target={shareTarget}
         root={shareRoot}
         cloudItemId={shareItemId}
+        folderEmpty={shareFolderEmpty}
         signIn={signInSurface}
         onSyncFolder={(path) => setSyncDialogPath(path)}
         onCopyToNotes={(filePath) => { void handleCopyToNotes(filePath); }}

@@ -155,20 +155,16 @@ export async function sendShareInvitation(
   client: SupabaseClient,
   invitation: {
     itemId: string;
-    itemName: string;
-    itemKind: "document" | "folder";
     email: string;
-    role: CloudShareRole;
     webAppUrl: string;
   },
 ): Promise<boolean> {
+  // The server takes the role and the item's name from the pending
+  // invitation, so only the address and the item travel.
   const { data, error } = await client.functions.invoke("share-invite", {
     body: {
       item_id: invitation.itemId,
-      item_name: invitation.itemName,
-      item_kind: invitation.itemKind,
       email: invitation.email,
-      role: invitation.role,
       web_app_url: invitation.webAppUrl,
     },
   });

@@ -46,22 +46,23 @@ function replaceHash(hash: string) {
 /**
  * A share token outlives the page it arrived on: a magic link opens in a
  * new tab and a guest may sign in later to keep the note. It is kept in
- * session storage until a permanent account has redeemed it. Redeeming is
- * idempotent and never lowers a role, so redeeming twice is safe.
+ * local storage, which that new tab can see, until a permanent account has
+ * redeemed it. Redeeming is idempotent and never lowers a role, so
+ * redeeming twice is safe.
  */
 const PENDING_SHARE_KEY = "ghost-cloud-pending-share";
 
 function readPendingShare(): string | null {
   const fromUrl = shareTokenFromUrl(window.location.href);
   if (fromUrl) {
-    try { window.sessionStorage.setItem(PENDING_SHARE_KEY, fromUrl); } catch { /* private mode */ }
+    try { window.localStorage.setItem(PENDING_SHARE_KEY, fromUrl); } catch { /* private mode */ }
     return fromUrl;
   }
-  try { return window.sessionStorage.getItem(PENDING_SHARE_KEY); } catch { return null; }
+  try { return window.localStorage.getItem(PENDING_SHARE_KEY); } catch { return null; }
 }
 
 function clearPendingShare() {
-  try { window.sessionStorage.removeItem(PENDING_SHARE_KEY); } catch { /* private mode */ }
+  try { window.localStorage.removeItem(PENDING_SHARE_KEY); } catch { /* private mode */ }
 }
 
 function isGuestUser(user: { is_anonymous?: boolean } | null): boolean {
@@ -154,6 +155,17 @@ export function CloudWebApp() {
       });
     return () => { cancelled = true; };
   }, [client, shareToken, user]);
+
+  // A guest who signs in becomes a different user in the same tab, and a
+  // magic link may land in a new tab. Either way the share still waiting
+  // in storage is redeemed for the account, with no reload.
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    if (!userId || isGuestUser(user)) return;
+    const pending = readPendingShare();
+    if (pending) setShareToken(pending);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   // The route decides what is open once the tree can answer for it.
   useEffect(() => {

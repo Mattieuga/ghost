@@ -38,6 +38,9 @@ type BootState =
   };
 
 const COLORS = ["#ff7145", "#5ba8ff", "#76c98f", "#d68cff", "#f4bd50"];
+/** Signed image URLs last an hour; one older than fifty minutes is signed again. */
+const SIGNED_URL_TTL_S = 60 * 60;
+const SIGNED_URL_REFRESH_MS = 50 * 60_000;
 
 function collaborationIdentity(user: User) {
   let hash = 0;
@@ -289,20 +292,25 @@ function CollaborativeSurface({
   }, [session]);
 
   // Images live in Cloud under the document's ID; each is served through a
-  // short-lived signed URL, remembered for as long as the note is open.
+  // signed URL that lasts an hour and is signed again before it runs out,
+  // so a note left open for the afternoon keeps its pictures.
   useEffect(() => {
-    const urls = new Map<string, Promise<string | null>>();
+    const urls = new Map<string, { url: Promise<string | null>; signedAt: number }>();
     const resolve = (src: string): Promise<string | null> => {
       const name = src.slice(src.lastIndexOf("/") + 1);
       if (!name) return Promise.resolve(null);
+      const now = Date.now();
       let pending = urls.get(name);
-      if (!pending) {
-        pending = client.storage.from(ASSETS_BUCKET)
-          .createSignedUrl(`${documentId}/${name}`, 60 * 60)
-          .then(({ data, error }) => (error ? null : data?.signedUrl ?? null));
+      if (!pending || now - pending.signedAt > SIGNED_URL_REFRESH_MS) {
+        pending = {
+          signedAt: now,
+          url: client.storage.from(ASSETS_BUCKET)
+            .createSignedUrl(`${documentId}/${name}`, SIGNED_URL_TTL_S)
+            .then(({ data, error }) => (error ? null : data?.signedUrl ?? null)),
+        };
         urls.set(name, pending);
       }
-      return pending;
+      return pending.url;
     };
     window.__ghostResolveImage = resolve;
     return () => {

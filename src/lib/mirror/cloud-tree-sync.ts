@@ -1,7 +1,8 @@
 import { trashCloudItem } from "@/cloud/cloud-data";
-import type { VisibleCloudItem } from "@/cloud/cloud-sharing";
+import { cloudItemRole, type VisibleCloudItem } from "@/cloud/cloud-sharing";
 import type { TrackedRoot } from "@/hooks/use-tracked-folders";
 import { commitIndexPass, readGhostFolder } from "@/lib/mirror/adoption";
+import { followCompanionRename } from "@/lib/mirror/asset-sync";
 import type { CloudPullDeps } from "@/lib/mirror/cloud-pull";
 import type { GhostIndex } from "@/lib/mirror/ghost-index";
 import { isSafeSharedName } from "@/lib/mirror/shared-root";
@@ -109,6 +110,10 @@ export async function syncCloudTreeToDisk(
     const current = pathByCloudId.get(item.id);
     if (current === undefined) {
       if (next.documents[relativePath]) continue; // a local note not yet in Cloud sits there
+      // A file nobody has adopted yet sits there too: an agent's, written
+      // moments ago. It is adopted and sent up under a numbered name on the
+      // next pass; the Cloud note then arrives beside it, never over it.
+      if ((await fs.hashFile(`${root.path}/${relativePath}`).catch(() => null)) !== null) continue;
       next.documents[relativePath] = {
         documentId: item.id,
         cloudDocumentId: item.id,
@@ -136,7 +141,10 @@ export async function syncCloudTreeToDisk(
       continue;
     }
     delete next.documents[current];
-    next.documents[relativePath] = entry;
+    // The move may have renamed the note's images folder and rewritten its
+    // links; the document follows so the next open finds them in step.
+    next.documents[relativePath] = await followCompanionRename(deps, root, entry, current, relativePath)
+      .catch(() => entry);
     moved.push({ from: current, to: relativePath });
   }
 
@@ -145,6 +153,10 @@ export async function syncCloudTreeToDisk(
   for (const [relativePath, entry] of Object.entries(index.documents)) {
     if (!entry.cloudDocumentId || planned.has(entry.cloudDocumentId)) continue;
     if (entry.cloudStale || isOpen(`${root.path}/${relativePath}`)) continue;
+    // The listing may predate a note this Mac created since; ask before
+    // trashing, and keep the file when the answer is anything but "gone".
+    const stillThere = await cloudItemRole(deps.client, entry.cloudDocumentId).catch(() => "unknown");
+    if (stillThere) continue;
     await fs.trashPath(`${root.path}/${relativePath}`).catch(() => undefined);
     delete next.documents[relativePath];
     removed.push(relativePath);

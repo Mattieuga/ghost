@@ -559,8 +559,29 @@ Deferred, recorded rather than dropped:
   picker or paste path yet.
 - Other file types as synced blobs, and the filter UI (Phase 5).
 - Renaming, moving, and trashing inside a shared folder from the Mac.
-- Upgrading a guest to an account in place; a guest signs in normally and
-  opens the link again.
+
+A second review on 2026-09-08 (three reviewers, one each for the mirror
+engine, the Mac UI, and Cloud) found 23 defects, all fixed in one pass.
+The ones that changed a rule: the Storage and Realtime policy helpers had
+been revoked from `authenticated`, so no image ever reached Cloud and no
+live event ever arrived; access that came through a share link now follows
+the link (migration `20260908010000_cloud_sharing_review.sql`); a
+workspace's tree topic is the owner's alone, members hear on their own
+topic; the invite function mails only a pending invitation and takes the
+role and name from the database; the tree sync asks the server before
+trashing a note absent from a listing and never writes a Cloud note over
+an unadopted local file; a note renamed with its images folder, on either
+side, has its document brought up to date rather than ingested as a
+conflict; a conflict copy gets its own images folder; folder names with
+spaces keep their images through bracketed destinations; a folder moved
+into one Cloud already has moves its notes one by one; an account switch
+sends every image again; a version preview publishes no window globals;
+the history diff keeps marks and diffs inside lists and tables; a guest
+who signs in keeps the share without a reload.
+
+Still deferred: the history diff shows a changed frontmatter block without
+marks, and a code block or table cell that changed is shown removed then
+added rather than diffed inside.
 
 ### Scope
 

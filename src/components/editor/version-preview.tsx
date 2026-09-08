@@ -24,6 +24,7 @@ export function VersionPreview({
         editable={false}
         showStyleBar={false}
         platformActions={platformActions}
+        secondary
       />
     </div>
   );

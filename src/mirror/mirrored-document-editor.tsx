@@ -70,6 +70,8 @@ export interface MirroredSessionInfo {
   history: {
     list(): Promise<HistoryVersion[]>;
     capture(reason: LocalVersionReason): Promise<void>;
+    /** Called after every capture, so an open list can reload. */
+    subscribe(listener: () => void): () => void;
   };
 }
 
@@ -288,12 +290,14 @@ export function MirroredDocumentEditor({
         onStatus: (status, error) => onStatusChangeRef.current(status, error),
       });
 
+      const historyListeners = new Set<() => void>();
       const checkpoint = async (reason: LocalVersionReason) => {
         await captureLocalVersion(versionFs, root.path, documentId, {
           reason,
           markdown: serializeMarkdownDocument(engineEditor),
           yjsSnapshotBase64: encodeBase64(Y.encodeStateAsUpdate(document)),
         });
+        for (const listener of historyListeners) listener();
       };
 
       const ingest = () => ingestExternalChange({
@@ -417,6 +421,10 @@ export function MirroredDocumentEditor({
             return versions;
           },
           capture: checkpoint,
+          subscribe: (listener) => {
+            historyListeners.add(listener);
+            return () => { historyListeners.delete(listener); };
+          },
         },
       });
     };

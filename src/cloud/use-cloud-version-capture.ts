@@ -56,6 +56,14 @@ export function useCloudVersionCapture(
   const dirtyRef = useRef(false);
   const capturePromiseRef = useRef<Promise<CloudDocumentVersion | null> | null>(null);
   const active = Boolean(client && documentId && editor && session);
+  // The session reports "synced" again after every collaborator's flush.
+  // History needs the network once per document, not a fresh start each
+  // time, so readiness is latched the first time it is seen.
+  const [readyDocument, setReadyDocument] = useState<string | null>(null);
+  useEffect(() => {
+    if (networkReady && documentId) setReadyDocument(documentId);
+  }, [documentId, networkReady]);
+  const ready = readyDocument !== null && readyDocument === documentId;
 
   useEffect(() => {
     setVersions([]);
@@ -88,7 +96,7 @@ export function useCloudVersionCapture(
     if (capturePromiseRef.current) return capturePromiseRef.current;
     const revisionAtStart = changeRevisionRef.current;
     setSaving(true);
-    setError(null);
+    if (reason !== "automatic") setError(null);
     const promise = (async () => {
       await session.flush();
       const markdownSnapshot = serializeMarkdownDocument(editor);
@@ -104,7 +112,9 @@ export function useCloudVersionCapture(
       dirtyRef.current = changeRevisionRef.current !== revisionAtStart || version.markdown_snapshot !== markdownSnapshot;
       return version;
     })().catch((reason: unknown) => {
-      setError(reason instanceof Error ? reason.message : "Could not save document history.");
+      // A background capture that fails tries again later; only a capture
+      // the user asked for, such as a restore, is worth a message.
+      if (reason !== "automatic") setError(reason instanceof Error ? reason.message : "Could not save document history.");
       return null;
     }).finally(() => {
       capturePromiseRef.current = null;
@@ -138,7 +148,7 @@ export function useCloudVersionCapture(
   }, [cancelScheduled, capture, session]);
 
   useEffect(() => {
-    if (!active || !networkReady || !editor || !session) return;
+    if (!active || !ready || !editor || !session) return;
     let live = true;
     void refresh().then((loaded) => {
       if (!live || session.role !== "editor") return;
@@ -150,10 +160,10 @@ export function useCloudVersionCapture(
       }
     });
     return () => { live = false; };
-  }, [active, capture, editor, networkReady, refresh, scheduleAutomatic, session]);
+  }, [active, capture, editor, ready, refresh, scheduleAutomatic, session]);
 
   useEffect(() => {
-    if (!active || !networkReady || !editor || !session || session.role !== "editor") return;
+    if (!active || !ready || !editor || !session || session.role !== "editor") return;
     const handleUpdate = () => {
       changeRevisionRef.current += 1;
       dirtyRef.current = true;
@@ -161,7 +171,7 @@ export function useCloudVersionCapture(
     };
     editor.on("update", handleUpdate);
     return () => { editor.off("update", handleUpdate); };
-  }, [active, editor, networkReady, scheduleAutomatic, session]);
+  }, [active, editor, ready, scheduleAutomatic, session]);
 
   useEffect(() => () => cancelScheduled(), [cancelScheduled]);
 

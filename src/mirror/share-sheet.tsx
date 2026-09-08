@@ -77,7 +77,6 @@ export function SharePanel({
   client,
   itemId,
   itemName,
-  itemKind,
   webAppUrl,
   copy = copyText,
 }: {
@@ -85,7 +84,6 @@ export function SharePanel({
   /** Null while the item is still on its way to Cloud. */
   itemId: string | null;
   itemName: string;
-  itemKind: "document" | "folder";
   webAppUrl: string;
   copy?: (text: string) => Promise<void>;
 }) {
@@ -153,14 +151,7 @@ export function SharePanel({
       const outcome = await shareCloudItem(client, id, email, inviteRole);
       setInviteEmail("");
       // The email is best effort: access exists either way.
-      await sendShareInvitation(client, {
-        itemId: id,
-        itemName,
-        itemKind,
-        email: outcome.email,
-        role: outcome.role,
-        webAppUrl,
-      }).catch(() => false);
+      await sendShareInvitation(client, { itemId: id, email: outcome.email, webAppUrl }).catch(() => false);
     });
   };
 
@@ -276,6 +267,7 @@ export function ShareSheet({
   target,
   root,
   cloudItemId,
+  folderEmpty = false,
   webAppUrl = GHOST_WEB_URL,
   signIn,
   onSyncFolder,
@@ -289,6 +281,8 @@ export function ShareSheet({
   root: TrackedRoot | null;
   /** The item's Cloud ID once it is in Cloud; null while it is resolving or not uploaded. */
   cloudItemId?: string | null;
+  /** A folder with no notes is not in Cloud, so there is nothing to share yet. */
+  folderEmpty?: boolean;
   webAppUrl?: string;
   signIn: SignInSurfaceProps;
   onSyncFolder: (path: string) => void;
@@ -322,6 +316,11 @@ export function ShareSheet({
         />
       </div>
     );
+  } else if (root && root.kind === "mirrored" && folderEmpty) {
+    title = <PanelTitle before="Share" name={itemName} />;
+    ariaLabel = `Share ${itemName}`;
+    description = `Add a note to ${itemName} to share it. An empty folder is not in Cloud.`;
+    footer = <Button variant="outline" onClick={onClose}>Close</Button>;
   } else if (root && root.kind === "mirrored") {
     title = <PanelTitle before="Share" name={itemName} />;
     ariaLabel = `Share ${itemName}`;
@@ -330,7 +329,6 @@ export function ShareSheet({
         client={client}
         itemId={cloudItemId ?? null}
         itemName={itemName}
-        itemKind={target?.kind === "folder" ? "folder" : "document"}
         webAppUrl={webAppUrl}
       />
     );
@@ -366,7 +364,7 @@ export function ShareSheet({
   // The same panel as Settings, with the same cards inside.
   return (
     <FloatingPanel title={title} ariaLabel={ariaLabel} description={description} onClose={onClose} footer={footer} width={560} data-share-sheet>
-      {body ?? <div className="text-xs text-muted-foreground">Nothing to share here.</div>}
+      {body}
     </FloatingPanel>
   );
 }

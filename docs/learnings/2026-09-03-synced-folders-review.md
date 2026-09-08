@@ -16,6 +16,9 @@ The 2026-09-03 review of the synced-folders and sharing work (rationale in the [
 - Identity columns are assigned at insert, not commit. "Everything after ID n" can skip a row committed later with a smaller ID.
 - "Same document" must mean "reads back the same". An attribute Markdown cannot carry (an image's empty alt) made a file differ from the document that wrote it, and every open produced a conflict copy of identical bytes.
 - A bare Markdown destination ends at the first space. A note called "My note" keeps images in `My note.assets`, and `![](My note.assets/x.png)` reads back as text; destinations with spaces or parentheses go in angle brackets, on both sides of the bridge.
+- A helper a policy calls runs as the policy's role. Revoking EXECUTE from `authenticated` on the Storage and Realtime helpers, the way the RPC-only helpers are revoked, refused every image upload and every live subscription while every test passed.
+- A listing is a moment, not the present. Anything trashed because it is absent from a listing must first ask the server whether it is gone; a note created since the listing was taken looks identical to one deleted elsewhere.
+- Renaming a note rewrites its file. The native side moves the images folder and rewrites the links, so the file no longer matches the document that wrote it; the document has to follow, or the next open makes a conflict copy of a note nobody edited.
 
 ## The pull resurrected deleted files
 
@@ -56,6 +59,18 @@ The 2026-09-03 review of the synced-folders and sharing work (rationale in the [
 ## A space in the note's name broke its images
 
 **Symptom:** duplicate "notes.md", or add an image to "My note.md", and the copy shows the raw `![](...)` text instead of the picture. A conflict copy, whose name always has spaces and parentheses, would never have shown an image. **Cause:** the serializer and the Rust rename, duplicate, and conflict paths all wrote the folder name bare into the destination, and a bare CommonMark destination ends at the first space. **Fix:** a destination with spaces or parentheses is wrapped in angle brackets by the editor's image serializer and by one shared Rust rewrite that rename, duplicate, copy, and the conflict copy all use; the parser already read the bracketed form. Image file names never carry spaces, since saving replaces them, so the folder name was the only source.
+
+## The policy helpers nobody could call
+
+**Symptom:** images added on the Mac never reached Cloud and showed empty on the web; a rename on the web reached the Mac only on the next focus, never live. No error surfaced: the asset push logged a warning and the subscription was silently refused. **Cause:** the migrations revoked EXECUTE on every `private` helper from `authenticated`, which is right for helpers only security-definer RPCs call and wrong for `cloud_asset_document` and `cloud_can_watch_topic`, which Storage and Realtime evaluate inside policies as the caller's role. The text-level migration tests asserted the revoke was there. **Fix:** grant those two to `authenticated`, and check with `has_function_privilege` against the linked project when a policy calls a helper. The test now asserts the grant.
+
+## A listing that trashed the note just made
+
+**Symptom:** press ⌘N while a Cloud refresh is running and the new note lands in the Trash, to return from Cloud on the next refresh. **Cause:** the tree sync trashed any indexed note absent from the visible-items listing; the listing was taken seconds earlier, and the editor gives a new note its Cloud ID outside the queue the listing belongs to. **Fix:** ask the server for the note's role before trashing, as the Shared root already did; only a null answer means gone.
+
+## The rename that arrived as a conflict
+
+**Symptom:** rename a note with images on the web, or rename a closed note on the Mac; the next open on the Mac makes a conflict copy of identical text and the surviving note's images are broken. **Cause:** the native rename moves `<stem>.assets/` and rewrites the file's links, so the file stops matching the document that wrote it; with no version to merge against, ingestion could only conflict. **Fix:** after a rename of a closed note, on either side, the document is brought up to date with the file as a block diff when the file is exactly the rewrite of the document's own text, the change is sent to Cloud, and the file is recorded as current. An open note's editor ingests the rename itself.
 
 ## Watching a code checkout walked it whole
 

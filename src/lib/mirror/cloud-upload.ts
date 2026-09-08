@@ -187,7 +187,8 @@ export async function uploadMirroredRoot(
     for (const [relativePath, entry] of Object.entries(current.documents)) {
       const cloudId = cloudIdOf.get(entry.documentId);
       if (!cloudId) continue;
-      const { cloudCursor: _cursor, cloudStale: _stale, cloudStaleFrom: _from, ...rest } = entry;
+      // What was sent to another account's bucket does not count here.
+      const { cloudCursor: _cursor, cloudStale: _stale, cloudStaleFrom: _from, assets: _assets, ...rest } = entry;
       current.documents[relativePath] = { ...rest, cloudDocumentId: cloudId };
     }
   });
@@ -243,7 +244,8 @@ export async function restoreCloudLink(fs: MirrorFs, rootPath: string, ownerId: 
   if (!link || link.version !== 1 || typeof link.cloudRootId !== "string") return null;
   await mutateGhostIndex(fs, rootPath, (current) => {
     for (const [relativePath, entry] of Object.entries(current.documents)) {
-      const { cloudDocumentId: _id, cloudCursor: _cursor, cloudStale: _stale, cloudStaleFrom: _from, ...rest } = entry;
+      // Images are sent again for this account; its bucket may lack some.
+      const { cloudDocumentId: _id, cloudCursor: _cursor, cloudStale: _stale, cloudStaleFrom: _from, assets: _assets, ...rest } = entry;
       const cloudId = link.documents[entry.documentId];
       current.documents[relativePath] = cloudId ? { ...rest, cloudDocumentId: cloudId } : rest;
     }

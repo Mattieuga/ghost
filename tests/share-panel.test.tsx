@@ -77,7 +77,7 @@ describe("SharePanel", () => {
     const { client, calls } = fakeClient();
     const copied: string[] = [];
     const host = mount(
-      <SharePanel client={client} itemId="doc-1" itemName="Plan.md" itemKind="document" webAppUrl="https://ghosteditor.app/app" copy={async (text) => { copied.push(text); }} />,
+      <SharePanel client={client} itemId="doc-1" itemName="Plan.md" webAppUrl="https://ghosteditor.app/app" copy={async (text) => { copied.push(text); }} />,
     );
     await flush();
     const toggle = host.querySelector<HTMLButtonElement>('[role="switch"]')!;
@@ -111,7 +111,7 @@ describe("SharePanel", () => {
 
   it("invites by email and asks the function to send the email", async () => {
     const { client, calls, invoked } = fakeClient();
-    const host = mount(<SharePanel client={client} itemId="doc-1" itemName="Plan.md" itemKind="document" webAppUrl="https://ghosteditor.app/app" copy={async () => undefined} />);
+    const host = mount(<SharePanel client={client} itemId="doc-1" itemName="Plan.md" webAppUrl="https://ghosteditor.app/app" copy={async () => undefined} />);
     await flush();
     await act(async () => {
       setValue(host.querySelector<HTMLInputElement>("input[type=email]")!, "friend@example.com");
@@ -126,14 +126,14 @@ describe("SharePanel", () => {
     });
     expect(invoked).toEqual([{
       name: "share-invite",
-      body: { item_id: "doc-1", item_name: "Plan.md", item_kind: "document", email: "friend@example.com", role: "viewer", web_app_url: "https://ghosteditor.app/app" },
+      body: { item_id: "doc-1", email: "friend@example.com", web_app_url: "https://ghosteditor.app/app" },
     }]);
     expect(host.textContent).toContain("wife@example.com");
   });
 
   it("keeps its rows while the item is still on its way to Cloud", async () => {
     const { client, calls } = fakeClient();
-    const host = mount(<SharePanel client={client} itemId={null} itemName="Plan.md" itemKind="document" webAppUrl="x" copy={async () => undefined} />);
+    const host = mount(<SharePanel client={client} itemId={null} itemName="Plan.md" webAppUrl="x" copy={async () => undefined} />);
     await flush();
     expect(host.textContent).toContain("Getting Plan.md into Cloud…");
     expect(host.querySelector<HTMLButtonElement>('[role="switch"]')?.disabled).toBe(true);
@@ -143,7 +143,7 @@ describe("SharePanel", () => {
 
   it("explains when the server lacks the sharing migration", async () => {
     const rpc = vi.fn(async () => ({ data: null, error: { message: "Could not find the function public.cloud_item_sharing in the schema cache" } }));
-    const host = mount(<SharePanel client={{ rpc } as unknown as SupabaseClient} itemId="doc-1" itemName="x" itemKind="document" webAppUrl="x" copy={async () => undefined} />);
+    const host = mount(<SharePanel client={{ rpc } as unknown as SupabaseClient} itemId="doc-1" itemName="x" webAppUrl="x" copy={async () => undefined} />);
     await flush();
     expect(host.textContent).toContain("Cloud needs a server update before sharing works.");
   });

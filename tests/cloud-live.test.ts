@@ -12,9 +12,11 @@ function item(overrides: Partial<VisibleCloudItem>): VisibleCloudItem {
 }
 
 describe("live topics", () => {
-  it("lists the account, its workspace, and every workspace it can see, once each", () => {
+  it("lists the account and the workspaces it owns, never another owner's", () => {
     const topics = liveTopicsFor("u1", [item({ workspace_id: "w1" }), item({ id: "y", workspace_id: "w2", shared_root_id: "y" })], "w1");
-    expect(topics).toEqual(["ghost-tree:w1", "ghost-tree:w2", "ghost-user:u1"]);
+    expect(topics).toEqual(["ghost-tree:w1", "ghost-user:u1"]);
+    // The Mac passes no workspace of its own; its own items name it.
+    expect(liveTopicsFor("u1", [item({ workspace_id: "w1" })], null)).toEqual(["ghost-tree:w1", "ghost-user:u1"]);
     expect(liveTopicsFor(null, [], null)).toEqual([]);
   });
 

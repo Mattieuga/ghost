@@ -38,6 +38,32 @@ describe("version diff", () => {
     expect(marked(doc, "diffInsert")).toEqual(["one", "two"]);
   });
 
+  it("keeps a heading on one line and its emphasis through a word diff", () => {
+    const doc = diffMarkdownVersions("# Hello **world** today\n", "# Hello **world** tonight\n");
+    const heading = doc.content?.[0];
+    expect(heading?.type).toBe("heading");
+    expect(heading?.content?.some((node) => node.type === "hardBreak")).toBe(false);
+    expect(marked(doc, "diffDelete")).toEqual(["today"]);
+    expect(marked(doc, "diffInsert")).toEqual(["tonight"]);
+    const world = heading?.content?.find((node) => node.text === "world");
+    expect(world?.marks?.map((mark) => mark.type)).toEqual(["bold"]);
+  });
+
+  it("diffs inside a list so one changed item does not remove the whole list", () => {
+    const doc = diffMarkdownVersions("- one\n- two\n- three\n", "- one\n- two changed\n- three\n");
+    expect(doc.content?.map((block) => block.type)).toEqual(["bulletList"]);
+    expect(marked(doc, "diffDelete")).toEqual([]);
+    expect(marked(doc, "diffInsert")).toEqual([" changed"]);
+  });
+
+  it("keeps a link through a word diff", () => {
+    const doc = diffMarkdownVersions("See [docs](https://example.com) now\n", "See [docs](https://example.com) later\n");
+    const link = doc.content?.[0]?.content?.find((node) => node.text === "docs");
+    expect(link?.marks?.map((mark) => mark.type)).toEqual(["link"]);
+    expect(marked(doc, "diffDelete")).toEqual(["now"]);
+    expect(marked(doc, "diffInsert")).toEqual(["later"]);
+  });
+
   it("has no marks when nothing changed, and none for the first version", () => {
     expect(hasDiffMarks(diffMarkdownVersions("# Same\n", "# Same\n"))).toBe(false);
     expect(hasDiffMarks(diffMarkdownVersions(null, "# First\n"))).toBe(false);

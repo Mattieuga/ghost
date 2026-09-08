@@ -82,20 +82,26 @@ unsafe extern "C" fn will_open_menu(
     let plain_item: *mut AnyObject = msg_send![ns_menu_item_class, alloc];
     let plain_item: *mut AnyObject = msg_send![plain_item, initWithTitle: &*plain_title, action: sel!(ghostCopyAsPlainText:), keyEquivalent: &*empty_key];
     let _: () = msg_send![submenu, addItem: plain_item];
+    let _: () = msg_send![plain_item, release];
 
     let md_title = NSString::from_str("Markdown");
     let md_item: *mut AnyObject = msg_send![ns_menu_item_class, alloc];
     let md_item: *mut AnyObject = msg_send![md_item, initWithTitle: &*md_title, action: sel!(ghostCopyAsMarkdown:), keyEquivalent: &*empty_key];
     let _: () = msg_send![submenu, addItem: md_item];
+    let _: () = msg_send![md_item, release];
 
     let rich_title = NSString::from_str("Rich Text");
     let rich_item: *mut AnyObject = msg_send![ns_menu_item_class, alloc];
     let rich_item: *mut AnyObject = msg_send![rich_item, initWithTitle: &*rich_title, action: sel!(ghostCopyAsRichText:), keyEquivalent: &*empty_key];
     let _: () = msg_send![submenu, addItem: rich_item];
+    let _: () = msg_send![rich_item, release];
 
+    // Each container retains what it holds, so the +1 from alloc/init is
+    // given up as soon as the item is placed; the menu owns the rest.
     let parent_item: *mut AnyObject = msg_send![ns_menu_item_class, alloc];
     let parent_item: *mut AnyObject = msg_send![parent_item, initWithTitle: &*submenu_title, action: std::ptr::null::<c_void>(), keyEquivalent: &*empty_key];
     let _: () = msg_send![parent_item, setSubmenu: submenu];
+    let _: () = msg_send![submenu, release];
 
     // Set fallback icon via system symbol (overridden if Copy's icon is found)
     let symbol_name = NSString::from_str("doc.on.doc");
@@ -143,8 +149,10 @@ unsafe extern "C" fn will_open_menu(
 
     // Every NSMenu the web view opens passes through here, a <select>'s
     // popup included. Only a menu that offers Copy is a context menu.
-    if copy_index < 0 { return; }
-    let _: () = msg_send![menu, insertItem: parent_item, atIndex: copy_index + 1];
+    if copy_index >= 0 {
+        let _: () = msg_send![menu, insertItem: parent_item, atIndex: copy_index + 1];
+    }
+    let _: () = msg_send![parent_item, release];
 }
 
 /// Helper: evaluate JS that calls the global __ghostCopyAs function

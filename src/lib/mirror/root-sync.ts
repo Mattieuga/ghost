@@ -20,6 +20,7 @@ import {
   relocateIndexEntry,
   type PersistenceHandle,
 } from "@/lib/mirror/adoption";
+import { followCompanionRename } from "@/lib/mirror/asset-sync";
 import {
   reconcileIndexWithDisk,
   relativeToRoot,
@@ -203,6 +204,25 @@ export async function relocateDocument(
     cloudStale: Boolean(cloudRootId) && !cloud,
   });
   if (!entry) return false;
+  // A closed note whose images folder moved with it: its document follows
+  // the rewritten links now. An open note's editor ingests them itself.
+  const isOpen = deps.isOpen ?? (() => false);
+  if (!isOpen(`${root.path}/${fromRelative}`) && !isOpen(`${root.path}/${toRelative}`)) {
+    const followed = await followCompanionRename(deps, root, entry, fromRelative, toRelative).catch(() => entry);
+    if (followed !== entry) {
+      await mutateGhostIndex(deps.fs, root.path, (current) => {
+        const live = current.documents[toRelative];
+        if (live && live.documentId === entry.documentId) {
+          current.documents[toRelative] = {
+            ...live,
+            contentHash: followed.contentHash,
+            mirrorVersion: followed.mirrorVersion,
+            mirrorStateVector: followed.mirrorStateVector,
+          };
+        }
+      });
+    }
+  }
   const cloudId = entry.cloudDocumentId ?? (cloudRootId ? entry.documentId : null);
   if (!cloud || !cloudId) return true;
   const { index } = await readGhostFolder(deps.fs, root.path);
@@ -259,7 +279,8 @@ export async function detectFolderRenames(
       const rest = parts.slice(depth).join("/");
       if (!move.to.endsWith(`/${rest}`)) continue;
       const to = move.to.slice(0, move.to.length - rest.length - 1);
-      if (to === from || !(from in folders)) continue;
+      // Moving into a folder Cloud already knows is not a rename of this one.
+      if (to === from || !(from in folders) || to in folders) continue;
       if (!candidates.has(from)) candidates.set(from, to);
       break; // the top-most known folder is the one that moved
     }
@@ -288,14 +309,19 @@ function rekeyFolders(folders: Record<string, string>, from: string, to: string)
   }
 }
 
+/**
+ * Carry one folder rename to Cloud. False when Cloud already has a folder
+ * of that name there: then this was not a rename after all, and the
+ * documents move one by one into the folder that exists.
+ */
 async function carryFolderRename(
   deps: RootSyncDeps,
   cloud: CloudContext,
   index: GhostIndex,
   rename: { from: string; to: string },
-): Promise<void> {
+): Promise<boolean> {
   const folderId = index.folders[rename.from];
-  if (!folderId) return;
+  if (!folderId) return false;
   const fromParent = parentOf(rename.from);
   const toParent = parentOf(rename.to);
   try {
@@ -307,9 +333,11 @@ async function carryFolderRename(
       await renameCloudItem(cloud.client, folderId, nameOf(rename.to));
     }
   } catch (error) {
+    if (isAlreadyExists(error)) return false;
     if (!isNotFound(error)) throw error;
   }
   rekeyFolders(index.folders, rename.from, rename.to);
+  return true;
 }
 
 function coveredByFolderRename(move: { from: string; to: string }, renames: Array<{ from: string; to: string }>): boolean {
@@ -370,11 +398,11 @@ export async function reconcileMirroredRoot(
 
   // A folder renamed or moved as a whole travels as one Cloud item; its
   // documents then need no move of their own.
-  const renamedFolders = cloud && reconciliation.renamed.length > 0
-    ? await detectFolderRenames(fs, root.path, next.folders, index.documents, reconciliation.renamed)
-    : [];
-  if (cloud) {
-    for (const rename of renamedFolders) await carryFolderRename(deps, cloud, next, rename);
+  const renamedFolders: Array<{ from: string; to: string }> = [];
+  if (cloud && reconciliation.renamed.length > 0) {
+    for (const rename of await detectFolderRenames(fs, root.path, next.folders, index.documents, reconciliation.renamed)) {
+      if (await carryFolderRename(deps, cloud, next, rename)) renamedFolders.push(rename);
+    }
   }
 
   const renamed: Array<{ from: string; to: string }> = [];
@@ -411,12 +439,13 @@ export async function reconcileMirroredRoot(
       .map(([path, entry]) => ({ from: entry.cloudStaleFrom as string, to: path }));
     const staleBefore: Record<string, unknown> = {};
     for (const move of staleMoves) staleBefore[move.from] = true;
-    const staleFolders = staleMoves.length > 0
-      ? await detectFolderRenames(fs, root.path, next.folders, staleBefore, staleMoves)
-      : [];
-    for (const rename of staleFolders) {
-      await carryFolderRename(deps, cloud, next, rename);
-      renamedFolders.push(rename);
+    const staleFolders: Array<{ from: string; to: string }> = [];
+    if (staleMoves.length > 0) {
+      for (const rename of await detectFolderRenames(fs, root.path, next.folders, staleBefore, staleMoves)) {
+        if (!(await carryFolderRename(deps, cloud, next, rename))) continue;
+        staleFolders.push(rename);
+        renamedFolders.push(rename);
+      }
     }
     for (const [relativePath, entry] of Object.entries(next.documents)) {
       if (!entry.cloudStale) continue;
@@ -439,12 +468,11 @@ export async function reconcileMirroredRoot(
   const added: string[] = [];
   for (const relativePath of reconciliation.added) {
     if (isOpen(`${root.path}/${relativePath}`)) continue;
-    // The editor may have claimed this file since the pass began.
+    // The editor may have claimed this file since the pass began. Its entry
+    // is left out of this pass's result, so the commit keeps the editor's
+    // own, newer record rather than the copy read here.
     const claimed = (await readGhostFolder(fs, root.path)).index.documents[relativePath];
-    if (claimed) {
-      next.documents[relativePath] = claimed;
-      continue;
-    }
+    if (claimed) continue;
     let adopted;
     try {
       adopted = await adoptDocument(

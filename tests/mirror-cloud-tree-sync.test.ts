@@ -116,6 +116,42 @@ describe("syncCloudTreeToDisk", () => {
     expect((await readGhostFolder(fs, ROOT)).index.folders).toEqual({ Fresh: "folder-new" });
   });
 
+  it("never writes a Cloud note over a local file nobody has adopted yet", async () => {
+    const { fs, files } = memoryFs({ [`${ROOT}/Agent.md`]: "# written by an agent" });
+    await writeGhostIndex(fs, ROOT, emptyGhostIndex());
+    const deps = pullDeps(fs, headsClient({ "web-agent": 1 }), { "web-agent": [updateFor("# from the web\n", 1)] });
+
+    const result = await syncCloudTreeToDisk(deps, root, [notesRoot, item({ id: "web-agent", name: "Agent.md" })]);
+
+    expect(result.added).toEqual([]);
+    expect((await readGhostFolder(fs, ROOT)).index.documents["Agent.md"]).toBeUndefined();
+    const pulled = await pullCloudChanges(deps, root);
+    expect(pulled.written).toEqual([]);
+    expect(files.get(`${ROOT}/Agent.md`)).toBe("# written by an agent");
+  });
+
+  it("asks the server before trashing a note the listing does not show", async () => {
+    const { fs, trashed } = memoryFs({ [`${ROOT}/Kept.md`]: "# kept", [`${ROOT}/Gone.md`]: "# gone" });
+    const index = emptyGhostIndex();
+    index.documents["Kept.md"] = entry({ documentId: "kept" });
+    index.documents["Gone.md"] = entry({ documentId: "gone" });
+    await writeGhostIndex(fs, ROOT, index);
+    const client = {
+      rpc: async (name: string, args: { target_document_id?: string }) => {
+        if (name === "cloud_document_role") return { data: args.target_document_id === "kept" ? "owner" : null, error: null };
+        return { data: name === "cloud_document_heads" ? [] : null, error: null };
+      },
+    } as never;
+    const deps = { ...pullDeps(fs, client, {}), client };
+
+    // The listing predates the note this Mac just created.
+    const result = await syncCloudTreeToDisk(deps, root, [notesRoot]);
+
+    expect(result.removed).toEqual(["Gone.md"]);
+    expect(trashed).toEqual([`${ROOT}/Gone.md`]);
+    expect(Object.keys((await readGhostFolder(fs, ROOT)).index.documents)).toEqual(["Kept.md"]);
+  });
+
   it("does nothing when the root is not visible to this account", async () => {
     const { fs, trashed } = memoryFs({ [`${ROOT}/a.md`]: "# a" });
     const index = emptyGhostIndex();

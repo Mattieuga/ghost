@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import * as Y from "yjs";
@@ -9,11 +9,15 @@ import type {
 } from "@/cloud/collaboration/types";
 import { CloudAccessError } from "@/cloud/collaboration/types";
 import { PresenceAvatars } from "@/cloud/presence-avatars";
+import { useCloudVersionCapture } from "@/cloud/use-cloud-version-capture";
+import { History } from "lucide-react";
+import { cloudToHistory, previewFor, restoreVersion } from "@/components/editor/version-history";
+import { VersionHistorySidebar, type HistoryVersion } from "@/components/editor/version-history-sidebar";
+import { VersionPreview } from "@/components/editor/version-preview";
 import {
   openCloudLocalPersistence,
   type CloudLocalPersistenceHandle,
 } from "@/cloud/cloud-local-persistence";
-import { CloudVersionHistory } from "@/cloud/cloud-version-history-panel";
 import { DocumentHeader } from "@/components/editor/document-header";
 import { HeadingMinimap } from "@/components/editor/heading-minimap";
 import {
@@ -237,6 +241,38 @@ function CollaborativeSurface({
   const lastNotificationRef = useRef<string | null>(null);
   const flushRef = useRef(session.flush.bind(session));
   flushRef.current = session.flush.bind(session);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historySelectedId, setHistorySelectedId] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const versions = useCloudVersionCapture(client, documentId, editor, session, snapshot.synchronization === "synced");
+  const historyVersions = useMemo(() => versions.versions.map(cloudToHistory), [versions.versions]);
+  const historyPreview = useMemo(
+    () => (historyOpen ? previewFor(historyVersions, historySelectedId) : null),
+    [historyOpen, historySelectedId, historyVersions],
+  );
+  useEffect(() => {
+    if (historyOpen) void versions.refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyOpen]);
+  const handleRestore = async (version: HistoryVersion) => {
+    if (!editor) return;
+    setRestoring(true);
+    setRestoreError(null);
+    try {
+      await restoreVersion({
+        editor,
+        session,
+        captureCloud: versions.capture,
+        cancelScheduledCloud: versions.cancelScheduled,
+      }, version);
+      setHistorySelectedId(null);
+    } catch (reason) {
+      setRestoreError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setRestoring(false);
+    }
+  };
 
   useEffect(() => session.subscribe(setSnapshot), [session]);
   useEffect(() => {
@@ -277,7 +313,8 @@ function CollaborativeSurface({
   }, [localPersistence.message, snapshot.lastError]);
 
   return (
-    <div className="relative h-full min-h-0 overflow-hidden bg-background">
+    <div className="flex h-full min-h-0 overflow-hidden bg-background">
+      <div className="relative h-full min-w-0 flex-1">
       <DocumentHeader
         pathSegments={pathSegments}
         fileName={title}
@@ -287,15 +324,17 @@ function CollaborativeSurface({
           <>
             <CloudSaveStatus snapshot={snapshot} />
             <PresenceAvatars names={presence} />
-            {editor ? (
-              <CloudVersionHistory
-                client={client}
-                documentId={documentId}
-                editor={editor}
-                networkReady={snapshot.synchronization === "synced"}
-                session={session}
-              />
-            ) : null}
+            <button
+              type="button"
+              data-history-button
+              aria-label="Version history"
+              aria-pressed={historyOpen}
+              className={`cursor-pointer transition-colors ${historyOpen ? "text-sidebar-foreground" : "text-ring hover:text-sidebar-foreground"}`}
+              title="Version history"
+              onClick={() => setHistoryOpen((open) => !open)}
+            >
+              <History className="size-3.5" />
+            </button>
           </>
         )}
       />
@@ -305,21 +344,40 @@ function CollaborativeSurface({
         data-editor-scroll-container
         className="h-full overflow-auto overscroll-contain outline-none"
       >
-        <MarkdownEditor
-          collaboration={{
-            document: session.document,
-            provider: session,
-            user: session.awareness.getLocalState()?.user ?? {},
-          }}
-          editable={snapshot.role === "editor"}
-          showStyleBar={showStyleBar}
-          onToggleStyleBar={onToggleStyleBar}
-          onEditorReady={setEditor}
-          platformActions={platformActions}
-        />
+        {historyPreview ? (
+          <VersionPreview versionId={historySelectedId ?? ""} document={historyPreview} platformActions={platformActions} />
+        ) : null}
+        <div className={historyPreview ? "hidden" : "h-full"}>
+          <MarkdownEditor
+            collaboration={{
+              document: session.document,
+              provider: session,
+              user: session.awareness.getLocalState()?.user ?? {},
+            }}
+            editable={snapshot.role === "editor"}
+            showStyleBar={showStyleBar}
+            onToggleStyleBar={onToggleStyleBar}
+            onEditorReady={setEditor}
+            platformActions={platformActions}
+          />
+        </div>
       </main>
-      {editor && scrollContainer ? (
+      {editor && scrollContainer && !historyPreview ? (
         <HeadingMinimap editor={editor} scrollContainer={scrollContainer} />
+      ) : null}
+      </div>
+      {historyOpen ? (
+        <VersionHistorySidebar
+          versions={historyVersions}
+          loading={versions.loading}
+          error={restoreError ?? versions.error}
+          selectedId={historySelectedId}
+          onSelect={setHistorySelectedId}
+          onRestore={(version) => { void handleRestore(version); }}
+          onClose={() => { setHistoryOpen(false); setHistorySelectedId(null); }}
+          canRestore={Boolean(editor) && snapshot.role === "editor"}
+          restoring={restoring}
+        />
       ) : null}
     </div>
   );

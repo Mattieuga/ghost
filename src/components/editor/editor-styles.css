@@ -1036,3 +1036,25 @@
   background: var(--border);
   margin: 4px 6px;
 }
+
+/* Version preview: what a version added and removed. */
+.ghost-editor [data-diff="insert"],
+[data-version-history] [data-diff="insert"] {
+  background: color-mix(in oklab, #22c55e 22%, transparent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, #22c55e 70%, transparent);
+  text-underline-offset: 2px;
+  border-radius: 2px;
+}
+
+.ghost-editor [data-diff="delete"],
+[data-version-history] [data-diff="delete"] {
+  background: color-mix(in oklab, var(--destructive) 18%, transparent);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in oklab, var(--destructive) 75%, transparent);
+  border-radius: 2px;
+}
+
+.ghost-editor[data-version-preview] {
+  cursor: default;
+}

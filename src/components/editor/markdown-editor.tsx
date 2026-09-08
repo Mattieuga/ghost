@@ -1,7 +1,7 @@
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
-import { Extension, type AnyExtension } from "@tiptap/core";
+import { Extension, type AnyExtension, type JSONContent } from "@tiptap/core";
 import { Plugin, PluginKey, Selection } from "@tiptap/pm/state";
 import Link from "@tiptap/extension-link";
 import { Focus } from "@tiptap/extensions";
@@ -113,6 +113,10 @@ const MacDocumentStart = Extension.create({
 
 interface MarkdownEditorProps {
   content?: string;
+  /** A parsed document to show instead of `content`, e.g. a version diff. */
+  initialDocument?: JSONContent;
+  /** Extensions the document needs beyond the schema, e.g. diff marks. */
+  extraExtensions?: AnyExtension[];
   onContentChange?: (markdown: string) => void | Promise<void>;
   searchTerm?: string;
   replaceTerm?: string;
@@ -146,6 +150,8 @@ const browserPlatformActions: MarkdownEditorPlatformActions = {
 
 export function MarkdownEditor({
   content = "",
+  initialDocument,
+  extraExtensions,
   onContentChange,
   searchTerm = "",
   replaceTerm = "",
@@ -248,6 +254,7 @@ export function MarkdownEditor({
         searchDebounceMs: 0,
       }),
       CollapsibleHeadings,
+      ...(extraExtensions ?? []),
       ...(collaboration ? [
         Collaboration.configure({
           document: collaboration.document,
@@ -403,7 +410,7 @@ export function MarkdownEditor({
   const contentSet = useRef(false);
   useEffect(() => {
     if (editor && !collaboration && !contentSet.current) {
-      editor.commands.setContent(parseMarkdownDocument(editor, content), {
+      editor.commands.setContent(initialDocument ?? parseMarkdownDocument(editor, content), {
         emitUpdate: false,
       });
       resetMarkdownDocumentState(editor);

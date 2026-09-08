@@ -33,6 +33,8 @@ import {
 } from "@/lib/mirror/adoption";
 import { relativeToRoot } from "@/lib/mirror/ghost-index";
 import { ensureCloudDocument } from "@/lib/mirror/root-sync";
+import { localToHistory } from "@/components/editor/version-history";
+import type { HistoryVersion } from "@/components/editor/version-history-sidebar";
 import {
   IngestionQueue,
   ingestExternalChange,
@@ -60,9 +62,15 @@ export interface MirroredCloudContext {
 /** The open note's live session, for the header's presence and history. */
 export interface MirroredSessionInfo {
   session: CloudCollaborationSession;
+  /** The Cloud document ID when in Cloud, else the local one. */
   documentId: string;
   /** True when the session is a Cloud session rather than a local one. */
   cloud: boolean;
+  /** Local history on disk, kept whether or not the note is in Cloud. */
+  history: {
+    list(): Promise<HistoryVersion[]>;
+    capture(reason: LocalVersionReason): Promise<void>;
+  };
 }
 
 const PRESENCE_COLORS = ["#ff7145", "#5ba8ff", "#76c98f", "#d68cff", "#f4bd50"];
@@ -398,6 +406,18 @@ export function MirroredDocumentEditor({
         session,
         documentId: cloudDocumentId,
         cloud: !(session instanceof LocalCollaborationSession),
+        history: {
+          list: async () => {
+            const files = await listLocalVersions(versionFs, root.path, documentId);
+            const versions: HistoryVersion[] = [];
+            for (const file of files) {
+              const markdown = await fs.readText(file.markdownPath).catch(() => null);
+              if (markdown !== null) versions.push(localToHistory(file, markdown));
+            }
+            return versions;
+          },
+          capture: checkpoint,
+        },
       });
     };
 

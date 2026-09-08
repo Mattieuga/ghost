@@ -71,7 +71,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Plus, Search, Share, SlidersHorizontal } from "lucide-react";
-import { CloudVersionHistory } from "@/cloud/cloud-version-history-panel";
+import { useCloudVersionCapture } from "@/cloud/use-cloud-version-capture";
+import { History } from "lucide-react";
+import { cloudToHistory, previewFor, restoreVersion } from "@/components/editor/version-history";
+import { dedupeVersions, VersionHistorySidebar, type HistoryVersion } from "@/components/editor/version-history-sidebar";
+import { VersionPreview } from "@/components/editor/version-preview";
 import { PresenceAvatars } from "@/cloud/presence-avatars";
 import { usePresenceNames, useSessionSnapshot } from "@/cloud/collaboration/use-session";
 import type { MirroredSessionInfo } from "@/mirror/mirrored-document-editor";
@@ -235,6 +239,15 @@ export function GhostLayout() {
   const [mirrorSession, setMirrorSession] = useState<MirroredSessionInfo | null>(null);
   const presenceNames = usePresenceNames(mirrorSession?.session ?? null);
   const mirrorSnapshot = useSessionSnapshot(mirrorSession?.session ?? null);
+  // Version history for the open synced note: local versions on disk plus
+  // Cloud versions when the note has a Cloud session. The sidebar lists them
+  // together; a selected version shows in the editor with its changes.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historySelectedId, setHistorySelectedId] = useState<string | null>(null);
+  const [localVersions, setLocalVersions] = useState<HistoryVersion[]>([]);
+  const [localVersionsLoading, setLocalVersionsLoading] = useState(false);
+  const [historyRestoring, setHistoryRestoring] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   // What the Share sheet is about: the open note by default, or any note or
   // folder from the sidebar.
   const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
@@ -1124,6 +1137,69 @@ export function GhostLayout() {
   const activeRoot = useMemo(() => (activeFile ? rootForPath(roots, activeFile) : null), [activeFile, roots]);
   const mirroredActive = activeRoot?.kind === "mirrored" && fileDescriptor?.kind === "markdown";
   mirroredActiveRef.current = mirroredActive;
+
+  const cloudVersions = useCloudVersionCapture(
+    mirrorSession?.cloud ? cloudClient : null,
+    mirrorSession?.cloud ? mirrorSession.documentId : null,
+    editorInstance,
+    mirrorSession?.cloud ? mirrorSession.session : null,
+    mirrorSnapshot?.synchronization === "synced",
+  );
+  const reloadLocalVersions = useCallback(async () => {
+    const history = mirrorSession?.history;
+    if (!history) {
+      setLocalVersions([]);
+      return;
+    }
+    setLocalVersionsLoading(true);
+    try {
+      setLocalVersions(await history.list());
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLocalVersionsLoading(false);
+    }
+  }, [mirrorSession]);
+  useEffect(() => {
+    // The sidebar follows the note: it closes on a switch and loads on open.
+    setHistoryOpen(false);
+    setHistorySelectedId(null);
+    setHistoryError(null);
+  }, [activeFile]);
+  useEffect(() => {
+    if (!historyOpen) return;
+    void reloadLocalVersions();
+    if (mirrorSession?.cloud) void cloudVersions.refresh();
+    // Refreshing on open is enough; captures update the Cloud list themselves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyOpen, mirrorSession]);
+  const historyVersions = useMemo(
+    () => dedupeVersions([...localVersions, ...cloudVersions.versions.map(cloudToHistory)]),
+    [cloudVersions.versions, localVersions],
+  );
+  const historyPreview = useMemo(
+    () => (historyOpen ? previewFor(historyVersions, historySelectedId) : null),
+    [historyOpen, historySelectedId, historyVersions],
+  );
+  const handleRestoreVersion = useCallback(async (version: HistoryVersion) => {
+    if (!editorInstance || !mirrorSession) return;
+    setHistoryRestoring(true);
+    setHistoryError(null);
+    try {
+      await restoreVersion({
+        editor: editorInstance,
+        session: mirrorSession.session,
+        captureLocal: mirrorSession.history.capture,
+        ...(mirrorSession.cloud ? { captureCloud: cloudVersions.capture, cancelScheduledCloud: cloudVersions.cancelScheduled } : {}),
+      }, version);
+      setHistorySelectedId(null);
+      await reloadLocalVersions();
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setHistoryRestoring(false);
+    }
+  }, [cloudVersions.cancelScheduled, cloudVersions.capture, editorInstance, mirrorSession, reloadLocalVersions]);
 
   const shareRoot = useMemo(() => (shareTarget ? rootForPath(roots, shareTarget.path) : null), [roots, shareTarget]);
   const openShare = useCallback((path: string, kind: ShareTarget["kind"]) => {
@@ -2332,7 +2408,7 @@ export function GhostLayout() {
 
       {/* Main content — full height, no top bar */}
       <div
-        className="relative flex-1 overflow-hidden bg-background"
+        className="relative flex flex-1 overflow-hidden bg-background"
         style={{
           '--editor-font-size': `${settings.fontSize}px`,
           '--editor-line-height': `${settings.lineHeight}`,
@@ -2342,6 +2418,7 @@ export function GhostLayout() {
           '--editor-heading-after-spacing': `${settings.headingAfterSpacing}rem`,
         } as React.CSSProperties}
       >
+        <div className="relative h-full min-w-0 flex-1">
         {/* Floating header overlay — semi-transparent, content scrolls behind */}
         {(
           <DocumentHeader
@@ -2375,16 +2452,17 @@ export function GhostLayout() {
                 <>
                   <MirrorSaveStatus status={mirrorStatus.status} error={mirrorStatus.error} />
                   <PresenceAvatars names={presenceNames} />
-                  {mirrorSession?.cloud && cloudClient && editorInstance ? (
-                    <CloudVersionHistory
-                      client={cloudClient}
-                      documentId={mirrorSession.documentId}
-                      editor={editorInstance}
-                      networkReady={mirrorSnapshot?.synchronization === "synced"}
-                      session={mirrorSession.session}
-                      compact
-                    />
-                  ) : null}
+                  <button
+                    type="button"
+                    data-history-button
+                    aria-label="Version history"
+                    aria-pressed={historyOpen}
+                    className={`cursor-pointer transition-colors ${historyOpen ? "text-sidebar-foreground" : "text-ring hover:text-sidebar-foreground"}`}
+                    title="Version history"
+                    onClick={() => setHistoryOpen((open) => !open)}
+                  >
+                    <History className="size-3.5" />
+                  </button>
                 </>
               ) : fileDescriptor?.editable ? (
                 <>
@@ -2434,6 +2512,11 @@ export function GhostLayout() {
           className="h-full overscroll-contain relative outline-none overflow-auto"
         >
           {mirroredActive && activeFile && activeRoot ? (
+            <>
+            {historyPreview ? (
+              <VersionPreview versionId={historySelectedId ?? ""} document={historyPreview} platformActions={tauriMarkdownEditorActions} />
+            ) : null}
+            <div className={historyPreview ? "hidden" : "h-full"}>
             <MirroredDocumentEditor
               key={activeFile}
               path={activeFile}
@@ -2450,6 +2533,8 @@ export function GhostLayout() {
                 ? { client: cloudClient, user: cloudAccount.user }
                 : null}
             />
+            </div>
+            </>
           ) : activeFile && fileDescriptor ? (
             <FileViewer
               filePath={activeFile}
@@ -2480,9 +2565,23 @@ export function GhostLayout() {
         </main>
         <AppNotification message={mirrorNotification} onDismiss={() => setMirrorNotification(null)} />
         {/* Heading minimap — right edge overlay (markdown only) */}
-        {editorInstance && mainEl && fileDescriptor?.kind === "markdown" && (
+        {editorInstance && mainEl && fileDescriptor?.kind === "markdown" && !historyPreview && (
           <HeadingMinimap editor={editorInstance} scrollContainer={mainEl} />
         )}
+        </div>
+        {historyOpen && mirroredActive ? (
+          <VersionHistorySidebar
+            versions={historyVersions}
+            loading={localVersionsLoading || cloudVersions.loading}
+            error={historyError ?? cloudVersions.error}
+            selectedId={historySelectedId}
+            onSelect={setHistorySelectedId}
+            onRestore={(version) => { void handleRestoreVersion(version); }}
+            onClose={() => { setHistoryOpen(false); setHistorySelectedId(null); }}
+            canRestore={Boolean(editorInstance && mirrorSession && mirrorSnapshot?.role !== "viewer")}
+            restoring={historyRestoring}
+          />
+        ) : null}
       </div>
 
       {/* Override confirmation for drag move */}

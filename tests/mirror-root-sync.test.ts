@@ -33,6 +33,7 @@ function memoryFs(initial: Record<string, string>) {
       canonical_path: path, size_bytes: files.get(path)?.length ?? 0, modified_ns: "1", device_id: "1", file_id: "1",
     }),
     hashFile: async (path: string) => hashOf(files.get(path) ?? ""),
+    isDirectory: async (path: string) => Array.from(files.keys()).some((file) => file.startsWith(`${path}/`)),
     ensureDir: async () => undefined,
     listFiles: async () => [],
     listMarkdownFiles: async (root: string) => Array.from(files.keys())
@@ -242,6 +243,81 @@ describe("reconcileMirroredRoot", () => {
     expect(calls[0].name).toBe("cloud_adopt_items");
     expect(upsert).toHaveBeenCalledTimes(0);
     expect((await readGhostFolder(fs, ROOT_PATH)).index.documents["later.md"].cloudDocumentId).toBe("doc-later");
+  });
+});
+
+describe("folder renames", () => {
+  async function seedFolderTree(fs: MirrorFs, docs: Record<string, string>, folders: Record<string, string>) {
+    const index: GhostIndex = emptyGhostIndex();
+    for (const [path, id] of Object.entries(docs)) {
+      index.documents[path] = { documentId: id, contentHash: hashOf(`# ${id}`), mirrorVersion: null, mirrorStateVector: null, cloudDocumentId: id };
+    }
+    index.folders = folders;
+    await writeGhostIndex(fs, ROOT_PATH, index);
+  }
+
+  it("carries a renamed folder as one Cloud item and leaves its documents in place", async () => {
+    const { fs } = memoryFs({
+      [`${ROOT_PATH}/notes/a.md`]: "# doc-a",
+      [`${ROOT_PATH}/notes/sub/b.md`]: "# doc-b",
+    });
+    await seedFolderTree(fs, { "docs/a.md": "doc-a", "docs/sub/b.md": "doc-b" }, { docs: "folder-docs", "docs/sub": "folder-sub" });
+    const { client, calls } = fakeClient();
+
+    const result = await reconcileMirroredRoot(deps(fs, client), uploadedRoot);
+
+    expect(result.renamedFolders).toEqual([{ from: "docs", to: "notes" }]);
+    expect(calls.map((call) => call.name)).toEqual(["cloud_rename_item"]);
+    expect(calls[0].args).toEqual({ target_item_id: "folder-docs", item_name: "notes" });
+    const { index } = await readGhostFolder(fs, ROOT_PATH);
+    expect(index.folders).toEqual({ notes: "folder-docs", "notes/sub": "folder-sub" });
+    expect(Object.keys(index.documents).sort()).toEqual(["notes/a.md", "notes/sub/b.md"]);
+  });
+
+  it("moves a folder into another folder as one item", async () => {
+    const { fs } = memoryFs({
+      [`${ROOT_PATH}/archive/docs/a.md`]: "# doc-a",
+      [`${ROOT_PATH}/archive/keep.md`]: "# doc-k",
+    });
+    await seedFolderTree(fs, { "docs/a.md": "doc-a", "archive/keep.md": "doc-k" }, { docs: "folder-docs", archive: "folder-archive" });
+    const { client, calls } = fakeClient();
+
+    const result = await reconcileMirroredRoot(deps(fs, client), uploadedRoot);
+
+    expect(result.renamedFolders).toEqual([{ from: "docs", to: "archive/docs" }]);
+    expect(calls).toEqual([{ name: "cloud_move_item", args: { target_item_id: "folder-docs", target_parent_id: "folder-archive" } }]);
+    expect((await readGhostFolder(fs, ROOT_PATH)).index.folders).toEqual({ archive: "folder-archive", "archive/docs": "folder-docs" });
+  });
+
+  it("carries a folder renamed while signed out on the next signed-in pass", async () => {
+    const { fs } = memoryFs({ [`${ROOT_PATH}/notes/a.md`]: "# doc-a", [`${ROOT_PATH}/notes/b.md`]: "# doc-b" });
+    await seedFolderTree(fs, { "docs/a.md": "doc-a", "docs/b.md": "doc-b" }, { docs: "folder-docs" });
+
+    const signedOut = await reconcileMirroredRoot(deps(fs, null), uploadedRoot);
+    expect(signedOut.renamedFolders).toEqual([]);
+    let { index } = await readGhostFolder(fs, ROOT_PATH);
+    expect(index.documents["notes/a.md"]).toMatchObject({ cloudStale: true, cloudStaleFrom: "docs/a.md" });
+    expect(index.folders).toEqual({ docs: "folder-docs" });
+
+    const { client, calls } = fakeClient();
+    const signedIn = await reconcileMirroredRoot(deps(fs, client), uploadedRoot);
+    expect(signedIn.renamedFolders).toEqual([{ from: "docs", to: "notes" }]);
+    expect(calls.map((call) => call.name)).toEqual(["cloud_rename_item"]);
+    ({ index } = await readGhostFolder(fs, ROOT_PATH));
+    expect(index.folders).toEqual({ notes: "folder-docs" });
+    expect(index.documents["notes/a.md"].cloudStale).toBeUndefined();
+    expect(index.documents["notes/a.md"].cloudStaleFrom).toBeUndefined();
+  });
+
+  it("does not treat a partial move as a folder rename", async () => {
+    const { fs } = memoryFs({ [`${ROOT_PATH}/notes/a.md`]: "# doc-a", [`${ROOT_PATH}/docs/b.md`]: "# doc-b" });
+    await seedFolderTree(fs, { "docs/a.md": "doc-a", "docs/b.md": "doc-b" }, { docs: "folder-docs" });
+    const { client, calls } = fakeClient();
+
+    const result = await reconcileMirroredRoot(deps(fs, client), uploadedRoot);
+
+    expect(result.renamedFolders).toEqual([]);
+    expect(calls.map((call) => call.name)).toEqual(["cloud_create_item", "cloud_move_item"]);
   });
 });
 

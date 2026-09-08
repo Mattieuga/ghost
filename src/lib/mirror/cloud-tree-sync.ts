@@ -1,3 +1,4 @@
+import { trashCloudItem } from "@/cloud/cloud-data";
 import type { VisibleCloudItem } from "@/cloud/cloud-sharing";
 import type { TrackedRoot } from "@/hooks/use-tracked-folders";
 import { commitIndexPass, readGhostFolder } from "@/lib/mirror/adoption";
@@ -53,9 +54,11 @@ export interface CloudTreeSyncResult {
   added: string[];
   /** Moves not made because the file is open; the editor's owner applies them. */
   pendingOpen: Array<{ from: string; to: string }>;
+  /** Empty Cloud folders whose local folder is gone, moved to Cloud Trash. */
+  removedFolders: string[];
 }
 
-const NOTHING: CloudTreeSyncResult = { moved: [], removed: [], added: [], pendingOpen: [] };
+const NOTHING: CloudTreeSyncResult = { moved: [], removed: [], added: [], pendingOpen: [], removedFolders: [] };
 
 export async function syncCloudTreeToDisk(
   deps: CloudPullDeps,
@@ -74,6 +77,24 @@ export async function syncCloudTreeToDisk(
   const next: GhostIndex = { ...index, documents: { ...index.documents }, folders: { ...index.folders } };
   const visibleIds = new Set(visible.map((item) => item.id));
   for (const [dir, id] of Object.entries(next.folders)) if (!visibleIds.has(id)) delete next.folders[dir];
+
+  // Folders: one the web created appears here as a folder; one this Mac
+  // knew and deleted, now empty in Cloud too, goes to Cloud Trash.
+  const removedFolders: string[] = [];
+  const hasChildren = (dir: string) => Object.keys(plan.documents).some((path) => path.startsWith(`${dir}/`))
+    || Object.keys(plan.folders).some((other) => other.startsWith(`${dir}/`));
+  for (const [dir, id] of Object.entries(plan.folders)) {
+    const known = index.folders[dir] === id;
+    const onDisk = await fs.isDirectory(`${root.path}/${dir}`);
+    if (!onDisk && known && !hasChildren(dir)) {
+      await trashCloudItem(deps.client, id).catch(() => undefined);
+      delete next.folders[dir];
+      delete plan.folders[dir];
+      removedFolders.push(dir);
+      continue;
+    }
+    if (!onDisk && !known) await fs.ensureDir(`${root.path}/${dir}`).catch(() => undefined);
+  }
   Object.assign(next.folders, plan.folders);
 
   const pathByCloudId = new Map<string, string>();
@@ -132,5 +153,5 @@ export async function syncCloudTreeToDisk(
   if (moved.length || added.length || removed.length || JSON.stringify(next.folders) !== JSON.stringify(index.folders)) {
     await commitIndexPass(fs, root.path, snapshot, next);
   }
-  return { moved, removed, added, pendingOpen };
+  return { moved, removed, added, pendingOpen, removedFolders };
 }

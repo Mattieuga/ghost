@@ -23,7 +23,9 @@ export function memoryFs(initial: Record<string, string>) {
   const files = new Map(Object.entries(initial));
   const trashed: string[] = [];
   const moves: Array<{ from: string; to: string }> = [];
+  const dirs = new Set<string>();
   const fs = {
+    isDirectory: async (path: string) => dirs.has(path) || Array.from(files.keys()).some((file) => file.startsWith(`${path}/`)),
     readText: async (path: string) => {
       const text = files.get(path);
       if (text === undefined) throw new Error(`missing ${path}`);
@@ -43,7 +45,7 @@ export function memoryFs(initial: Record<string, string>) {
       return hashOf(text);
     },
     hashText: async (text: string) => hashOf(text),
-    ensureDir: async () => undefined,
+    ensureDir: async (path: string) => { dirs.add(path); },
     listFiles: async () => [],
     listMarkdownFiles: async (dir: string) => Array.from(files.keys())
       .filter((path) => path.startsWith(`${dir}/`) && path.endsWith(".md") && !path.includes("/.ghost/"))
@@ -60,7 +62,7 @@ export function memoryFs(initial: Record<string, string>) {
       trashed.push(path);
     },
   } as unknown as MirrorFs;
-  return { fs, files, trashed, moves };
+  return { fs, files, trashed, moves, dirs };
 }
 
 export function updateFor(markdown: string, id: number): CloudUpdateRow {

@@ -15,6 +15,8 @@ export interface GhostFolderMetadata {
   version: 1;
   rootId: string;
   cloudRootId: string | null;
+  /** The account whose Cloud `cloudRootId` lives in. */
+  cloudOwnerId?: string | null;
   createdAt: string;
 }
 
@@ -32,6 +34,8 @@ export interface GhostIndexEntry {
   cloudCursor?: number;
   /** The file was renamed or moved while signed out; Cloud still has the old name or place. */
   cloudStale?: boolean;
+  /** Where the file was before that rename or move, so a folder rename can be told apart from single moves. */
+  cloudStaleFrom?: string;
 }
 
 export interface GhostIndex {
@@ -111,6 +115,7 @@ export function parseGhostIndex(text: string): GhostIndex {
         ? { cloudCursor: value.cloudCursor }
         : {}),
       ...(value.cloudStale === true ? { cloudStale: true } : {}),
+      ...(typeof value.cloudStaleFrom === "string" && value.cloudStaleFrom ? { cloudStaleFrom: value.cloudStaleFrom } : {}),
     };
   }
   const folders: Record<string, string> = {};
@@ -144,6 +149,7 @@ export function parseGhostFolderMetadata(text: string): GhostFolderMetadata | nu
     version: 1,
     rootId: candidate.rootId,
     cloudRootId: typeof candidate.cloudRootId === "string" ? candidate.cloudRootId : null,
+    cloudOwnerId: typeof candidate.cloudOwnerId === "string" ? candidate.cloudOwnerId : null,
     createdAt: typeof candidate.createdAt === "string" ? candidate.createdAt : new Date(0).toISOString(),
   };
 }

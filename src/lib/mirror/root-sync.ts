@@ -47,6 +47,8 @@ export interface RootSyncResult {
   added: string[];
   removed: string[];
   renamed: Array<{ from: string; to: string }>;
+  /** Folders renamed or moved as a whole, carried to Cloud as one item each. */
+  renamedFolders: Array<{ from: string; to: string }>;
   /** Documents put into Cloud on this pass: new files, and older entries never marked. */
   uploaded: string[];
   /** Whether Cloud was updated too. */
@@ -104,7 +106,13 @@ async function ensureCloudFolder(
   }
 }
 
-async function pushDocumentState(deps: RootSyncDeps, root: TrackedRoot, cloud: CloudContext, documentId: string): Promise<void> {
+async function pushDocumentState(
+  deps: RootSyncDeps,
+  root: TrackedRoot,
+  cloud: CloudContext,
+  documentId: string,
+  cloudId: string = documentId,
+): Promise<void> {
   const document = new Y.Doc();
   const persistence = await deps.openPersistence(root.id, documentId, document);
   try {
@@ -114,7 +122,7 @@ async function pushDocumentState(deps: RootSyncDeps, root: TrackedRoot, cloud: C
       .from("cloud_document_updates")
       .upsert(
         {
-          document_id: documentId,
+          document_id: cloudId,
           client_id: (deps.newDocumentId ?? defaultDocumentId)(),
           client_sequence: 1,
           update: encodeBase64(update),
@@ -221,10 +229,92 @@ async function putDocumentInCloud(
   index: GhostIndex,
   relativePath: string,
   documentId: string,
+  cloudId: string = documentId,
 ): Promise<void> {
   const parentId = await ensureCloudFolder(deps, cloud, index, parentOf(relativePath));
-  await adoptCloudItems(cloud.client, [{ id: documentId, parent_id: parentId, kind: "document", name: nameOf(relativePath) }]);
-  await pushDocumentState(deps, root, cloud, documentId);
+  await adoptCloudItems(cloud.client, [{ id: cloudId, parent_id: parentId, kind: "document", name: nameOf(relativePath) }]);
+  await pushDocumentState(deps, root, cloud, documentId, cloudId);
+}
+
+/**
+ * Whole-folder renames and moves, read off the document moves: every
+ * document that was under `from` is now under `to` with the same rest of
+ * its path, `from` is a folder Cloud knows, and `from` is gone from disk.
+ * Carrying such a folder as one item keeps its identity in Cloud instead of
+ * leaving an empty folder behind and creating a new one.
+ */
+export async function detectFolderRenames(
+  fs: MirrorFs,
+  rootPath: string,
+  folders: Record<string, string>,
+  documentsBefore: Record<string, unknown>,
+  moves: Array<{ from: string; to: string }>,
+): Promise<Array<{ from: string; to: string }>> {
+  const moveTo = new Map(moves.map((move) => [move.from, move.to]));
+  const candidates = new Map<string, string>();
+  for (const move of moves) {
+    const parts = move.from.split("/");
+    for (let depth = 1; depth < parts.length; depth += 1) {
+      const from = parts.slice(0, depth).join("/");
+      const rest = parts.slice(depth).join("/");
+      if (!move.to.endsWith(`/${rest}`)) continue;
+      const to = move.to.slice(0, move.to.length - rest.length - 1);
+      if (to === from || !(from in folders)) continue;
+      if (!candidates.has(from)) candidates.set(from, to);
+      break; // the top-most known folder is the one that moved
+    }
+  }
+  const renames: Array<{ from: string; to: string }> = [];
+  for (const [from, to] of candidates) {
+    const underFrom = Object.keys(documentsBefore).filter((path) => path.startsWith(`${from}/`));
+    const allMoved = underFrom.length > 0 && underFrom.every((path) => moveTo.get(path) === `${to}${path.slice(from.length)}`);
+    if (!allMoved) continue;
+    if (await fs.isDirectory(`${rootPath}/${from}`)) continue;
+    renames.push({ from, to });
+  }
+  // Outermost first, so a nested candidate inside a renamed folder is dropped.
+  renames.sort((a, b) => a.from.length - b.from.length);
+  return renames.filter((rename, index) => !renames.slice(0, index).some((outer) => rename.from.startsWith(`${outer.from}/`)));
+}
+
+/** Re-key every folder at or under `from` to sit under `to`. */
+function rekeyFolders(folders: Record<string, string>, from: string, to: string): void {
+  for (const key of Object.keys(folders)) {
+    if (key === from || key.startsWith(`${from}/`)) {
+      const id = folders[key];
+      delete folders[key];
+      folders[`${to}${key.slice(from.length)}`] = id;
+    }
+  }
+}
+
+async function carryFolderRename(
+  deps: RootSyncDeps,
+  cloud: CloudContext,
+  index: GhostIndex,
+  rename: { from: string; to: string },
+): Promise<void> {
+  const folderId = index.folders[rename.from];
+  if (!folderId) return;
+  const fromParent = parentOf(rename.from);
+  const toParent = parentOf(rename.to);
+  try {
+    if (fromParent !== toParent) {
+      const parentId = await ensureCloudFolder(deps, cloud, index, toParent);
+      await moveCloudItem(cloud.client, folderId, parentId);
+    }
+    if (nameOf(rename.from) !== nameOf(rename.to)) {
+      await renameCloudItem(cloud.client, folderId, nameOf(rename.to));
+    }
+  } catch (error) {
+    if (!isNotFound(error)) throw error;
+  }
+  rekeyFolders(index.folders, rename.from, rename.to);
+}
+
+function coveredByFolderRename(move: { from: string; to: string }, renames: Array<{ from: string; to: string }>): boolean {
+  return renames.some((rename) => move.from.startsWith(`${rename.from}/`)
+    && move.to === `${rename.to}${move.from.slice(rename.from.length)}`);
 }
 
 export async function reconcileMirroredRoot(
@@ -278,17 +368,26 @@ export async function reconcileMirroredRoot(
     removed.push(relativePath);
   }
 
+  // A folder renamed or moved as a whole travels as one Cloud item; its
+  // documents then need no move of their own.
+  const renamedFolders = cloud && reconciliation.renamed.length > 0
+    ? await detectFolderRenames(fs, root.path, next.folders, index.documents, reconciliation.renamed)
+    : [];
+  if (cloud) {
+    for (const rename of renamedFolders) await carryFolderRename(deps, cloud, next, rename);
+  }
+
   const renamed: Array<{ from: string; to: string }> = [];
   for (const move of reconciliation.renamed) {
     const entry = next.documents[move.to];
     renamed.push(move);
     if (deferToCloud) {
       // The file keeps its new place; Cloud catches up on the next signed-in pass.
-      if (cloudIdOf(entry)) next.documents[move.to] = { ...entry, cloudStale: true };
+      if (cloudIdOf(entry)) next.documents[move.to] = { ...entry, cloudStale: true, cloudStaleFrom: entry.cloudStaleFrom ?? move.from };
       continue;
     }
     const cloudId = cloudIdOf(entry);
-    if (!cloud || !cloudId) continue;
+    if (!cloud || !cloudId || coveredByFolderRename(move, renamedFolders)) continue;
     const fromParent = parentOf(move.from);
     const toParent = parentOf(move.to);
     try {
@@ -304,19 +403,35 @@ export async function reconcileMirroredRoot(
     }
   }
 
-  // Renames and moves made while signed out reach Cloud now.
+  // Renames and moves made while signed out reach Cloud now, whole folders
+  // first so their documents are already in place.
   if (cloud) {
+    const staleMoves = Object.entries(next.documents)
+      .filter(([, entry]) => entry.cloudStale && entry.cloudStaleFrom)
+      .map(([path, entry]) => ({ from: entry.cloudStaleFrom as string, to: path }));
+    const staleBefore: Record<string, unknown> = {};
+    for (const move of staleMoves) staleBefore[move.from] = true;
+    const staleFolders = staleMoves.length > 0
+      ? await detectFolderRenames(fs, root.path, next.folders, staleBefore, staleMoves)
+      : [];
+    for (const rename of staleFolders) {
+      await carryFolderRename(deps, cloud, next, rename);
+      renamedFolders.push(rename);
+    }
     for (const [relativePath, entry] of Object.entries(next.documents)) {
       if (!entry.cloudStale) continue;
       const cloudId = cloudIdOf(entry);
-      if (cloudId) {
+      const covered = entry.cloudStaleFrom
+        ? coveredByFolderRename({ from: entry.cloudStaleFrom, to: relativePath }, staleFolders)
+        : false;
+      if (cloudId && !covered) {
         try {
           await placeInCloud(deps, cloud, next, relativePath, cloudId);
         } catch (error) {
           if (!isNotFound(error)) throw error;
         }
       }
-      const { cloudStale: _stale, ...rest } = entry;
+      const { cloudStale: _stale, cloudStaleFrom: _from, ...rest } = entry;
       next.documents[relativePath] = rest;
     }
   }
@@ -367,5 +482,5 @@ export async function reconcileMirroredRoot(
   }
 
   await commitIndexPass(fs, root.path, snapshot, next);
-  return { added, removed, renamed, uploaded, cloud: cloud !== null };
+  return { added, removed, renamed, renamedFolders, uploaded, cloud: cloud !== null };
 }

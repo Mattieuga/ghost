@@ -118,6 +118,7 @@ function cloudFieldsOf(entry: GhostIndexEntry | undefined): Partial<GhostIndexEn
     ...(entry.cloudDocumentId ? { cloudDocumentId: entry.cloudDocumentId } : {}),
     ...(entry.cloudCursor !== undefined ? { cloudCursor: entry.cloudCursor } : {}),
     ...(entry.cloudStale ? { cloudStale: true } : {}),
+    ...(entry.cloudStaleFrom ? { cloudStaleFrom: entry.cloudStaleFrom } : {}),
   };
 }
 
@@ -204,7 +205,12 @@ export async function relocateIndexEntry(
     const occupant = index.documents[toRelative];
     if (occupant && occupant.documentId !== entry.documentId) return;
     delete index.documents[fromRelative];
-    moved = { ...entry, ...(options.cloudStale && entry.cloudDocumentId ? { cloudStale: true } : {}) };
+    moved = {
+      ...entry,
+      ...(options.cloudStale && entry.cloudDocumentId
+        ? { cloudStale: true, cloudStaleFrom: entry.cloudStaleFrom ?? fromRelative }
+        : {}),
+    };
     index.documents[toRelative] = moved;
   });
   return moved;

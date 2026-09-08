@@ -88,13 +88,41 @@ describe("syncCloudTreeToDisk", () => {
     expect(files.get(`${ROOT}/Fresh.md`)).toContain("Fresh from the web");
   });
 
+  it("trashes an empty Cloud folder this Mac deleted, and makes a folder the web created", async () => {
+    const { fs, dirs } = memoryFs({ [`${ROOT}/a.md`]: "# a" });
+    const index = emptyGhostIndex();
+    index.documents["a.md"] = entry({ documentId: "a" });
+    index.folders = { Old: "folder-old" };
+    await writeGhostIndex(fs, ROOT, index);
+    const calls: string[] = [];
+    const client = {
+      rpc: async (name: string, args: { target_item_id?: string; document_ids?: string[] }) => {
+        calls.push(`${name}:${args.target_item_id ?? ""}`);
+        return { data: name === "cloud_document_heads" ? [] : null, error: null };
+      },
+    } as never;
+    const deps = { ...pullDeps(fs, client, {}), client };
+
+    const result = await syncCloudTreeToDisk(deps, root, [
+      notesRoot,
+      item({ id: "a", name: "a.md" }),
+      item({ id: "folder-old", name: "Old", kind: "folder" }),
+      item({ id: "folder-new", name: "Fresh", kind: "folder" }),
+    ]);
+
+    expect(result.removedFolders).toEqual(["Old"]);
+    expect(calls).toContain("cloud_trash_item:folder-old");
+    expect(dirs.has(`${ROOT}/Fresh`)).toBe(true);
+    expect((await readGhostFolder(fs, ROOT)).index.folders).toEqual({ Fresh: "folder-new" });
+  });
+
   it("does nothing when the root is not visible to this account", async () => {
     const { fs, trashed } = memoryFs({ [`${ROOT}/a.md`]: "# a" });
     const index = emptyGhostIndex();
     index.documents["a.md"] = entry({ documentId: "a" });
     await writeGhostIndex(fs, ROOT, index);
     const deps = pullDeps(fs, headsClient({}), {});
-    expect(await syncCloudTreeToDisk(deps, root, [])).toEqual({ moved: [], removed: [], added: [], pendingOpen: [] });
+    expect(await syncCloudTreeToDisk(deps, root, [])).toEqual({ moved: [], removed: [], added: [], pendingOpen: [], removedFolders: [] });
     expect(trashed).toEqual([]);
   });
 });

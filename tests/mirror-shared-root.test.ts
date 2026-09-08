@@ -60,6 +60,75 @@ describe("planSharedRoot safety", () => {
   });
 });
 
+function sharedClient(roles: Record<string, string | null> = {}) {
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const upserts: Array<Record<string, unknown>> = [];
+  let created = 0;
+  const rpc = async (name: string, args: Record<string, unknown> = {}) => {
+    calls.push({ name, args });
+    if (name === "cloud_document_heads") return { data: [], error: null };
+    if (name === "cloud_adopt_items") return { data: (args.items as unknown[]).length, error: null };
+    if (name === "cloud_create_item") return { data: { id: `made-${++created}`, name: args.item_name, kind: args.item_kind, parent_id: args.target_parent_id }, error: null };
+    if (name === "cloud_document_role") return { data: roles[args.target_document_id as string] ?? null, error: null };
+    return { data: null, error: null };
+  };
+  const client = { rpc, from: () => ({ upsert: async (row: Record<string, unknown>) => { upserts.push(row); return { error: null }; } }) } as never;
+  return { client, calls, upserts };
+}
+
+describe("creating notes inside shared folders", () => {
+  const editable = item({ id: "folder-plans", name: "Plans", kind: "folder", access_role: "editor" });
+  const viewOnly = item({ id: "folder-ro", name: "Read", kind: "folder", access_role: "viewer" });
+
+  it("puts a note made under an editable shared folder into the sharer's Cloud, and leaves a viewer's folder alone", async () => {
+    const { fs, trashed } = memoryFs({
+      [`${SHARED_PATH}/Plans/Mine.md`]: "# mine",
+      [`${SHARED_PATH}/Plans/deeper/Also.md`]: "# also",
+      [`${SHARED_PATH}/Read/Nope.md`]: "# nope",
+    });
+    await writeGhostIndex(fs, SHARED_PATH, emptyGhostIndex());
+    const { client, calls, upserts } = sharedClient();
+    const deps = { ...pullDeps(fs, client, {}), client };
+
+    const result = await refreshSharedRoot(deps, sharedRoot, [editable, viewOnly]);
+
+    expect(result.uploaded.sort()).toEqual(["Plans/Mine.md", "Plans/deeper/Also.md"]);
+    expect(trashed).toEqual([]);
+    const adopted = calls.filter((call) => call.name === "cloud_adopt_items")
+      .map((call) => (call.args.items as Array<{ parent_id: string; name: string }>)[0]);
+    expect(adopted).toEqual(expect.arrayContaining([
+      expect.objectContaining({ parent_id: "folder-plans", name: "Mine.md" }),
+      expect.objectContaining({ parent_id: "made-1", name: "Also.md" }),
+    ]));
+    expect(calls.find((call) => call.name === "cloud_create_item")?.args).toMatchObject({ item_kind: "folder", item_name: "deeper", target_parent_id: "folder-plans" });
+    expect(upserts).toHaveLength(2);
+    const { index } = await readGhostFolder(fs, SHARED_PATH);
+    expect(index.documents["Plans/Mine.md"].cloudDocumentId).toBe(index.documents["Plans/Mine.md"].documentId);
+    expect(index.folders).toMatchObject({ Plans: "folder-plans", "Plans/deeper": "made-1" });
+    expect(index.documents["Read/Nope.md"]).toBeUndefined();
+  });
+
+  it("uploads a note the editor claimed, and keeps a just-shared note the listing lags behind", async () => {
+    const { fs, trashed } = memoryFs({ [`${SHARED_PATH}/Plans/Claimed.md`]: "# claimed", [`${SHARED_PATH}/Plans/Lagging.md`]: "# lag" });
+    const index = emptyGhostIndex();
+    index.documents["Plans/Claimed.md"] = { documentId: "doc-claimed", contentHash: "h", mirrorVersion: null, mirrorStateVector: null };
+    index.documents["Plans/Lagging.md"] = { documentId: "doc-lag", cloudDocumentId: "doc-lag", contentHash: "h", mirrorVersion: null, mirrorStateVector: null };
+    index.documents["Plans/Gone.md"] = { documentId: "doc-gone", cloudDocumentId: "doc-gone", contentHash: "h", mirrorVersion: null, mirrorStateVector: null };
+    await writeGhostIndex(fs, SHARED_PATH, index);
+    const { client } = sharedClient({ "doc-lag": "editor", "doc-gone": null });
+    const deps = { ...pullDeps(fs, client, {}), client };
+
+    const result = await refreshSharedRoot(deps, sharedRoot, [editable]);
+
+    expect(result.uploaded).toEqual(["Plans/Claimed.md"]);
+    expect(result.removed).toEqual(["Plans/Gone.md"]);
+    expect(trashed).toEqual([`${SHARED_PATH}/Plans/Gone.md`]);
+    const after = (await readGhostFolder(fs, SHARED_PATH)).index;
+    expect(after.documents["Plans/Claimed.md"].cloudDocumentId).toBe("doc-claimed");
+    expect(after.documents["Plans/Lagging.md"].documentId).toBe("doc-lag");
+  });
+});
+
 describe("refreshSharedRoot", () => {
   it("adds, moves, and trashes files to match what is shared, then pulls content", async () => {
     const { fs, files, trashed, moves } = memoryFs({

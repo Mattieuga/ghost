@@ -4,6 +4,9 @@ import type { FileVersionToken } from "@/lib/source-document";
 import { GHOST_DIR, isMarkdownPath, MARKDOWN_EXTENSIONS } from "@/lib/mirror/ghost-index";
 import type { SyncCandidate } from "@/lib/mirror/preflight";
 
+/** Markers that mean version control owns a folder. Mirrors `VCS_MARKERS` in `watcher.rs`. */
+export const VCS_MARKERS = [".git", ".hg", ".svn", ".jj", ".sl", ".bzr", ".fossil", "_darcs", ".pijul"] as const;
+
 /**
  * Directories never adopted or watched inside a mirrored root. Mirrors
  * `IGNORED_DIRECTORIES` in `src-tauri/src/watcher.rs`.

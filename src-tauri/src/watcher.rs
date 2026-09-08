@@ -77,6 +77,13 @@ fn is_ignored_file_name(name: &str) -> bool {
     name == ".DS_Store" || (name.starts_with(".ghost-") && name.ends_with(".tmp"))
 }
 
+/// Markers that mean version control now owns a folder. A marker created
+/// directly inside a watched root is reported even though everything under
+/// it is ignored, so the app can pause sync there.
+pub const VCS_MARKERS: &[&str] = &[
+    ".git", ".hg", ".svn", ".jj", ".sl", ".bzr", ".fossil", "_darcs", ".pijul",
+];
+
 /// Whether an event path inside `root` should be dropped. Only components
 /// below the root count, so a root that itself lives under a folder named
 /// `build` is still watched.
@@ -85,6 +92,12 @@ pub fn should_ignore_within(root: &Path, path: &Path) -> bool {
         Ok(relative) => relative,
         Err(_) => return false,
     };
+    let mut components = relative.components();
+    if let (Some(Component::Normal(first)), None) = (components.next(), components.next()) {
+        if VCS_MARKERS.contains(&first.to_string_lossy().as_ref()) {
+            return false;
+        }
+    }
     for component in relative.components() {
         if let Component::Normal(part) = component {
             let name = part.to_string_lossy();
@@ -247,6 +260,14 @@ mod tests {
 
     fn roots() -> Vec<PathBuf> {
         vec![PathBuf::from("/Users/me/build/notes")]
+    }
+
+    #[test]
+    fn reports_a_repository_marker_created_at_the_root_itself() {
+        let roots = vec![PathBuf::from("/Users/me/notes")];
+        assert!(!should_ignore(&roots, Path::new("/Users/me/notes/.git")));
+        assert!(should_ignore(&roots, Path::new("/Users/me/notes/.git/HEAD")));
+        assert!(should_ignore(&roots, Path::new("/Users/me/notes/lib/.git")));
     }
 
     #[test]

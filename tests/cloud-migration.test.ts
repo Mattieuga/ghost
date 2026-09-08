@@ -33,6 +33,10 @@ const oneLinkMigration = readFileSync(
   new URL("../supabase/migrations/20260903020000_cloud_one_share_link.sql", import.meta.url),
   "utf8",
 );
+const liveTreeMigration = readFileSync(
+  new URL("../supabase/migrations/20260907010000_cloud_live_tree.sql", import.meta.url),
+  "utf8",
+);
 
 describe("Cloud foundation migration", () => {
   it("keeps retained Cloud tables separate from the disposable spike", () => {
@@ -299,5 +303,32 @@ describe("One share link migration", () => {
     expect(oneLinkMigration.match(/security definer\nset search_path = ''/g)).toHaveLength(2);
     expect(oneLinkMigration).toContain("revoke all on function public.cloud_set_share_link(uuid, text) from public, anon");
     expect(oneLinkMigration).toContain("grant execute on function public.cloud_set_share_link(uuid, text) to authenticated");
+  });
+});
+
+describe("Live tree migration", () => {
+  it("announces item and membership changes on workspace and user topics, never failing the write", () => {
+    expect(liveTreeMigration).toContain("perform realtime.send(payload, 'changed', topic, true);");
+    expect(liveTreeMigration).toContain("exception when others then\n  null;");
+    expect(liveTreeMigration).toContain("after insert or update or delete on public.cloud_items");
+    expect(liveTreeMigration).toContain("after insert or update or delete on public.cloud_memberships");
+    expect(liveTreeMigration).toContain("'ghost-tree:' || workspace::text");
+    expect(liveTreeMigration).toContain("'ghost-user:' || member::text");
+  });
+
+  it("lets only owners and members listen, and keeps its helpers private", () => {
+    expect(liveTreeMigration).toContain("topic_name = 'ghost-user:' || target_user_id::text");
+    expect(liveTreeMigration).toContain("where w.id = workspace and w.owner_id = target_user_id");
+    expect(liveTreeMigration).toContain("where i.workspace_id = workspace and m.user_id = target_user_id");
+    expect(liveTreeMigration).toContain("on realtime.messages for select to authenticated");
+    expect(liveTreeMigration.match(/security definer\nset search_path = ''/g)).toHaveLength(4);
+    for (const helper of [
+      "private.cloud_notify(text, jsonb)",
+      "private.cloud_items_changed()",
+      "private.cloud_memberships_changed()",
+      "private.cloud_can_watch_topic(text, uuid)",
+    ]) {
+      expect(liveTreeMigration).toContain(`revoke all on function ${helper} from public, anon, authenticated`);
+    }
   });
 });

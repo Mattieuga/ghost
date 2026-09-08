@@ -176,6 +176,13 @@ export async function sendShareInvitation(
   return Boolean((data as { sent?: boolean } | null)?.sent);
 }
 
+/** The caller's role on one item, or null when it is gone or not shared with them. */
+export async function cloudItemRole(client: SupabaseClient, itemId: string): Promise<CloudAccessRole | null> {
+  const { data, error } = await client.rpc("cloud_document_role", { target_document_id: itemId });
+  fail("Could not check access", error);
+  return data === "owner" || data === "editor" || data === "viewer" ? data : null;
+}
+
 export async function setCloudDisplayName(client: SupabaseClient, name: string): Promise<void> {
   const { error } = await client.rpc("cloud_set_display_name", { name });
   fail("Could not save your name", error);

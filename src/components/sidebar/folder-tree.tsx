@@ -331,6 +331,7 @@ function DroppableFolder({
   // The Shared root mirrors other people's trees: no structure changes here,
   // and it comes and goes with what is shared rather than being closed.
   const inShared = sidebarActions.isSharedRoot?.(isRoot ? id : projectPath) ?? false;
+  const canCreateHere = !inShared || (!isRoot && (sidebarActions.canCreateInShared?.(id) ?? false));
   const isMirroredRoot = isRoot && ownKind === "mirrored" && !inShared;
   const canLeave = inShared && !isRoot && id.substring(0, id.lastIndexOf("/")) === projectPath && !!sidebarActions.leave;
   const leave = canLeave ? () => sidebarActions.leave?.(id) : undefined;
@@ -456,8 +457,8 @@ function DroppableFolder({
       trash: inShared ? leave : isRoot ? undefined : () => setShowDeleteDialog(true),
       copyPath: handleCopyPath,
       reveal: handleRevealInFinder,
-      newFile: inShared ? undefined : () => { setExpanded(true); onCreateFile(id); },
-      newFolder: inShared ? undefined : () => { setExpanded(true); onCreateFolder(id); },
+      newFile: canCreateHere ? () => { setExpanded(true); onCreateFile(id); } : undefined,
+      newFolder: canCreateHere ? () => { setExpanded(true); onCreateFolder(id); } : undefined,
       closeProject: isRoot && !inShared ? () => onRemoveFolder?.(id) : undefined,
     },
   });
@@ -479,8 +480,8 @@ function DroppableFolder({
         leave,
         share,
         openNewProject: onAddProject,
-        newFile: inShared ? undefined : () => { setOpen(true); onCreateFile(id); },
-        newFolder: inShared ? undefined : () => { setOpen(true); onCreateFolder(id); },
+        newFile: canCreateHere ? () => { setOpen(true); onCreateFile(id); } : undefined,
+        newFolder: canCreateHere ? () => { setOpen(true); onCreateFolder(id); } : undefined,
         copy: isRoot ? undefined : () => { void handleCopyPath(); },
         reveal: () => { void handleRevealInFinder(); },
         copyPath: () => { void handleCopyPath(); },

@@ -128,6 +128,8 @@ import {
 } from "@/lib/mirror/sync-folder";
 import { SidebarMutedRow, SidebarSectionHeader } from "@/components/sidebar/sidebar-section-header";
 import { SidebarTrashDialog } from "@/components/sidebar/sidebar-trash-dialog";
+import { FloatingPanel, PanelTitle } from "@/components/ui/floating-panel";
+import { VCS_MARKERS } from "@/lib/mirror/mirror-fs";
 import type { TrackedRoot } from "@/hooks/use-tracked-folders";
 import { getMacCloudClient, MAC_CLOUD_AUTH_REDIRECT_URL, openMacCloudOAuthUrl } from "@/cloud/mac-cloud-client";
 import { mirrorLocalPersistenceKey, openYjsPersistence } from "@/cloud/cloud-local-persistence";
@@ -135,7 +137,8 @@ import { isMissingServerFunction, switchCloudOwner, uploadMirroredRoot } from "@
 import type * as Y from "yjs";
 import { pullCloudChanges } from "@/lib/mirror/cloud-pull";
 import { syncCloudTreeToDisk } from "@/lib/mirror/cloud-tree-sync";
-import { refreshSharedRoot, SHARED_FOLDER_NAME } from "@/lib/mirror/shared-root";
+import { liveTopicsFor, useCloudLive } from "@/cloud/use-cloud-live";
+import { editableSharedFolder, planSharedRoot, refreshSharedRoot, SHARED_FOLDER_NAME } from "@/lib/mirror/shared-root";
 import {
   acceptCloudInvitations,
   isMissingSharingFunction,
@@ -217,6 +220,17 @@ export function GhostLayout() {
     Boolean(root?.cloudOwnerId && cloudUserId && root.cloudOwnerId !== cloudUserId)
   ), [cloudUserId]);
   const [shareOpen, setShareOpen] = useState(false);
+  // Shared folders this account may create notes in, as absolute paths.
+  const [sharedFolderRoles, setSharedFolderRoles] = useState<{ base: string; roles: Record<string, "owner" | "editor" | "viewer"> } | null>(null);
+  const sharedFolderRolesRef = useRef(sharedFolderRoles);
+  sharedFolderRolesRef.current = sharedFolderRoles;
+  const canCreateInShared = useCallback((dirPath: string): boolean => {
+    const current = sharedFolderRolesRef.current;
+    if (!current) return false;
+    const relative = dirPath === current.base ? null : relativeToRoot(current.base, dirPath);
+    if (!relative) return false;
+    return editableSharedFolder({ folderRoles: current.roles }, relative) !== null;
+  }, []);
   // The open synced note's live session, for presence and history in the header.
   const [mirrorSession, setMirrorSession] = useState<MirroredSessionInfo | null>(null);
   const presenceNames = usePresenceNames(mirrorSession?.session ?? null);
@@ -886,7 +900,8 @@ export function GhostLayout() {
     // Nothing is created inside Shared: it mirrors other people's notes, and
     // a stray file there would be swept away on the next refresh.
     const shared = rootsForResolution.current.find((root) => root.shared) ?? null;
-    const usable = (dir: string | null | undefined): dir is string => Boolean(dir) && !insideRoot(shared, dir);
+    const usable = (dir: string | null | undefined): dir is string => Boolean(dir)
+      && (!insideRoot(shared, dir) || canCreateInShared(dir as string));
     if (usable(targetDirectory)) return targetDirectory;
     const keyboardTarget = treeKeyboardRef.current?.hasFocus()
       ? treeKeyboardRef.current.getTargetDirectory()
@@ -896,7 +911,7 @@ export function GhostLayout() {
     const currentDir = currentFile ? currentFile.substring(0, currentFile.lastIndexOf("/")) : null;
     if (usable(currentDir)) return currentDir;
     return ensureNotesRoot();
-  }, [ensureNotesRoot]);
+  }, [canCreateInShared, ensureNotesRoot]);
 
   // ⇧⌘U syncs the folder that owns what you are looking at: a focused
   // sidebar folder, else the root of the focused or open note. Only a
@@ -1257,6 +1272,7 @@ export function GhostLayout() {
     rootKindOf: (path) => roots.find((root) => root.path === path)?.kind ?? null,
     isSharedRoot: (path) => roots.some((root) => root.shared && root.path === path),
     leave: (path) => setPendingLeave(path),
+    canCreateInShared,
     share: openShare,
     syncFolder: (path) => setSyncDialogPath(path),
     stopSyncing: (rootPath) => {
@@ -1266,7 +1282,7 @@ export function GhostLayout() {
     linkIntoProject: (rootPath) => { void handleLinkIntoProject(rootPath); },
     copyToNotes: (filePath) => { void handleCopyToNotes(filePath); },
     saveCopy: (filePath) => { void handleSaveCopy(filePath); },
-  }), [handleCopyToNotes, handleLinkIntoProject, handleSaveCopy, roots]);
+  }), [handleCopyToNotes, handleLinkIntoProject, handleSaveCopy, roots, canCreateInShared]);
 
   // Folders under ~/Ghost are Ghost's. Adopt any that predate the mirror
   // engine, so an upgrade needs nothing from the user.
@@ -1303,6 +1319,9 @@ export function GhostLayout() {
   const rootsForResolution = useRef(roots);
   rootsForResolution.current = roots;
   const lastResolveAt = useRef(0);
+  // A root that a repository took over is announced once per session.
+  const [repositoryTakeover, setRepositoryTakeover] = useState<{ root: TrackedRoot; reason: string } | null>(null);
+  const announcedTakeovers = useRef(new Set<string>());
   const resolveRoots = useCallback(async (force = false) => {
     if (!force && Date.now() - lastResolveAt.current < 5_000) return;
     lastResolveAt.current = Date.now();
@@ -1324,12 +1343,18 @@ export function GhostLayout() {
           });
         } else {
           setRootResolutions((current) => ({ ...current, [root.id]: resolution }));
+          if (resolution.kind === "paused" && !announcedTakeovers.current.has(root.id)) {
+            announcedTakeovers.current.add(root.id);
+            setRepositoryTakeover({ root, reason: resolution.reason });
+          }
         }
       } catch (error) {
         console.error("Failed to resolve a synced folder:", error);
       }
     }
   }, [resolutionFs, retargetNavigationHistory, updateRootPath]);
+  const resolveRootsRef = useRef(resolveRoots);
+  resolveRootsRef.current = resolveRoots;
   useEffect(() => {
     if (loading) return;
     void resolveRoots(true);
@@ -1380,6 +1405,11 @@ export function GhostLayout() {
       const { path, from } = event.payload;
       for (const root of rootsForResolution.current) {
         if (root.kind !== "mirrored" || root.shared) continue;
+        // `git init` in a synced folder: pause at once rather than on the next focus.
+        if (VCS_MARKERS.some((marker) => path === `${root.path}/${marker}`)) {
+          void resolveRootsRef.current(true);
+          continue;
+        }
         const inside = (candidate: string | null) => candidate !== null
           && candidate.startsWith(`${root.path}/`)
           && !candidate.includes("/.ghost/");
@@ -1458,6 +1488,8 @@ export function GhostLayout() {
   // its own live session and is left alone.
   const refreshingCloud = useRef<Promise<void> | null>(null);
   const lastCloudRefresh = useRef(0);
+  const [liveTopics, setLiveTopics] = useState<string[]>([]);
+
   const refreshCloud = useCallback((force = false): Promise<void> => {
     if (!signedIn || !cloudClient || loading || ghostFolderPath === undefined) return Promise.resolve();
     if (refreshingCloud.current) return refreshingCloud.current;
@@ -1482,12 +1514,14 @@ export function GhostLayout() {
           if (isMissingSharingFunction(error)) return;
           throw error;
         }
+        setLiveTopics(liveTopicsFor(cloudUserId, visible, null));
         const existingShared = rootsForResolution.current.find((root) => root.shared) ?? null;
         const anyShared = visible.some((item) => item.shared_root_id !== null);
         if (ghost && (anyShared || existingShared)) {
           const sharedPath = `${ghost}/${SHARED_FOLDER_NAME}`;
           await tauriMirrorFs.ensureDir(sharedPath);
           const sharedRoot = existingShared ?? ensureSharedRoot(sharedPath);
+          setSharedFolderRoles({ base: sharedRoot.path, roles: planSharedRoot(visible).folderRoles });
           const result = await refreshSharedRoot({ fs: tauriMirrorFs, client, openPersistence, isOpen }, sharedRoot, visible);
           if (result.added.length || result.removed.length || result.moved.length || result.pull.written.length) changed = true;
           if (result.added.length === 1) setMirrorNotification(`${folderNameOf(result.added[0])} was shared with you.`);
@@ -1535,8 +1569,9 @@ export function GhostLayout() {
     rootSyncChain.current = run.catch(() => undefined);
     refreshingCloud.current = run;
     return run;
-  }, [cloudClient, cloudMismatch, ensureSharedRoot, flushActiveDocument, ghostFolderPath, handleFsChange, loading, removeFolder, renameTreeEntry, retargetActiveFile, signedIn]);
+  }, [cloudClient, cloudMismatch, cloudUserId, ensureSharedRoot, flushActiveDocument, ghostFolderPath, handleFsChange, loading, removeFolder, renameTreeEntry, retargetActiveFile, signedIn]);
 
+  useCloudLive(signedIn ? cloudClient : null, liveTopics, () => { void refreshCloud(true); });
   useEffect(() => {
     if (!signedIn) return;
     void refreshCloud(true);
@@ -2481,6 +2516,33 @@ export function GhostLayout() {
         onClose={() => setStopSyncingRoot(null)}
         onConfirm={handleStopSyncingConfirm}
       />
+      {repositoryTakeover ? (
+        <FloatingPanel
+          data-repository-takeover
+          title={<PanelTitle before="Sync paused for" name={folderNameOf(repositoryTakeover.root.path)} />}
+          ariaLabel={`Sync paused for ${folderNameOf(repositoryTakeover.root.path)}`}
+          description={`${repositoryTakeover.reason} Ghost never syncs inside a repository, because branch switches and checkouts rewrite files under a live note.`}
+          onClose={() => setRepositoryTakeover(null)}
+          footer={(
+            <>
+              <Button variant="outline" onClick={() => setRepositoryTakeover(null)}>Keep paused</Button>
+              <Button
+                onClick={() => {
+                  const { root } = repositoryTakeover;
+                  setRepositoryTakeover(null);
+                  setStopSyncingRoot(root);
+                }}
+              >
+                Stop syncing…
+              </Button>
+            </>
+          )}
+        >
+          <p className="text-xs leading-5 text-muted-foreground">
+            Stop syncing keeps every file on this Mac as plain Markdown. Or move the folder out of the repository, and sync resumes on its own.
+          </p>
+        </FloatingPanel>
+      ) : null}
       <SidebarTrashDialog
         open={pendingLeave !== null}
         kind="file"

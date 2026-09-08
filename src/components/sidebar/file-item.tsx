@@ -210,6 +210,7 @@ export const FileItem = React.memo(function FileItem({
   // edited live, but names and structure are theirs. A direct child can be
   // left; anything can be copied into Notes.
   const inShared = sidebarActions.isSharedRoot?.(projectPath) ?? false;
+  const canCreateHere = !inShared || (sidebarActions.canCreateInShared?.(parentDir) ?? false);
   const canLeave = inShared && parentDir === projectPath && !!sidebarActions.leave;
   const copyToNotes = (rootKind === "plain" || inShared) && sidebarActions.copyToNotes
     ? () => sidebarActions.copyToNotes?.(entry.path)
@@ -237,8 +238,8 @@ export const FileItem = React.memo(function FileItem({
       trash: inShared ? leave : () => setShowDeleteDialog(true),
       copyPath: handleCopyPath,
       reveal: handleRevealInFinder,
-      newFile: inShared ? undefined : onNewSibling,
-      newFolder: inShared ? undefined : onNewFolderSibling,
+      newFile: canCreateHere ? onNewSibling : undefined,
+      newFolder: canCreateHere ? onNewFolderSibling : undefined,
     },
   });
 
@@ -313,8 +314,8 @@ export const FileItem = React.memo(function FileItem({
               open: () => { void onSelect(); },
               openNewWindow: () => { void handleOpenInNewWindow(); },
               openNewProject: onAddProject,
-              newFile: inShared ? undefined : onNewSibling,
-              newFolder: inShared ? undefined : onNewFolderSibling,
+              newFile: canCreateHere ? onNewSibling : undefined,
+              newFolder: canCreateHere ? onNewFolderSibling : undefined,
               copy: () => { void handleCopyPath(); },
               copyTextAs: (format) => { void handleCopyTextAs(format); },
               copyToNotes,

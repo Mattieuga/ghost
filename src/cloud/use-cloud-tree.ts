@@ -18,6 +18,7 @@ import {
   listVisibleCloudItems,
   type VisibleCloudItem,
 } from "@/cloud/cloud-sharing";
+import { liveTopicsFor, useCloudLive } from "@/cloud/use-cloud-live";
 
 /**
  * The web sidebar's model: everything the account can see, split into the
@@ -114,7 +115,8 @@ export function useCloudTree(client: SupabaseClient | null, user: User | null): 
 
   useEffect(() => { void reload(); }, [reload]);
 
-  // The tree has no live feed yet, so coming back to the tab refreshes it.
+  // Changes made elsewhere arrive live; coming back to the tab refreshes too.
+  useCloudLive(client, liveTopicsFor(userId, items, workspace?.id ?? null), () => { void reload(); });
   useEffect(() => {
     if (!client || !userId) return;
     let last = Date.now();

@@ -1,8 +1,10 @@
-import type { VisibleCloudItem } from "@/cloud/cloud-sharing";
+import { adoptCloudItems, createCloudItem } from "@/cloud/cloud-data";
+import { cloudItemRole, type CloudAccessRole, type VisibleCloudItem } from "@/cloud/cloud-sharing";
 import type { TrackedRoot } from "@/hooks/use-tracked-folders";
-import { commitIndexPass, readGhostFolder, writeGhostFolderMetadata } from "@/lib/mirror/adoption";
+import { adoptDocument, commitIndexPass, defaultDocumentId, readGhostFolder, writeGhostFolderMetadata } from "@/lib/mirror/adoption";
 import { pullCloudChanges, type CloudPullDeps, type CloudPullResult } from "@/lib/mirror/cloud-pull";
-import { emptyGhostIndex, type GhostIndex } from "@/lib/mirror/ghost-index";
+import { emptyGhostIndex, relativeToRoot, type GhostIndex, type GhostIndexEntry } from "@/lib/mirror/ghost-index";
+import { pushDocumentState } from "@/lib/mirror/root-sync";
 
 /**
  * The Shared root mirrors what other people shared with this account into
@@ -20,6 +22,19 @@ export interface SharedRootPlan {
   documents: Record<string, VisibleCloudItem>;
   /** Relative directory to the Cloud folder it mirrors. */
   folders: Record<string, string>;
+  /** This account's role on each shared folder; editors may create notes inside. */
+  folderRoles: Record<string, CloudAccessRole>;
+}
+
+/** The nearest shared folder at or above `dir` this account may create in, if any. */
+export function editableSharedFolder(plan: Pick<SharedRootPlan, "folderRoles">, dir: string | null): string | null {
+  let current = dir;
+  while (current) {
+    const role = plan.folderRoles[current];
+    if (role) return role === "viewer" ? null : current;
+    current = current.includes("/") ? current.slice(0, current.lastIndexOf("/")) : null;
+  }
+  return null;
 }
 
 /**
@@ -52,7 +67,7 @@ function byName(a: VisibleCloudItem, b: VisibleCloudItem): number {
 }
 
 export function planSharedRoot(visible: VisibleCloudItem[]): SharedRootPlan {
-  const plan: SharedRootPlan = { documents: {}, folders: {} };
+  const plan: SharedRootPlan = { documents: {}, folders: {}, folderRoles: {} };
   const shared = visible.filter((item) => item.shared_root_id !== null);
   const children = new Map<string, VisibleCloudItem[]>();
   for (const item of shared) {
@@ -67,6 +82,7 @@ export function planSharedRoot(visible: VisibleCloudItem[]): SharedRootPlan {
       return;
     }
     plan.folders[relativePath] = item.id;
+    plan.folderRoles[relativePath] = item.access_role;
     for (const child of (children.get(item.id) ?? []).sort(byName)) {
       if (!isSafeSharedName(child.name)) continue;
       place(child, `${relativePath}/${child.name}`);
@@ -89,6 +105,8 @@ export interface SharedRootRefresh {
   added: string[];
   removed: string[];
   moved: Array<{ from: string; to: string }>;
+  /** Notes made on this Mac inside a shared folder, now in the sharer's Cloud. */
+  uploaded: string[];
   pull: CloudPullResult;
   /** True when nothing is shared any more and the root can be hidden. */
   empty: boolean;
@@ -158,12 +176,59 @@ export async function refreshSharedRoot(
     }
   }
 
-  const removed: string[] = [];
+  // Notes made here inside a shared folder go to the sharer's Cloud when
+  // this account may edit that folder: files the editor already claimed,
+  // and files another app dropped in. Anything else stays a local file.
+  const uploaded: string[] = [];
   const planned = new Set(Object.values(plan.documents).map((item) => item.id));
+  const localCandidates = new Map<string, GhostIndexEntry | null>();
   for (const [relativePath, entry] of Object.entries(index.documents)) {
-    if (planned.has(entry.documentId)) continue;
+    if (!planned.has(entry.documentId) && !entry.cloudDocumentId) localCandidates.set(relativePath, entry);
+  }
+  for (const absolutePath of await fs.listMarkdownFiles(root.path)) {
+    const relativePath = relativeToRoot(root.path, absolutePath);
+    if (!relativePath || index.documents[relativePath] || next.documents[relativePath]) continue;
+    if (editableSharedFolder(plan, parentOf(relativePath))) localCandidates.set(relativePath, null);
+  }
+  for (const [relativePath, existing] of localCandidates) {
+    const folder = editableSharedFolder(plan, parentOf(relativePath));
+    if (!folder) {
+      if (existing) next.documents[relativePath] = existing;
+      continue;
+    }
+    try {
+      const parentId = await ensureSharedFolder(deps, plan, next, folder, parentOf(relativePath) as string);
+      const adopted = existing
+        ? { documentId: existing.documentId, entry: existing }
+        : await adoptDocument(
+          { fs, openPersistence: deps.openPersistence, newDocumentId: defaultDocumentId, now: () => new Date() },
+          root.path,
+          root.id,
+          relativePath,
+          null,
+        );
+      await adoptCloudItems(deps.client, [{ id: adopted.documentId, parent_id: parentId, kind: "document", name: nameOf(relativePath) }]);
+      await pushDocumentState(deps, root, { client: deps.client, cloudRootId: SHARED_ROOT_ID, workspaceId: null }, adopted.documentId);
+      next.documents[relativePath] = { ...adopted.entry, cloudDocumentId: adopted.documentId, cloudCursor: 0 };
+      uploaded.push(relativePath);
+    } catch (error) {
+      console.warn(`Could not add ${relativePath} to the shared folder:`, error);
+      if (existing) next.documents[relativePath] = existing;
+    }
+  }
+
+  // A note that left the listing: gone from the share, or shared a moment
+  // ago and not listed yet. The server settles it.
+  const removed: string[] = [];
+  for (const [relativePath, entry] of Object.entries(index.documents)) {
+    if (planned.has(entry.documentId) || !entry.cloudDocumentId || next.documents[relativePath]) continue;
     const absolutePath = `${root.path}/${relativePath}`;
     if (isOpen(absolutePath)) {
+      next.documents[relativePath] = entry;
+      continue;
+    }
+    const stillShared = await cloudItemRole(deps.client, entry.cloudDocumentId).catch(() => null);
+    if (stillShared) {
       next.documents[relativePath] = entry;
       continue;
     }
@@ -177,7 +242,36 @@ export async function refreshSharedRoot(
     added,
     removed,
     moved,
+    uploaded,
     pull,
     empty: Object.keys(plan.documents).length === 0 && Object.keys(plan.folders).length === 0,
   };
+}
+
+function parentOf(relativePath: string): string | null {
+  return relativePath.includes("/") ? relativePath.slice(0, relativePath.lastIndexOf("/")) : null;
+}
+
+function nameOf(path: string): string {
+  return path.slice(path.lastIndexOf("/") + 1) || path;
+}
+
+/** The Cloud folder for `dir`, creating what lies between it and the nearest shared folder. */
+async function ensureSharedFolder(
+  deps: CloudPullDeps,
+  plan: SharedRootPlan,
+  index: GhostIndex,
+  knownFolder: string,
+  dir: string,
+): Promise<string> {
+  if (index.folders[dir]) return index.folders[dir];
+  const parentDir = parentOf(dir);
+  const parentId = parentDir === knownFolder || parentDir === null
+    ? index.folders[knownFolder]
+    : await ensureSharedFolder(deps, plan, index, knownFolder, parentDir);
+  const created = await createCloudItem(deps.client, "folder", nameOf(dir), parentId);
+  index.folders[dir] = created.id;
+  plan.folders[dir] = created.id;
+  plan.folderRoles[dir] = plan.folderRoles[knownFolder];
+  return created.id;
 }

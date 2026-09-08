@@ -106,7 +106,7 @@ async function ensureCloudFolder(
   }
 }
 
-async function pushDocumentState(
+export async function pushDocumentState(
   deps: RootSyncDeps,
   root: TrackedRoot,
   cloud: CloudContext,

@@ -36,6 +36,35 @@ fn reject_parent_dir(path: &str) -> Result<(), String> {
 /// Per-folder Ghost metadata. Never listed, even when hidden files are shown.
 pub const GHOST_METADATA_DIR: &str = ".ghost";
 
+/// What the operating system leaves behind in a folder: Finder's own files
+/// and the AppleDouble shadows it writes on other file systems, plus their
+/// Windows counterparts. Never listed, whatever the switches say.
+fn is_junk_entry(name: &str) -> bool {
+    matches!(name, ".DS_Store" | ".localized" | "Icon\r" | "Thumbs.db" | "desktop.ini")
+        || name.starts_with("._")
+}
+
+/// A `<stem>.assets` folder beside its `<stem>.md` note holds that note's
+/// images. It is part of the note rather than a folder of its own, so it is
+/// listed the way a hidden folder is. Without its note it is an ordinary
+/// folder, so leftovers stay visible.
+fn is_companion_assets_dir(path: &Path) -> bool {
+    let Some(stem) = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| name.strip_suffix(".assets"))
+    else {
+        return false;
+    };
+    let Some(parent) = path.parent() else {
+        return false;
+    };
+    // The Markdown extensions the sidebar treats as notes, as in `src/lib/file-type.ts`.
+    ["md", "markdown", "mkd", "mdown", "mkdn", "mdwn"]
+        .iter()
+        .any(|extension| parent.join(format!("{stem}.{extension}")).is_file())
+}
+
 const WORKSPACE_FILE_INDEX_LIMIT: usize = 100_000;
 const WORKSPACE_FILE_INDEX_HARD_LIMIT: usize = 200_000;
 const WORKSPACE_FILE_INDEX_MAX_DEPTH: usize = 64;
@@ -252,11 +281,14 @@ fn build_workspace_file_index(
 
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
-            if !show_hidden && name.starts_with('.') {
+            if is_junk_entry(&name) {
+                continue;
+            }
+            let path = entry.path();
+            if !show_hidden && (name.starts_with('.') || is_companion_assets_dir(&path)) {
                 continue;
             }
 
-            let path = entry.path();
             let file_type = match entry.file_type() {
                 Ok(file_type) => file_type,
                 Err(_) => continue,
@@ -365,14 +397,14 @@ fn read_dir_recursive(
     for entry in dir_entries {
         let name = entry.file_name().to_string_lossy().to_string();
 
-        if name == GHOST_METADATA_DIR {
+        if name == GHOST_METADATA_DIR || is_junk_entry(&name) {
             continue;
         }
-        if !show_hidden && name.starts_with('.') {
+        let path = entry.path();
+        if !show_hidden && (name.starts_with('.') || is_companion_assets_dir(&path)) {
             continue;
         }
 
-        let path = entry.path();
         let is_dir =
             entry.file_type().map(|t| t.is_dir()).unwrap_or(false) && !is_file_package(&path);
 
@@ -2515,7 +2547,8 @@ pub async fn open_with_default_app(path: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_text_bytes, duplicate_file, file_version, inspect_source, move_file,
+        build_workspace_file_index, decode_text_bytes, duplicate_file, file_version,
+        inspect_source, move_file,
         read_dir_recursive, read_file_if_text, read_source_chunk, read_source_chunk_raw,
         rename_file, write_file_checked, WriteFileError, EXTREME_SOURCE_BYTES,
         TEMP_FILE_COUNTER, TEXT_PROBE_BYTES,
@@ -2563,6 +2596,41 @@ mod tests {
                 .map(|entry| entry.name.as_str())
                 .collect::<Vec<_>>(),
             [".hidden-folder", ".hidden.txt", "visible.txt"],
+        );
+        fs::remove_dir_all(directory).expect("test directory should be removed");
+    }
+
+    #[test]
+    fn directory_listing_treats_note_assets_as_hidden_and_junk_as_absent() {
+        let directory = test_directory("assets-and-junk");
+        fs::write(directory.join("note.md"), "# Note").expect("fixture should be written");
+        fs::create_dir(directory.join("note.assets")).expect("fixture directory should be created");
+        fs::write(directory.join("note.assets").join("pic.png"), "png")
+            .expect("fixture should be written");
+        fs::create_dir(directory.join("orphan.assets")).expect("fixture directory should be created");
+        fs::write(directory.join(".DS_Store"), "").expect("fixture should be written");
+        fs::write(directory.join("._note.md"), "").expect("fixture should be written");
+
+        let names = |show_hidden: bool| {
+            read_dir_recursive(&directory, &[], 0, 2, show_hidden)
+                .expect("directory should be listed")
+                .iter()
+                .map(|entry| entry.name.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(false), ["orphan.assets", "note.md"]);
+        assert_eq!(names(true), ["note.assets", "orphan.assets", "note.md"]);
+
+        let roots = [directory.to_string_lossy().to_string()];
+        let index = build_workspace_file_index(&roots, &[], false, 100);
+        assert_eq!(index.files, [directory.join("note.md").to_string_lossy().to_string()]);
+        let index = build_workspace_file_index(&roots, &[], true, 100);
+        assert_eq!(
+            index.files,
+            [
+                directory.join("note.assets").join("pic.png").to_string_lossy().to_string(),
+                directory.join("note.md").to_string_lossy().to_string(),
+            ]
         );
         fs::remove_dir_all(directory).expect("test directory should be removed");
     }

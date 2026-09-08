@@ -45,7 +45,7 @@ export function GeneralTab({ settings, onUpdateSettings, updater }: GeneralTabPr
         </SettingRow>
         <SettingRow
           label="Show hidden files"
-          description="Display dotfiles and hidden folders; dependency, build, and VCS internals remain excluded"
+          description="Display dotfiles, hidden folders, and the image folders that belong to notes; system files and dependency, build, and VCS internals stay excluded"
         >
           <SettingSwitch
             label="Show hidden files"
